@@ -47,12 +47,12 @@ func TestAdminTenantListAndInviteSetting(t *testing.T) {
 	tenantName := "Acme"
 	roleID := int32(7)
 	if err := db.Create(&entity.Tenant{
-		ID: "tenant-acme", Name: &tenantName, LLMID: "", EmbdID: "", ASRID: "", Img2TxtID: "", RerankID: "", ParserIDs: "", InviteEnabled: true, RoleID: &roleID, Status: &status,
+		ID: "tenant-acme", Name: &tenantName, ParserIDs: "", InviteEnabled: true, RoleID: &roleID, Status: &status,
 	}).Error; err != nil {
 		t.Fatalf("create tenant: %v", err)
 	}
 	if err := db.Create(&entity.Tenant{
-		ID: "tenant-other", LLMID: "", EmbdID: "", ASRID: "", Img2TxtID: "", RerankID: "", ParserIDs: "", InviteEnabled: false, Status: &status,
+		ID: "tenant-other", ParserIDs: "", InviteEnabled: false, Status: &status,
 	}).Error; err != nil {
 		t.Fatalf("create second tenant: %v", err)
 	}
@@ -185,7 +185,7 @@ func TestAdminTenantListKeywordAndStatusValidation(t *testing.T) {
 	t.Cleanup(testutil.ReplaceDBForTest(t, db))
 	status := "1"
 	name := "Searchable Tenant"
-	if err := db.Create(&entity.Tenant{ID: "tenant-search", Name: &name, LLMID: "", EmbdID: "", ASRID: "", Img2TxtID: "", RerankID: "", ParserIDs: "", InviteEnabled: false, Status: &status}).Error; err != nil {
+	if err := db.Create(&entity.Tenant{ID: "tenant-search", Name: &name, ParserIDs: "", InviteEnabled: false, Status: &status}).Error; err != nil {
 		t.Fatalf("create tenant: %v", err)
 	}
 	engine := newAdminEETestEngine()

@@ -42,8 +42,8 @@ func TestMigrateTenantDefaultRolesEE(t *testing.T) {
 	status := string(entity.StatusValid)
 	inactive := string(entity.StatusInvalid)
 	if err := db.Create(&[]entity.Tenant{
-		{ID: "tenant-1", LLMID: "", EmbdID: "", ASRID: "", Img2TxtID: "", RerankID: "", ParserIDs: "", Status: &status},
-		{ID: "tenant-2", LLMID: "", EmbdID: "", ASRID: "", Img2TxtID: "", RerankID: "", ParserIDs: "", Status: &status},
+		{ID: "tenant-1", ParserIDs: "", Status: &status},
+		{ID: "tenant-2", ParserIDs: "", Status: &status},
 	}).Error; err != nil {
 		t.Fatalf("create Tenants: %v", err)
 	}
@@ -65,13 +65,13 @@ func TestMigrateTenantDefaultRolesEE(t *testing.T) {
 		t.Fatalf("create custom Tenant role: %v", err)
 	}
 	if err := db.Create(&[]entity.UserTenant{
-		{ID: "owner-1", UserID: "user-owner-1", TenantID: "tenant-1", Role: "owner", Status: &status},
-		{ID: "normal-1", UserID: "user-normal-1", TenantID: "tenant-1", Role: "normal", Status: &status},
-		{ID: "admin-1", UserID: "user-admin-1", TenantID: "tenant-1", Role: "admin", Status: &status},
-		{ID: "invite-1", UserID: "user-invite-1", TenantID: "tenant-1", Role: "invite", Status: &status},
-		{ID: "inactive-1", UserID: "user-inactive-1", TenantID: "tenant-1", Role: "normal", Status: &inactive},
-		{ID: "custom-member-1", UserID: "user-custom-1", TenantID: "tenant-1", Role: fmt.Sprint(customRole.ID), Status: &status},
-		{ID: "normal-2", UserID: "user-normal-2", TenantID: "tenant-2", Role: "normal", Status: &status},
+		{ID: "owner-1", LLMID: "", EmbdID: "", ASRID: "", Img2TxtID: "", RerankID: "", UserID: "user-owner-1", TenantID: "tenant-1", Role: "owner", Status: &status},
+		{ID: "normal-1", LLMID: "", EmbdID: "", ASRID: "", Img2TxtID: "", RerankID: "", UserID: "user-normal-1", TenantID: "tenant-1", Role: "normal", Status: &status},
+		{ID: "admin-1", LLMID: "", EmbdID: "", ASRID: "", Img2TxtID: "", RerankID: "", UserID: "user-admin-1", TenantID: "tenant-1", Role: "admin", Status: &status},
+		{ID: "invite-1", LLMID: "", EmbdID: "", ASRID: "", Img2TxtID: "", RerankID: "", UserID: "user-invite-1", TenantID: "tenant-1", Role: "invite", Status: &status},
+		{ID: "inactive-1", LLMID: "", EmbdID: "", ASRID: "", Img2TxtID: "", RerankID: "", UserID: "user-inactive-1", TenantID: "tenant-1", Role: "normal", Status: &inactive},
+		{ID: "custom-member-1", LLMID: "", EmbdID: "", ASRID: "", Img2TxtID: "", RerankID: "", UserID: "user-custom-1", TenantID: "tenant-1", Role: fmt.Sprint(customRole.ID), Status: &status},
+		{ID: "normal-2", LLMID: "", EmbdID: "", ASRID: "", Img2TxtID: "", RerankID: "", UserID: "user-normal-2", TenantID: "tenant-2", Role: "normal", Status: &status},
 	}).Error; err != nil {
 		t.Fatalf("create Tenant memberships: %v", err)
 	}
@@ -219,7 +219,7 @@ func TestTenantDAOCreateInitializesDefaultRoleEE(t *testing.T) {
 
 	status := string(entity.StatusValid)
 	tenant := &entity.Tenant{
-		ID: "tenant-new", LLMID: "", EmbdID: "", ASRID: "", Img2TxtID: "", RerankID: "", ParserIDs: "", Status: &status,
+		ID: "tenant-new", ParserIDs: "", Status: &status,
 	}
 	if err := NewTenantDAO().Create(t.Context(), db, tenant); err != nil {
 		t.Fatalf("create Tenant: %v", err)

@@ -34,6 +34,8 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+var TenantRoleInvite = "invite"
+
 var tenantManagementPermissionBits = map[string]int32{
 	"manage_members": entity.TenantPermissionManageMembers,
 	"manage_roles":   entity.TenantPermissionManageRoles,

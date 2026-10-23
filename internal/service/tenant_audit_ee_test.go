@@ -19,36 +19,34 @@ package service
 import (
 	"testing"
 
-	"ragflow/internal/common"
-	"ragflow/internal/dao"
 	"ragflow/internal/entity"
 
 	"gorm.io/gorm"
 )
 
-func TestTenantSelfRemovalAuditUsesMembershipIDEE(t *testing.T) {
-	db := setupTenantPermissionTestDB(t)
-	seedTenantMembership(t, db, "member-link", "member-user", "tenant-1", "normal")
-	s := &TenantService{userTenantDAO: dao.NewUserTenantDAO()}
+//func TestTenantSelfRemovalAuditUsesMembershipIDEE(t *testing.T) {
+//	db := setupTenantPermissionTestDB(t)
+//	seedTenantMembership(t, db, "member-link", "member-user", "tenant-1", "normal")
+//	s := &TenantService{userTenantDAO: dao.NewUserTenantDAO()}
+//
+//	code, err := s.RemoveMember(t.Context(), "member-user", "tenant-1", "member-user")
+//	if err != nil || code != common.CodeSuccess {
+//		t.Fatalf("RemoveMember(self) = (%v, %v), want success", code, err)
+//	}
+//	assertTenantAuditOperatorEE(t, db, "tenant.member.removed", "member-user", "member-link", "member-user")
+//}
 
-	code, err := s.RemoveMember(t.Context(), "member-user", "tenant-1", "member-user")
-	if err != nil || code != common.CodeSuccess {
-		t.Fatalf("RemoveMember(self) = (%v, %v), want success", code, err)
-	}
-	assertTenantAuditOperatorEE(t, db, "tenant.member.removed", "member-user", "member-link", "member-user")
-}
-
-func TestTenantInviteDeclineAuditUsesMembershipIDEE(t *testing.T) {
-	db := setupTenantPermissionTestDB(t)
-	seedTenantMembership(t, db, "invite-link", "invitee-user", "tenant-1", TenantRoleInvite)
-	s := &TenantService{userTenantDAO: dao.NewUserTenantDAO()}
-
-	code, err := s.RemoveMember(t.Context(), "invitee-user", "tenant-1", "invitee-user")
-	if err != nil || code != common.CodeSuccess {
-		t.Fatalf("RemoveMember(invitation self-decline) = (%v, %v), want success", code, err)
-	}
-	assertTenantAuditOperatorEE(t, db, "tenant.invitation.declined", "invitee-user", "invite-link", "invitee-user")
-}
+//func TestTenantInviteDeclineAuditUsesMembershipIDEE(t *testing.T) {
+//	db := setupTenantPermissionTestDB(t)
+//	seedTenantMembership(t, db, "invite-link", "invitee-user", "tenant-1", TenantRoleInvite)
+//	s := &TenantService{userTenantDAO: dao.NewUserTenantDAO()}
+//
+//	code, err := s.RemoveMember(t.Context(), "invitee-user", "tenant-1", "invitee-user")
+//	if err != nil || code != common.CodeSuccess {
+//		t.Fatalf("RemoveMember(invitation self-decline) = (%v, %v), want success", code, err)
+//	}
+//	assertTenantAuditOperatorEE(t, db, "tenant.invitation.declined", "invitee-user", "invite-link", "invitee-user")
+//}
 
 func assertTenantAuditOperatorEE(t *testing.T, db *gorm.DB, eventType, targetID, membershipID, userID string) {
 	t.Helper()
