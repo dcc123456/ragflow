@@ -109,22 +109,6 @@ func TestParseAPIListAgents(t *testing.T) {
 	}
 }
 
-func TestParseAdminListUserDatasetsRequiresEE(t *testing.T) {
-	cmd, err := NewParser("LIST USER 'user@example.com' DATASETS;").Parse(AdminMode)
-	if cmd != nil || err == nil || !strings.Contains(err.Error(), "enterprise edition") {
-		t.Fatalf("Parse() = (%v, %v), want nil command and enterprise edition error", cmd, err)
-	}
-}
-
-func TestAdminListUserDatasetsRequiresEE(t *testing.T) {
-	cmd := NewCommand("admin_list_user_datasets")
-	cmd.Params["user_name"] = "user@example.com"
-	response, err := (&CLI{}).AdminListUserDatasetsCommand(1, cmd)
-	if response != nil || err == nil || !strings.Contains(err.Error(), "enterprise edition") {
-		t.Fatalf("AdminListUserDatasetsCommand() = (%v, %v), want nil response and enterprise edition error", response, err)
-	}
-}
-
 func TestParseAPIListDatasets(t *testing.T) {
 	cmd, err := NewParser("LIST DATASETS;").Parse(APIMode)
 	if err != nil {
@@ -132,5 +116,73 @@ func TestParseAPIListDatasets(t *testing.T) {
 	}
 	if cmd == nil || cmd.Type != "api_list_datasets" {
 		t.Fatalf("Parse() command = %v, want api_list_datasets", cmd)
+	}
+}
+func TestAdminListUserDatasetsCommandPassesOptions(t *testing.T) {
+	tests := []struct {
+		command, query, message string
+		status, code            int
+	}{
+		{"DATASETS", "", "success", 200, 0},
+		{"DATASETS WITH PaGe 2 PAGE_SIZE 5;", "page=2&page_size=5", "success", 200, 0},
+		{"DATASETS WITH page_size 1;", "page_size=1", "success", 200, 0},
+		{"DATASETS WITH page invalid;", "page=invalid", "page must be a positive integer", 400, 400},
+		{"DATASETS;", "", "User not found", 200, 404},
+	}
+	for _, tt := range tests {
+		t.Run(tt.command+"/"+tt.message, func(t *testing.T) {
+			cmd, err := NewParser("LIST USER 'user@example.com' " + tt.command).Parse(AdminMode)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var requests atomic.Int32
+			client := newTestHTTPClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if requests.Add(1) != 1 {
+					http.Error(w, "unexpected extra request", http.StatusBadRequest)
+					return
+				}
+				if r.Method != http.MethodGet || r.URL.Path != "/api/v1/admin/users/user@example.com/datasets" || r.URL.RawQuery != tt.query {
+					t.Errorf("request = %s %s, want GET user datasets with query %q", r.Method, r.URL, tt.query)
+				}
+				var data interface{}
+				if tt.code == 0 {
+					data = []map[string]interface{}{{"id": "dataset-1", "tenant_id": "tenant-2", "tenant_name": "Team workspace", "file_size": 123}}
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tt.status)
+				if err := json.NewEncoder(w).Encode(map[string]interface{}{"code": tt.code, "message": tt.message, "data": data, "total": 101}); err != nil {
+					t.Error(err)
+				}
+			}))
+			token := "admin-token"
+			client.LoginToken = &token
+			c := &CLI{Config: &CommandLineConfig{CLIMode: AdminMode}, AdminServerClient: client}
+			response, err := c.ExecuteCommand(1, cmd)
+			if requests.Load() != 1 {
+				t.Fatalf("requests = %d, want 1", requests.Load())
+			}
+			if tt.code != 0 {
+				if err == nil || response != nil || !strings.Contains(err.Error(), tt.message) || (tt.status != http.StatusOK && !strings.Contains(err.Error(), "HTTP "+strconv.Itoa(tt.status))) {
+					t.Fatalf("response = %v, error = %v; want nil and %q", response, err, tt.message)
+				}
+				return
+			}
+			result, ok := response.(*CommonResponse)
+			if err != nil || !ok || result.Code != 0 || result.Message != "success" || len(result.Data) != 1 || result.Data[0]["id"] != "dataset-1" || result.Data[0]["tenant_id"] != "tenant-2" || result.Data[0]["tenant_name"] != "Team workspace" || result.Data[0]["file_size"] != float64(123) {
+				t.Fatalf("response = %+v, error = %v; want only the current page with tenant and file size", response, err)
+			}
+		})
+	}
+}
+
+func TestParseAdminListUserDatasetsRejectsOptions(t *testing.T) {
+	for _, options := range []string{
+		"WITH unknown 1", "WITH page 1 PAGE 2", "WITH page", "WITH", "; page 2",
+	} {
+		t.Run(options, func(t *testing.T) {
+			if _, err := NewParser("LIST USER 'user@example.com' DATASETS " + options + ";").Parse(AdminMode); err == nil {
+				t.Fatal("expected invalid options to fail parsing")
+			}
+		})
 	}
 }

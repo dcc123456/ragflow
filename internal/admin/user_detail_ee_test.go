@@ -18,11 +18,14 @@ package admin
 
 import (
 	"encoding/json"
+	"fmt"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"reflect"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -32,6 +35,7 @@ import (
 	"ragflow/internal/ingestion/testutil"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 type adminUserAgentsTestResponse struct {
@@ -306,26 +310,316 @@ func TestListUserAgentsPreservesNullFields(t *testing.T) {
 	}
 }
 
-func TestUserDatasetsRouteRequiresEE(t *testing.T) {
+type eeUserDataset struct {
+	ID         string          `json:"id"`
+	Name       string          `json:"name"`
+	TenantID   *string         `json:"tenant_id"`
+	TenantName *string         `json:"tenant_name"`
+	Tenant     json.RawMessage `json:"tenant"`
+	FileSize   *int64          `json:"file_size"`
+	Permission json.RawMessage `json:"permission"`
+}
+
+type eeUserDatasetPage struct {
+	Code    common.ErrorCode `json:"code"`
+	Message string           `json:"message"`
+	Data    []eeUserDataset  `json:"data"`
+	Total   *int64           `json:"total"`
+}
+
+func setupEEUserDatasetsTest(t *testing.T) (*Handler, *gorm.DB) {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	db := testutil.SetupTestDB(t,
+		&entity.User{}, &entity.UserTenant{}, &entity.Knowledgebase{},
+		&entity.Document{}, &entity.Tenant{},
+	)
+	t.Cleanup(testutil.ReplaceDBForTest(t, db))
+
+	status := string(entity.StatusValid)
+	user := entity.User{
+		ID: "user-1", Email: "user@example.com", Nickname: "Dataset user",
+		IsAuthenticated: "1", IsActive: "1", IsAnonymous: "0", Status: &status,
+	}
+	if err := db.Create(&user).Error; err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	memberships := []entity.UserTenant{
+		{ID: "membership-own", UserID: user.ID, TenantID: user.ID, Role: "owner", InvitedBy: user.ID, Status: &status},
+		{ID: "membership-team", UserID: user.ID, TenantID: "tenant-2", Role: "normal", InvitedBy: "tenant-2", Status: &status},
+		{ID: "membership-team-owner", UserID: "tenant-2", TenantID: "tenant-2", Role: "owner", InvitedBy: "tenant-2", Status: &status},
+	}
+	if err := db.Create(&memberships).Error; err != nil {
+		t.Fatalf("create memberships: %v", err)
+	}
+	tenants := []entity.Tenant{
+		{ID: user.ID, Name: testutil.StrPtr("Personal workspace")},
+		{ID: "tenant-2", Name: testutil.StrPtr("Team workspace")},
+	}
+	if err := db.Create(&tenants).Error; err != nil {
+		t.Fatalf("create tenants: %v", err)
+	}
+	ownTime, teamTime, hiddenTime := int64(100), int64(200), int64(50)
+	datasets := []entity.Knowledgebase{
+		{ID: "dataset-own", TenantID: user.ID, Name: "Own dataset", EmbdID: "embedding", Permission: "me", CreatedBy: user.ID, Status: &status, BaseModel: entity.BaseModel{CreateTime: &ownTime}},
+		{ID: "dataset-team", TenantID: "tenant-2", Name: "Team dataset", EmbdID: "embedding", Permission: "team", CreatedBy: user.ID, Status: &status, BaseModel: entity.BaseModel{CreateTime: &teamTime}},
+		{ID: "dataset-other-shared", TenantID: "tenant-2", Name: "Other shared dataset", EmbdID: "embedding", Permission: "team", CreatedBy: "tenant-2", Status: &status, BaseModel: entity.BaseModel{CreateTime: &hiddenTime}},
+		{ID: "dataset-private", TenantID: "tenant-2", Name: "Private dataset", EmbdID: "embedding", Permission: "me", CreatedBy: "tenant-2", Status: &status, BaseModel: entity.BaseModel{CreateTime: &hiddenTime}},
+		{ID: "dataset-other-own-tenant", TenantID: user.ID, Name: "Other creator in own workspace", EmbdID: "embedding", Permission: "me", CreatedBy: "other-user", Status: &status, BaseModel: entity.BaseModel{CreateTime: &hiddenTime}},
+		{ID: "dataset-invalid", TenantID: user.ID, Name: "Invalid dataset", EmbdID: "embedding", Permission: "me", CreatedBy: user.ID, Status: testutil.StrPtr(string(entity.StatusInvalid)), BaseModel: entity.BaseModel{CreateTime: &hiddenTime}},
+	}
+	if err := db.Create(&datasets).Error; err != nil {
+		t.Fatalf("create datasets: %v", err)
+	}
+	return NewHandler(NewService()), db
+}
+
+func requestEEUserDatasets(handler *Handler, query string) *httptest.ResponseRecorder {
 	engine := gin.New()
-	RegisterEERouter(engine.Group("/api/v1/admin"), NewRouter(&Handler{}))
+	engine.GET("/api/v1/admin/users/:username/datasets", handler.ListUserDatasets)
+	recorder := httptest.NewRecorder()
+	engine.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet,
+		"/api/v1/admin/users/user@example.com/datasets"+query, nil))
+	return recorder
+}
 
-	response := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/admin/users/user%40example.com/datasets", nil)
-	engine.ServeHTTP(response, request)
-	if response.Code != http.StatusNotImplemented {
-		t.Fatalf("HTTP status = %d, want %d; body = %s", response.Code, http.StatusNotImplemented, response.Body.String())
+func readEEUserDatasetPage(t *testing.T, recorder *httptest.ResponseRecorder) eeUserDatasetPage {
+	t.Helper()
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("HTTP status = %d, want 200; body = %s", recorder.Code, recorder.Body.String())
 	}
+	var page eeUserDatasetPage
+	if err := json.Unmarshal(recorder.Body.Bytes(), &page); err != nil {
+		t.Fatalf("decode dataset page: %v; body = %s", err, recorder.Body.String())
+	}
+	if page.Code != common.CodeSuccess || page.Message != "success" || page.Total == nil || page.Data == nil {
+		t.Fatalf("expected success envelope with a data array and total; body = %s", recorder.Body.String())
+	}
+	for _, dataset := range page.Data {
+		if dataset.Permission != nil || dataset.Tenant != nil {
+			t.Fatalf("dataset %q must not include permission or tenant; body = %s", dataset.Name, recorder.Body.String())
+		}
+		if dataset.TenantID == nil || dataset.TenantName == nil {
+			t.Fatalf("dataset %q has no string tenant_id or tenant_name; body = %s", dataset.Name, recorder.Body.String())
+		}
+		if dataset.FileSize == nil {
+			t.Fatalf("dataset %q has no numeric file_size field; body = %s", dataset.Name, recorder.Body.String())
+		}
+	}
+	return page
+}
 
-	var result struct {
-		Code    common.ErrorCode `json:"code"`
-		Data    json.RawMessage  `json:"data"`
-		Message string           `json:"message"`
+func TestEEUserDatasetsReturnsOnlyCreatedDatasets(t *testing.T) {
+	handler, db := setupEEUserDatasetsTest(t)
+	if err := db.Migrator().DropTable(&entity.UserTenant{}); err != nil {
+		t.Fatalf("drop membership table: %v", err)
 	}
-	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+	for index, want := range []struct{ id, name, tenantID, tenantName string }{
+		{id: "dataset-own", name: "Own dataset", tenantID: "user-1", tenantName: "Personal workspace"},
+		{id: "dataset-team", name: "Team dataset", tenantID: "tenant-2", tenantName: "Team workspace"},
+	} {
+		page := readEEUserDatasetPage(t, requestEEUserDatasets(handler, fmt.Sprintf("?page=%d&page_size=1", index+1)))
+		if *page.Total != 2 || len(page.Data) != 1 {
+			t.Fatalf("page %d: total = %d, rows = %d, want 2 and 1", index+1, *page.Total, len(page.Data))
+		}
+		if dataset := page.Data[0]; dataset.ID != want.id || dataset.Name != want.name || *dataset.TenantID != want.tenantID || *dataset.TenantName != want.tenantName {
+			t.Fatalf("page %d: dataset = %+v, want id %q, name %q, tenant_id %q and tenant_name %q", index+1, dataset, want.id, want.name, want.tenantID, want.tenantName)
+		}
+	}
+}
+
+func TestEEUserDatasetsWithoutCreatedDatasets(t *testing.T) {
+	handler, db := setupEEUserDatasetsTest(t)
+	if err := db.Model(&entity.Knowledgebase{}).Where("created_by = ?", "user-1").UpdateColumn("created_by", "other-user").Error; err != nil {
 		t.Fatal(err)
 	}
-	if result.Code != common.CodeNotImplemented || string(result.Data) != "null" || result.Message != "listing user datasets is only available in the enterprise edition" {
-		t.Fatalf("response = %s, want enterprise edition error with null data", response.Body.String())
+	page := readEEUserDatasetPage(t, requestEEUserDatasets(handler, ""))
+	if *page.Total != 0 || len(page.Data) != 0 {
+		t.Fatalf("total/rows = %d/%d, want 0/0", *page.Total, len(page.Data))
+	}
+}
+
+func TestEEUserDatasetsDefaultPageSize(t *testing.T) {
+	handler, db := setupEEUserDatasetsTest(t)
+	for index := 0; index < 10; index++ {
+		created := int64(300 + index)
+		dataset := entity.Knowledgebase{
+			ID: fmt.Sprintf("dataset-extra-%02d", index), Name: fmt.Sprintf("Extra dataset %d", index),
+			TenantID: "user-1", EmbdID: "embedding", Permission: "me", CreatedBy: "user-1",
+			BaseModel: entity.BaseModel{CreateTime: &created},
+		}
+		if err := db.Create(&dataset).Error; err != nil {
+			t.Fatalf("create extra dataset: %v", err)
+		}
+	}
+	first := readEEUserDatasetPage(t, requestEEUserDatasets(handler, ""))
+	last := readEEUserDatasetPage(t, requestEEUserDatasets(handler, "?page=2"))
+	if *first.Total != 12 || len(first.Data) != 10 || *last.Total != 12 || len(last.Data) != 2 {
+		t.Fatalf("default pagination: first total/rows = %d/%d, last = %d/%d, want 12/10 and 12/2",
+			*first.Total, len(first.Data), *last.Total, len(last.Data))
+	}
+}
+
+func TestEEUserDatasetsStablePagination(t *testing.T) {
+	handler, db := setupEEUserDatasetsTest(t)
+	if err := db.Where("1 = 1").Delete(&entity.Knowledgebase{}).Error; err != nil {
+		t.Fatalf("clear datasets: %v", err)
+	}
+	created := int64(100)
+	for _, name := range []string{"c", "a", "b"} {
+		dataset := entity.Knowledgebase{
+			ID: "dataset-" + name, Name: name, TenantID: "user-1", EmbdID: "embedding",
+			Permission: "me", CreatedBy: "user-1", BaseModel: entity.BaseModel{CreateTime: &created},
+		}
+		if err := db.Create(&dataset).Error; err != nil {
+			t.Fatalf("create tied dataset: %v", err)
+		}
+	}
+	first := readEEUserDatasetPage(t, requestEEUserDatasets(handler, "?page=1&page_size=2"))
+	last := readEEUserDatasetPage(t, requestEEUserDatasets(handler, "?page=2&page_size=2"))
+	if *first.Total != 3 || *last.Total != 3 || len(first.Data) != 2 || len(last.Data) != 1 {
+		t.Fatalf("unexpected tied pages: first = %+v, last = %+v", first, last)
+	}
+	if first.Data[0].ID != "dataset-a" || first.Data[1].ID != "dataset-b" || last.Data[0].ID != "dataset-c" {
+		t.Fatalf("tied page IDs = %q, %q, %q, want dataset-a, dataset-b, dataset-c", first.Data[0].ID, first.Data[1].ID, last.Data[0].ID)
+	}
+}
+
+func TestEEUserDatasetsOutOfRangePage(t *testing.T) {
+	handler, db := setupEEUserDatasetsTest(t)
+	if err := db.Migrator().DropTable(&entity.Document{}); err != nil {
+		t.Fatalf("drop document table: %v", err)
+	}
+	for _, pageNumber := range []string{"3", "1000000"} {
+		t.Run(pageNumber, func(t *testing.T) {
+			page := readEEUserDatasetPage(t, requestEEUserDatasets(handler, "?page="+pageNumber+"&page_size=2"))
+			if *page.Total != 2 || len(page.Data) != 0 {
+				t.Fatalf("out-of-range total/rows = %d/%d, want 2/0", *page.Total, len(page.Data))
+			}
+		})
+	}
+}
+
+func TestEEUserDatasetsRejectsInvalidPagination(t *testing.T) {
+	handler, _ := setupEEUserDatasetsTest(t)
+	for _, query := range []string{
+		"?page=abc", "?page=0", "?page=-1", "?page=1000001", "?page=999999999999999999999999",
+		"?page_size=abc", "?page_size=0", "?page_size=-1", "?page_size=101",
+	} {
+		t.Run(query, func(t *testing.T) {
+			recorder := requestEEUserDatasets(handler, query)
+			var response struct {
+				Code    common.ErrorCode `json:"code"`
+				Message string           `json:"message"`
+			}
+			if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+				t.Fatalf("decode invalid-pagination response: %v", err)
+			}
+			if recorder.Code != http.StatusBadRequest || response.Code != common.CodeBadRequest || response.Message == "" {
+				t.Fatalf("invalid pagination status/body = %d/%s, want HTTP 400 with an error message", recorder.Code, recorder.Body.String())
+			}
+		})
+	}
+}
+
+func TestEEUserDatasetsBatchesFileSizes(t *testing.T) {
+	handler, db := setupEEUserDatasetsTest(t)
+	if err := db.Create(&entity.Knowledgebase{
+		ID: "dataset-empty", Name: "Empty dataset", TenantID: "user-1", CreatedBy: "user-1", EmbdID: "embedding",
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	const largeSize int64 = 1 << 40
+	documents := []entity.Document{
+		{ID: "document-large", KbID: "dataset-own", Size: largeSize, ParserConfig: entity.JSONMap{}},
+		{ID: "document-small", KbID: "dataset-own", Size: 1024, ParserConfig: entity.JSONMap{}},
+		{ID: "document-team", KbID: "dataset-team", Size: 2048, ParserConfig: entity.JSONMap{}},
+	}
+	if err := db.Create(&documents).Error; err != nil {
+		t.Fatal(err)
+	}
+	var sizeQueries int
+	if err := db.Callback().Row().After("gorm:row").Register("test:count-document-size-queries", func(tx *gorm.DB) {
+		if tx.Statement.Table == "document" {
+			sizeQueries++
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	wantSizes := map[string]int64{"dataset-own": largeSize + 1024, "dataset-team": 2048, "dataset-empty": 0}
+	for _, pageSize := range []int{1, 3} {
+		sizeQueries = 0
+		page := readEEUserDatasetPage(t, requestEEUserDatasets(handler, fmt.Sprintf("?page_size=%d", pageSize)))
+		if *page.Total != 3 || len(page.Data) != pageSize || sizeQueries != 1 {
+			t.Fatalf("page_size=%d: total/rows/size queries = %d/%d/%d, want 3/%d/1", pageSize, *page.Total, len(page.Data), sizeQueries, pageSize)
+		}
+		for _, dataset := range page.Data {
+			wantSize, ok := wantSizes[dataset.ID]
+			if !ok || *dataset.FileSize != wantSize {
+				t.Fatalf("dataset %q size = %d, want %d", dataset.ID, *dataset.FileSize, wantSize)
+			}
+		}
+	}
+}
+
+func TestEEUserDatasetsOnlySumsCurrentPage(t *testing.T) {
+	handler, db := setupEEUserDatasetsTest(t)
+	const largeSize int64 = 1 << 40
+	documents := []entity.Document{
+		{ID: "document-large", KbID: "dataset-own", Size: largeSize, ParserConfig: entity.JSONMap{}},
+		{ID: "document-small", KbID: "dataset-own", Size: 1024, ParserConfig: entity.JSONMap{}},
+		// An overflowing sum on another page must not prevent reading this page.
+		{ID: "document-off-page-large", KbID: "dataset-team", Size: math.MaxInt64, ParserConfig: entity.JSONMap{}},
+		{ID: "document-off-page-extra", KbID: "dataset-team", Size: 1, ParserConfig: entity.JSONMap{}},
+	}
+	if err := db.Create(&documents).Error; err != nil {
+		t.Fatalf("create documents: %v", err)
+	}
+	page := readEEUserDatasetPage(t, requestEEUserDatasets(handler, "?page=1&page_size=1"))
+	if *page.Total != 2 || len(page.Data) != 1 || page.Data[0].Name != "Own dataset" || *page.Data[0].FileSize != largeSize+1024 {
+		t.Fatalf("unexpected page or truncated file size: %+v", page)
+	}
+}
+
+func TestEEUserDatasetsReturnsSizeLookupError(t *testing.T) {
+	handler, db := setupEEUserDatasetsTest(t)
+	if err := db.Migrator().DropTable(&entity.Document{}); err != nil {
+		t.Fatalf("drop document table: %v", err)
+	}
+	recorder := requestEEUserDatasets(handler, "?page=1&page_size=1")
+	var response eeUserDatasetPage
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode size-lookup error: %v", err)
+	}
+	if recorder.Code != http.StatusOK || response.Code != common.CodeServerError || !strings.Contains(response.Message, "failed to get size") {
+		t.Fatalf("size-lookup error status/body = %d/%s, want HTTP 200 with a size-query server error", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestEEUserDatasetsWithoutTenantNames(t *testing.T) {
+	for _, name := range []*string{nil, testutil.StrPtr("")} {
+		label := "empty name"
+		if name == nil {
+			label = "null name"
+		}
+		t.Run(label, func(t *testing.T) {
+			handler, db := setupEEUserDatasetsTest(t)
+			if err := db.Model(&entity.Tenant{}).Where("id = ?", "user-1").UpdateColumn("name", name).Error; err != nil {
+				t.Fatalf("clear tenant name: %v", err)
+			}
+			if err := db.Where("id = ?", "tenant-2").Delete(&entity.Tenant{}).Error; err != nil {
+				t.Fatalf("delete team tenant: %v", err)
+			}
+			page := readEEUserDatasetPage(t, requestEEUserDatasets(handler, ""))
+			if *page.Total != 2 || len(page.Data) != 2 {
+				t.Fatalf("missing tenant names dropped datasets: %+v", page)
+			}
+			wantTenantIDs := map[string]string{"Own dataset": "user-1", "Team dataset": "tenant-2"}
+			for _, dataset := range page.Data {
+				if *dataset.TenantName != "" || *dataset.TenantID != wantTenantIDs[dataset.Name] {
+					t.Fatalf("dataset %q tenant_id/name = %q/%q, want original ID and empty name", dataset.Name, *dataset.TenantID, *dataset.TenantName)
+				}
+			}
+		})
 	}
 }

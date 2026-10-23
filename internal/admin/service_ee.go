@@ -793,9 +793,57 @@ func (s *Service) ShowUserPermission(ctx context.Context, email string) (map[str
 	return result, nil
 }
 
-// ListUserDatasets requires the enterprise edition.
-func (s *Service) ListUserDatasets(ctx context.Context, email string) ([]map[string]interface{}, error) {
-	return nil, errors.New("listing user datasets is only available in the enterprise edition")
+// ListUserDatasets lists datasets created by the user identified by email.
+func (s *Service) ListUserDatasets(ctx context.Context, email string, page, pageSize int) ([]map[string]interface{}, int64, error) {
+	user, err := s.userDAO.GetByEmail(ctx, dao.DB, email)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, 0, common.ErrUserNotFound
+		}
+		return nil, 0, fmt.Errorf("failed to get user: %w", err)
+	}
+
+	datasets, total, err := s.kbDAO.ListCreatedByUser(ctx, dao.DB, user.ID, page, pageSize)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to list user datasets: %w", err)
+	}
+
+	datasetIDs := make([]string, 0, len(datasets))
+	for _, dataset := range datasets {
+		datasetIDs = append(datasetIDs, dataset.ID)
+	}
+	sizes, err := s.documentDAO.SumSizeByDatasetIDs(ctx, dao.DB, datasetIDs)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to get sizes for user datasets: %w", err)
+	}
+
+	result := make([]map[string]interface{}, 0, len(datasets))
+	for _, dataset := range datasets {
+		status := ""
+		if dataset.Status != nil {
+			status = *dataset.Status
+		}
+		tenantName := ""
+		if dataset.TenantName != nil {
+			tenantName = *dataset.TenantName
+		}
+		result = append(result, map[string]interface{}{
+			"id":          dataset.ID,
+			"name":        dataset.Name,
+			"tenant_id":   dataset.TenantID,
+			"tenant_name": tenantName,
+			"avatar":      dataset.Avatar,
+			"language":    dataset.Language,
+			"doc_num":     dataset.DocNum,
+			"token_num":   dataset.TokenNum,
+			"chunk_num":   dataset.ChunkNum,
+			"file_size":   sizes[dataset.ID],
+			"status":      status,
+			"create_date": dataset.CreateDate,
+			"update_date": dataset.UpdateDate,
+		})
+	}
+	return result, total, nil
 }
 
 // ListUserAgents lists canvases created by the user identified by email,

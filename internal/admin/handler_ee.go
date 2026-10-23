@@ -1116,9 +1116,35 @@ func (h *Handler) ShowUserPermission(c *gin.Context) {
 	common.SuccessWithData(c, permissions, "")
 }
 
-// ListUserDatasets requires the enterprise edition.
+// ListUserDatasets lists datasets created by the target user, with pagination.
 func (h *Handler) ListUserDatasets(c *gin.Context) {
-	common.ResponseWithHttpCodeData(c, http.StatusNotImplemented, common.CodeNotImplemented, nil, "listing user datasets is only available in the enterprise edition")
+	username, err := getUserName(c)
+	if err != nil {
+		return
+	}
+	page, err := strconv.Atoi(c.DefaultQuery("page", "1"))
+	if err != nil || page < 1 || page > 1_000_000 {
+		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "page must be between 1 and 1000000")
+		return
+	}
+	pageSize, err := strconv.Atoi(c.DefaultQuery("page_size", "10"))
+	if err != nil || pageSize < 1 || pageSize > 100 {
+		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "page_size must be between 1 and 100")
+		return
+	}
+	ctx := c.Request.Context()
+
+	datasets, total, err := h.service.ListUserDatasets(ctx, username, page, pageSize)
+	if err != nil {
+		if errors.Is(err, common.ErrUserNotFound) {
+			common.ErrorWithCode(c, common.CodeNotFound, "User not found")
+			return
+		}
+		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		return
+	}
+
+	common.SuccessWithDataAndTotal(c, datasets, total, "success")
 }
 
 // ListUserAgents lists agents or pipelines created by the target user.

@@ -34,6 +34,28 @@ func (dao *DocumentDAO) SumDocSizeByKBID(ctx context.Context, db *gorm.DB, kbID 
 	return total, err
 }
 
+// SumSizeByDatasetIDs returns document size totals keyed by dataset ID.
+func (dao *DocumentDAO) SumSizeByDatasetIDs(ctx context.Context, db *gorm.DB, datasetIDs []string) (map[string]int64, error) {
+	sizes := make(map[string]int64, len(datasetIDs))
+	if len(datasetIDs) == 0 {
+		return sizes, nil
+	}
+	var rows []struct {
+		DatasetID string `gorm:"column:kb_id"`
+		Size      int64  `gorm:"column:file_size"`
+	}
+	if err := db.WithContext(ctx).Model(&entity.Document{}).
+		Select("kb_id, COALESCE(SUM(size), 0) AS file_size").
+		Where("kb_id IN ?", datasetIDs).
+		Group("kb_id").Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		sizes[row.DatasetID] = row.Size
+	}
+	return sizes, nil
+}
+
 // DocCountAndSizeByTenantIDs returns the total document count and size for the given tenants.
 func (dao *DocumentDAO) DocCountAndSizeByTenantIDs(ctx context.Context, db *gorm.DB, tenantIDs []string) (int64, int64, error) {
 	var row struct {

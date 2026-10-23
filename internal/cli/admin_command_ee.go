@@ -89,13 +89,68 @@ func (p *Parser) parseAdminListUserAgentsEE(userName string) (*Command, error) {
 	return cmd, nil
 }
 
-// AdminListUserDatasetsCommand is available only in the enterprise edition.
 func (c *CLI) AdminListUserDatasetsCommand(commandCount int, cmd *Command) (ResponseIf, error) {
-	return nil, errors.New("listing user datasets is only available in the enterprise edition")
+	if c.Config == nil || c.Config.CLIMode != AdminMode || c.AdminServerClient == nil || c.AdminServerClient.LoginToken == nil {
+		return nil, fmt.Errorf("this command requires ADMIN mode and an authenticated admin client")
+	}
+	userName, ok := cmd.Params["user_name"].(string)
+	if !ok {
+		return nil, fmt.Errorf("user_name not provided")
+	}
+
+	query := url.Values{}
+	for _, name := range []string{"page", "page_size"} {
+		if value, ok := cmd.Params[name]; ok {
+			query.Set(name, fmt.Sprint(value))
+		}
+	}
+	apiURL := fmt.Sprintf("/admin/users/%s/datasets", url.PathEscape(userName))
+	if len(query) > 0 {
+		apiURL += "?" + query.Encode()
+	}
+	resp, err := c.AdminServerClient.Request(commandCount, "GET", apiURL, "admin", nil, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list user %s datasets: %w", userName, err)
+	}
+	return HandleCommonResponse(resp, fmt.Sprintf("list user %s datasets", userName))
 }
 
+// LIST USER 'user@example.com' DATASETS WITH page 2 page_size 5;
 func (p *Parser) parseAdminListUserDatasetsEE(userName string) (*Command, error) {
-	return nil, errors.New("listing user datasets is only available in the enterprise edition")
+	p.nextToken()
+	cmd := NewCommand("admin_list_user_datasets")
+	if p.curToken.Type == TokenWith {
+		p.nextToken()
+		if p.curToken.Type == TokenEOF || p.curToken.Type == TokenSemicolon {
+			return nil, fmt.Errorf("expected page or page_size after WITH")
+		}
+		for p.curToken.Type != TokenEOF && p.curToken.Type != TokenSemicolon {
+			name := strings.ToLower(p.curToken.Value)
+			switch name {
+			case "page", "page_size":
+			default:
+				return nil, fmt.Errorf("unknown DATASETS parameter %q", name)
+			}
+			if _, exists := cmd.Params[name]; exists {
+				return nil, fmt.Errorf("duplicate DATASETS parameter %q", name)
+			}
+			p.nextToken()
+			value, err := p.parseVariableValue()
+			if err != nil {
+				return nil, fmt.Errorf("invalid value for %s: %w", name, err)
+			}
+			cmd.Params[name] = value
+			p.nextToken()
+		}
+	}
+	if p.curToken.Type == TokenSemicolon {
+		p.nextToken()
+	}
+	if p.curToken.Type != TokenEOF {
+		return nil, fmt.Errorf("expected WITH or end of DATASETS command, got %s", p.curToken.Value)
+	}
+	cmd.Params["user_name"] = userName
+	return cmd, nil
 }
 
 func (c *CLI) ListAdminIngestionTasks(commandCount int, cmd *Command) (ResponseIf, error) {

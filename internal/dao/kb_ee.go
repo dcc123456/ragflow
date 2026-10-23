@@ -18,6 +18,9 @@ package dao
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"time"
 
 	"ragflow/internal/entity"
 
@@ -71,4 +74,50 @@ func (dao *KnowledgebaseDAO) GetKBOrphans(ctx context.Context, db *gorm.DB) (KBO
 		FROM knowledgebase kb
 	`).Scan(&row).Error
 	return row, err
+}
+
+// AdminUserDatasetInfo contains the fields used by administrator dataset lists.
+type AdminUserDatasetInfo struct {
+	ID         string     `gorm:"column:id"`
+	Name       string     `gorm:"column:name"`
+	TenantID   string     `gorm:"column:tenant_id"`
+	TenantName *string    `gorm:"column:tenant_name"`
+	Avatar     *string    `gorm:"column:avatar"`
+	Language   *string    `gorm:"column:language"`
+	DocNum     int64      `gorm:"column:doc_num"`
+	TokenNum   int64      `gorm:"column:token_num"`
+	ChunkNum   int64      `gorm:"column:chunk_num"`
+	Status     *string    `gorm:"column:status"`
+	CreateDate *time.Time `gorm:"column:create_date"`
+	UpdateDate *time.Time `gorm:"column:update_date"`
+}
+
+// ListCreatedByUser lists a page of valid datasets created by userID.
+func (dao *KnowledgebaseDAO) ListCreatedByUser(ctx context.Context, db *gorm.DB, userID string, page, pageSize int) ([]AdminUserDatasetInfo, int64, error) {
+	if page < 1 || pageSize < 1 {
+		return nil, 0, errors.New("page and page_size must be positive integers")
+	}
+
+	query := db.WithContext(ctx).Model(&entity.Knowledgebase{}).
+		Where("knowledgebase.created_by = ?", userID).
+		Where("knowledgebase.status = ?", string(entity.StatusValid))
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to count user datasets: %w", err)
+	}
+	if total == 0 || int64(page-1) > (total-1)/int64(pageSize) {
+		return []AdminUserDatasetInfo{}, total, nil
+	}
+
+	var datasets []AdminUserDatasetInfo
+	if err := query.Select("knowledgebase.id, knowledgebase.name, knowledgebase.tenant_id, tenant.name AS tenant_name, knowledgebase.avatar, knowledgebase.language, knowledgebase.doc_num, knowledgebase.token_num, knowledgebase.chunk_num, knowledgebase.status, knowledgebase.create_date, knowledgebase.update_date").
+		Joins("LEFT JOIN tenant ON tenant.id = knowledgebase.tenant_id").
+		Order("CASE WHEN knowledgebase.create_time IS NULL THEN 0 ELSE 1 END ASC").
+		Order("knowledgebase.create_time ASC").
+		Order("knowledgebase.id ASC").
+		Offset((page - 1) * pageSize).Limit(pageSize).
+		Scan(&datasets).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to get user datasets: %w", err)
+	}
+	return datasets, total, nil
 }
