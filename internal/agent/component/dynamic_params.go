@@ -21,7 +21,8 @@ func ValidateDynamicEntries(dsl map[string]any) error {
 
 // ValidateDraftDynamicEntries allows unfinished Message content, DataOperations
 // entries, Invoke mappings, Compiler configuration, input options, Loop settings,
-// Iteration outputs, SQL connections, search filters, and chunker delimiters in saved drafts.
+// Iteration outputs, SQL connections, search filters, chunker delimiters, and Agent
+// tool entries and aggregation groups in saved drafts.
 // All other checks remain unchanged.
 func ValidateDraftDynamicEntries(dsl map[string]any) error {
 	return validateDynamicEntries(dsl, true)
@@ -70,8 +71,8 @@ func validateDynamicParams(component string, params map[string]any, draft bool) 
 	case "dataoperations":
 		return validateDataOperationsParams(component, params, draft)
 	case "agent":
-		if values, ok := params["tools"].([]any); ok && containsBlank(values) {
-			return fmt.Errorf("[%s] tools does not support empty entries", component)
+		if err := validateAgentToolEntries(params["tools"], draft); err != nil {
+			return fmt.Errorf("[%s] %w", component, err)
 		}
 	case "invoke":
 		if err := validateInvokeVariables(component, params, draft); err != nil {
@@ -104,7 +105,7 @@ func validateDynamicParams(component string, params map[string]any, draft bool) 
 	case "iteration", "parallel":
 		return validateIterationOutputs(component, params, draft)
 	case "variableaggregator":
-		return validateVariableAggregatorGroups(component, params)
+		return validateVariableAggregatorGroups(component, params, draft)
 	case "userfillup":
 		return runtime.ValidateUserFillUpOptions(params, draft)
 	case "exesql":
@@ -224,25 +225,56 @@ func invokeRowHasSource(row map[string]any) bool {
 	return value != nil && !isBlank(value)
 }
 
-func validateVariableAggregatorGroups(component string, params map[string]any) error {
-	if groups, ok := params["groups"].([]any); ok {
-		for i, rawGroup := range groups {
-			group, ok := rawGroup.(map[string]any)
-			if !ok || group == nil {
-				return fmt.Errorf("[%s] groups[%d] is incomplete", component, i)
+func validateVariableAggregatorGroups(component string, params map[string]any, draft bool) error {
+	var p variableAggregatorParam
+	if err := p.Update(params); err != nil {
+		return fmt.Errorf("[%s] %w", component, err)
+	}
+	if !draft && len(p.Groups) == 0 {
+		return fmt.Errorf("[%s] groups is incomplete", component)
+	}
+	for i, group := range p.Groups {
+		if !draft && !isNonBlankString(group["group_name"]) {
+			return fmt.Errorf("[%s] groups[%d] is incomplete", component, i)
+		}
+		raw, exists := group["variables"]
+		if !exists {
+			if draft {
+				continue
 			}
-			if !isNonBlankString(group["group_name"]) {
-				return fmt.Errorf("[%s] groups[%d] is incomplete", component, i)
+			return fmt.Errorf("[%s] groups[%d].variables is incomplete", component, i)
+		}
+		var variables []any
+		switch v := raw.(type) {
+		case []any:
+			variables = v
+		case []map[string]any:
+			for _, entry := range v {
+				variables = append(variables, entry)
 			}
-			variables, ok := group["variables"].([]any)
-			if !ok {
-				return fmt.Errorf("[%s] groups[%d].variables is incomplete", component, i)
-			}
-			for j, rawVariable := range variables {
-				variable, ok := rawVariable.(map[string]any)
-				if !ok || variable == nil || !isNonBlankString(variable["value"]) {
-					return fmt.Errorf("[%s] groups[%d].variables[%d] is incomplete", component, i, j)
+		default:
+			return fmt.Errorf("[%s] groups[%d].variables must be a list", component, i)
+		}
+		if !draft && len(variables) == 0 {
+			return fmt.Errorf("[%s] groups[%d].variables is incomplete", component, i)
+		}
+		for j, raw := range variables {
+			switch v := raw.(type) {
+			case string:
+			case map[string]any:
+				if v == nil {
+					return fmt.Errorf("[%s] groups[%d].variables[%d] must be a selector", component, i, j)
 				}
+				if value, exists := v["value"]; exists {
+					if _, ok := value.(string); !ok {
+						return fmt.Errorf("[%s] groups[%d].variables[%d].value must be a string", component, i, j)
+					}
+				}
+			default:
+				return fmt.Errorf("[%s] groups[%d].variables[%d] must be a selector", component, i, j)
+			}
+			if !draft && normalizeSelectorRef(raw) == "" {
+				return fmt.Errorf("[%s] groups[%d].variables[%d] is incomplete", component, i, j)
 			}
 		}
 	}
@@ -286,6 +318,39 @@ func containsBlank(values []any) bool {
 		}
 	}
 	return false
+}
+
+func validateAgentToolEntries(raw any, draft bool) error {
+	if raw == nil {
+		return nil
+	}
+	var values []any
+	switch tools := raw.(type) {
+	case []any:
+		values = tools
+	case []string:
+		for _, tool := range tools {
+			values = append(values, tool)
+		}
+	default:
+		return errors.New("tools must be an array")
+	}
+	for _, raw := range values {
+		incomplete := false
+		switch tool := raw.(type) {
+		case string:
+			incomplete = strings.TrimSpace(tool) == ""
+		case map[string]any:
+			_, _, ok := agentToolObject(tool)
+			incomplete = !ok
+		default:
+			return errors.New("tools entries must be strings or objects")
+		}
+		if incomplete && !draft {
+			return errors.New("tools does not support empty entries")
+		}
+	}
+	return nil
 }
 
 func validateDataOperationsParams(component string, params map[string]any, draft bool) error {
