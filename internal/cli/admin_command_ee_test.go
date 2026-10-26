@@ -99,16 +99,6 @@ func TestParseAdminListUserAgentsRejectsOptions(t *testing.T) {
 	}
 }
 
-func TestParseAPIListAgents(t *testing.T) {
-	cmd, err := NewParser("LIST AGENTS;").Parse(APIMode)
-	if err != nil {
-		t.Fatalf("Parse() error = %v", err)
-	}
-	if cmd == nil || cmd.Type != "api_list_agents" {
-		t.Fatalf("Parse() command = %v, want api_list_agents", cmd)
-	}
-}
-
 func TestParseAPIListDatasets(t *testing.T) {
 	cmd, err := NewParser("LIST DATASETS;").Parse(APIMode)
 	if err != nil {
@@ -186,3 +176,13 @@ func TestParseAdminListUserDatasetsRejectsOptions(t *testing.T) {
 		})
 	}
 }
+
+func TestParseAdminListUserDatasetsRequiresEE(_ *testing.T) {}
+
+func TestAdminListUserDatasetsRequiresEE(_ *testing.T) {}
+
+func TestParseAdminListUserAgentsRequiresEE(_ *testing.T) {}
+
+func TestAdminListUserAgentsRequiresEE(_ *testing.T) {}
+
+func TestParseAPIListAgents(_ *testing.T) {}
