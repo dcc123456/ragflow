@@ -623,3 +623,7 @@ func TestEEUserDatasetsWithoutTenantNames(t *testing.T) {
 		})
 	}
 }
+
+func TestUserAgentsRouteRequiresEE(_ *testing.T) {}
+
+func TestUserDatasetsRouteRequiresEE(_ *testing.T) {}
