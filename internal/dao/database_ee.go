@@ -35,6 +35,8 @@ func permissionDataModelsEE() []interface{} {
 		&entity.GroupMember{},
 		&entity.Permission{},
 		&entity.PermissionChangeLog{},
+		&entity.TenantModelGroup{},
+		&entity.TenantModelGroupMap{},
 	}
 }
 
