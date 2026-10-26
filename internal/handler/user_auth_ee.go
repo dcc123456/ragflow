@@ -65,7 +65,7 @@ func (h *UserHandler) OAuthCallback(c *gin.Context) {
 		return
 	}
 
-	setOAuthStateCookie(c, init.State, int(init.CookieMaxAge.Seconds()))
+	setOAuthStateCookie(c, channel, init.State, int(init.CookieMaxAge.Seconds()))
 	c.Redirect(http.StatusFound, init.AuthURL)
 }
 
@@ -129,7 +129,7 @@ func (h *UserHandler) OAuthLogin(c *gin.Context) {
 		return
 	}
 
-	setOAuthStateCookie(c, init.State, int(init.CookieMaxAge.Seconds()))
+	setOAuthStateCookie(c, channel, init.State, int(init.CookieMaxAge.Seconds()))
 	c.Redirect(http.StatusFound, init.AuthURL)
 }
 
@@ -145,8 +145,10 @@ func (h *UserHandler) OAuthChannelCallback(c *gin.Context) {
 	}
 	queryCode := c.Query("code")
 	queryState := c.Query("state")
-	cookieState := readOAuthStateCookie(c)
-	clearOAuthStateCookie(c)
+	cookieState := readOAuthStateCookie(c, channel)
+	// Clear before any response is written: the state is single-use, and a
+	// cookie deleted after the redirect headers are buffered would survive.
+	clearOAuthStateCookie(c, channel)
 
 	frontendBase := frontendRedirectBase()
 
@@ -188,11 +190,17 @@ type LoginChannel struct {
 	Icon        string `json:"icon"`
 }
 
-// oauthStateCookie is the HttpOnly cookie name that ties the in-flight
-// state token to the browser that initiated the flow. The handler reads
-// it back from the callback request to defend against CSRF in addition to
-// the Redis-side verification.
-const oauthStateCookie = "ragflow_oauth_state"
+// oauthStateCookiePrefix namespaces the per-channel HttpOnly cookie that ties
+// the in-flight state token to the browser that initiated the flow. The
+// handler reads it back from the callback request to defend against CSRF in
+// addition to the store-side verification. The channel is part of the name so
+// two logins started in parallel (different tabs/channels) cannot overwrite
+// each other's state.
+const oauthStateCookiePrefix = "ragflow_oauth_state_"
+
+func oauthStateCookieName(channel string) string {
+	return oauthStateCookiePrefix + channel
+}
 
 // callbackError maps the OAuth callback errors to the `?error=` strings
 // Python's oauth_callback emits. Python redirects with `?error={str(e)}`,
@@ -214,6 +222,8 @@ func callbackError(channel string, err error) string {
 		return "email_missing"
 	case errors.Is(err, service.ErrOAuthUserInactive):
 		return "user_inactive"
+	case errors.Is(err, service.ErrOAuthEmailUnverified):
+		return "email_unverified"
 	default:
 		return "server_error"
 	}
@@ -221,10 +231,12 @@ func callbackError(channel string, err error) string {
 
 // setOAuthStateCookie writes the state token as an HttpOnly cookie scoped
 // to the API host. SameSite=Lax keeps the cookie attached on the top-level
-// navigation that brings the user back to the callback.
-func setOAuthStateCookie(c *gin.Context, state string, maxAgeSec int) {
+// navigation that brings the user back to the callback. HttpOnly because the
+// SPA never needs to read it — it only has to survive the round trip to the
+// provider.
+func setOAuthStateCookie(c *gin.Context, channel, state string, maxAgeSec int) {
 	http.SetCookie(c.Writer, &http.Cookie{
-		Name:     oauthStateCookie,
+		Name:     oauthStateCookieName(channel),
 		Value:    state,
 		Path:     "/",
 		MaxAge:   maxAgeSec,
@@ -234,16 +246,16 @@ func setOAuthStateCookie(c *gin.Context, state string, maxAgeSec int) {
 	})
 }
 
-func readOAuthStateCookie(c *gin.Context) string {
-	if cookie, err := c.Request.Cookie(oauthStateCookie); err == nil {
+func readOAuthStateCookie(c *gin.Context, channel string) string {
+	if cookie, err := c.Request.Cookie(oauthStateCookieName(channel)); err == nil {
 		return cookie.Value
 	}
 	return ""
 }
 
-func clearOAuthStateCookie(c *gin.Context) {
+func clearOAuthStateCookie(c *gin.Context, channel string) {
 	http.SetCookie(c.Writer, &http.Cookie{
-		Name:     oauthStateCookie,
+		Name:     oauthStateCookieName(channel),
 		Value:    "",
 		Path:     "/",
 		MaxAge:   -1,

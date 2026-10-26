@@ -23,12 +23,11 @@
 //   - "oidc": OAuth 2.0 + OIDC discovery via .well-known/openid-configuration
 //   - "GitHub": OAuth 2.0 plus GitHub's split user / emails endpoints
 //
-// Note on OIDC ID-token validation: the Python OIDCClient verifies the
-// id_token signature against the discovered JWKS and pulls extra claims out
-// of it. We deliberately do not yet pull in a JWT library here; the
-// /userinfo endpoint returns the same claims authenticated via the
-// access_token, which is the path we use exclusively. This is documented on
-// OIDCClient and tracked as a follow-up.
+// Note on OIDC ID-token validation: like the Python OIDCClient, the OIDC
+// flavor verifies the id_token signature against the provider's discovered
+// JWKS (see oidc_ee.go) and merges its claims underneath the /userinfo
+// response. Only asymmetric algorithms advertised by the provider are
+// accepted, and the `sub` of both responses must agree.
 package oauth
 
 import (
@@ -55,6 +54,17 @@ type Config struct {
 	RedirectURI      string
 	Scope            string
 	Issuer           string
+
+	// TrustEmailVerified lets an institutionally controlled provider
+	// authenticate a user even when it does not assert `email_verified`.
+	// Public providers must leave it false.
+	TrustEmailVerified bool
+
+	// Ordered claim-precedence lists; empty means "use the OIDC defaults".
+	UsernameClaims []string
+	EmailClaims    []string
+	NicknameClaims []string
+	AvatarClaims   []string
 }
 
 // UserInfo is the normalized user profile returned by FetchUserInfo. Email
@@ -65,6 +75,16 @@ type UserInfo struct {
 	Username  string `json:"username"`
 	Nickname  string `json:"nickname"`
 	AvatarURL string `json:"avatar_url"`
+
+	// EmailVerified is the provider's assertion that it controls the mailbox.
+	// It is what stops a login at a public provider from being bound to an
+	// account whose address the user never proved ownership of. The OAuth2 and
+	// GitHub flavors leave it false; the OIDC flavor fills it from the
+	// verified id_token / userinfo claims.
+	EmailVerified bool `json:"-"`
+	// Subject is the OIDC `sub` claim, kept for consistent-principal checks
+	// between the id_token and the userinfo response.
+	Subject string `json:"-"`
 }
 
 // Client is the auth-client surface used by the login + callback handlers.
@@ -217,7 +237,7 @@ func (c *oauthClient) FetchUserInfo(ctx context.Context, accessToken, idToken st
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch user info: %w", err)
 	}
-	return normalizeUserInfo(raw), nil
+	return normalizeUserInfoWithClaims(raw, c.cfg), nil
 }
 
 func (c *oauthClient) fetchUserinfoRaw(ctx context.Context, endpoint, accessToken string) (map[string]interface{}, error) {
@@ -248,32 +268,72 @@ func (c *oauthClient) fetchUserinfoRaw(ctx context.Context, endpoint, accessToke
 	return out, nil
 }
 
-// normalizeUserInfo mirrors the Python normalize_user_info defaults: username
-// falls back to the email local part, nickname falls back to username, and
-// avatar_url falls back to OIDC's "picture" claim.
-func normalizeUserInfo(raw map[string]interface{}) *UserInfo {
+// Default claim precedence, matching OIDC Core and the Python normalize_user_info.
+// A channel overrides them via Config.*Claims so a provider-specific id claim
+// needs no code change.
+var (
+	defaultUsernameClaims = []string{"username", "preferred_username", "sub"}
+	defaultEmailClaims    = []string{"email"}
+	defaultNicknameClaims = []string{"nickname", "name"}
+	defaultAvatarClaims   = []string{"avatar_url", "picture"}
+)
+
+// normalizeUserInfoWithClaims normalizes provider claims using the channel's
+// precedence lists: username falls back to the email local part, nickname
+// falls back to username, and the avatar falls back to OIDC's "picture".
+func normalizeUserInfoWithClaims(raw map[string]interface{}, cfg Config) *UserInfo {
 	ui := &UserInfo{}
-	if v, ok := raw["email"].(string); ok {
-		ui.Email = v
+	pick := func(configured, defaults []string) string {
+		keys := configured
+		if len(keys) == 0 {
+			keys = defaults
+		}
+		return firstStringClaim(raw, keys)
 	}
-	if v, ok := raw["username"].(string); ok && v != "" {
-		ui.Username = v
-	} else if ui.Email != "" {
-		if at := strings.IndexByte(ui.Email, '@'); at >= 0 {
+
+	ui.Email = pick(cfg.EmailClaims, defaultEmailClaims)
+	ui.Username = pick(cfg.UsernameClaims, defaultUsernameClaims)
+	if ui.Username == "" && ui.Email != "" {
+		if at := strings.IndexByte(ui.Email, '@'); at > 0 {
 			ui.Username = ui.Email[:at]
 		} else {
 			ui.Username = ui.Email
 		}
 	}
-	if v, ok := raw["nickname"].(string); ok && v != "" {
-		ui.Nickname = v
-	} else {
+
+	ui.Nickname = pick(cfg.NicknameClaims, defaultNicknameClaims)
+	if ui.Nickname == "" {
 		ui.Nickname = ui.Username
 	}
-	if v, ok := raw["avatar_url"].(string); ok && v != "" {
-		ui.AvatarURL = v
-	} else if v, ok := raw["picture"].(string); ok {
-		ui.AvatarURL = v
+
+	ui.AvatarURL = pick(cfg.AvatarClaims, defaultAvatarClaims)
+
+	ui.EmailVerified = getBoolClaim(raw, "email_verified")
+	if v, ok := raw["sub"].(string); ok {
+		ui.Subject = v
 	}
 	return ui
+}
+
+// firstStringClaim returns the first non-empty string among keys.
+func firstStringClaim(raw map[string]interface{}, keys []string) string {
+	for _, k := range keys {
+		if v, ok := raw[k].(string); ok && v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// getBoolClaim reads a boolean claim that some providers serialize as the
+// string "true"/"false" rather than a JSON bool.
+func getBoolClaim(raw map[string]interface{}, key string) bool {
+	switch v := raw[key].(type) {
+	case bool:
+		return v
+	case string:
+		return strings.EqualFold(strings.TrimSpace(v), "true")
+	default:
+		return false
+	}
 }

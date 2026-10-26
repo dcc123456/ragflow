@@ -284,7 +284,7 @@ func TestFetchUserInfoGitHubMergesPrimaryEmail(t *testing.T) {
 }
 
 func TestNormalizeUserInfoEmptyEmail(t *testing.T) {
-	ui := normalizeUserInfo(map[string]interface{}{"email": ""})
+	ui := normalizeUserInfoWithClaims(map[string]interface{}{"email": ""}, Config{})
 	if ui.Email != "" || ui.Username != "" || ui.Nickname != "" {
 		t.Errorf("empty email should produce empty fields, got %+v", ui)
 	}

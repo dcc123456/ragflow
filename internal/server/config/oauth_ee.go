@@ -35,6 +35,24 @@ type OAuthChannel struct {
 	RedirectURI      string `mapstructure:"redirect_uri"`
 	Scope            string `mapstructure:"scope"`
 	Issuer           string `mapstructure:"issuer"`
+
+	// TrustEmailVerified marks the provider as institutionally trusted for the
+	// address it asserts, so an OIDC login is accepted even when it omits
+	// `email_verified`. Leave false for public providers: without a verified
+	// address someone could claim another user's email and take over that
+	// account, because SSO logins bind to local accounts by email.
+	TrustEmailVerified bool `mapstructure:"trust_email_verified"`
+
+	// Claim-precedence lists; the first non-empty match wins. Empty falls back
+	// to the OIDC defaults (username/preferred_username/sub, email,
+	// nickname/name, avatar_url/picture), so a provider that exposes a bespoke
+	// id claim can be wired up without a code change:
+	//
+	//   username_claims: ["employee_id", "preferred_username", "sub"]
+	UsernameClaims []string `mapstructure:"username_claims"`
+	EmailClaims    []string `mapstructure:"email_claims"`
+	NicknameClaims []string `mapstructure:"nickname_claims"`
+	AvatarClaims   []string `mapstructure:"avatar_claims"`
 }
 
 func (c *Config) ParseOAuthConfig(v *viper.Viper) error {

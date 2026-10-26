@@ -32,6 +32,7 @@ import (
 	"strings"
 	"time"
 
+	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
 
@@ -56,6 +57,11 @@ var (
 	// ErrOAuthUserInactive is returned when the matched user has
 	// is_active=0 — maps to "?error=user_inactive".
 	ErrOAuthUserInactive = errors.New("user_inactive")
+	// ErrOAuthEmailUnverified is returned when the provider does not assert a
+	// verified email for a channel that is not marked trust_email_verified —
+	// maps to "?error=email_unverified". Without it an SSO login could be bound
+	// to an account whose address the user never proved ownership of.
+	ErrOAuthEmailUnverified = errors.New("email_unverified")
 )
 
 // oauthStateTTL bounds how long an in-flight OAuth state token is honored.
@@ -63,8 +69,13 @@ var (
 // counterpart.
 const oauthStateTTL = 5 * time.Minute
 
-// oauthStateKey is the Redis key prefix for an in-flight OAuth state.
-const oauthStateKey = "oauth:state:"
+// oauthStateKey builds the consume-once key for an in-flight login. Encoding
+// both the channel and the state keeps parallel logins on different channels
+// from evicting each other, and lets the stored value double as the channel
+// binding checked at callback time.
+func oauthStateKey(channel, state string) string {
+	return "oauth_state:" + channel + ":" + state
+}
 
 // OAuthLoginInit prepares a redirect to the channel's authorization URL.
 // The returned state must also be set as a short-lived cookie on the caller
@@ -95,7 +106,9 @@ func (s *UserService) OAuthLoginInitiate(ctx context.Context, channel string, kv
 		return nil, common.CodeServerError, fmt.Errorf("generate oauth state: %w", err)
 	}
 	if kvrocks != nil {
-		if ok := kvrocks.Set(ctx, oauthStateKey+state, channel, oauthStateTTL); !ok {
+		// A state we failed to persist must not be handed to the browser: the
+		// callback would be rejected for reasons the user cannot see.
+		if ok := kvrocks.Set(ctx, oauthStateKey(channel, state), channel, oauthStateTTL); !ok {
 			return nil, common.CodeServerError, errors.New("failed to persist oauth state")
 		}
 	}
@@ -137,11 +150,21 @@ func (s *UserService) OAuthCallback(ctx context.Context, channel, code, callback
 		return nil, common.CodeDataError, ErrOAuthInvalidState
 	}
 	if kvrocks != nil {
-		stored, _ := kvrocks.Get(ctx, oauthStateKey+callbackState)
-		// Delete unconditionally so a leaked state cannot be reused even
-		// when the Redis lookup fails open above.
-		kvrocks.Delete(ctx, oauthStateKey+callbackState)
-		if stored == "" || stored != channel {
+		// The stored value is the channel that started the flow, so a key
+		// minted for one channel cannot be redeemed on another. The entry is
+		// deleted whether or not it matched, which makes it single-use even if
+		// the cookie leaks. Lookup and delete are two calls rather than one
+		// compare-and-delete: the store client keeps that primitive
+		// unexported, and the residual window is closed at the provider anyway
+		// because the authorization code this callback carries is itself
+		// single-use. A store error fails closed.
+		stored, gerr := kvrocks.Get(ctx, oauthStateKey(channel, callbackState))
+		kvrocks.Delete(ctx, oauthStateKey(channel, callbackState))
+		if gerr != nil {
+			common.Warn("oauth callback: load state failed", zap.String("channel", channel), zap.Error(gerr))
+			return nil, common.CodeServerError, ErrOAuthInvalidState
+		}
+		if stored != channel {
 			return nil, common.CodeDataError, ErrOAuthInvalidState
 		}
 	}
@@ -170,6 +193,14 @@ func (s *UserService) OAuthCallback(ctx context.Context, channel, code, callback
 		return nil, common.CodeDataError, ErrOAuthEmailMissing
 	}
 
+	// Account-takeover guard, applied before the account is matched AND before
+	// a new one is provisioned: SSO binds to local accounts by email, so an
+	// address the provider never verified must not authenticate as — or
+	// squat — that account.
+	if err := assertEmailTrusted(channel, cfg, info); err != nil {
+		return nil, common.CodeForbidden, err
+	}
+
 	existing, err := s.userDAO.GetByEmail(ctx, dao.DB, info.Email)
 	if err == nil && existing != nil {
 		if existing.IsActive == "0" {
@@ -191,6 +222,24 @@ func (s *UserService) OAuthCallback(ctx context.Context, channel, code, callback
 		return nil, ecode, err
 	}
 	return &OAuthCallbackResult{User: created, IsNewUser: true}, common.CodeSuccess, nil
+}
+
+// assertEmailTrusted enforces the email_verified requirement for OIDC
+// channels. OAuth2 / GitHub channels keep their previous behaviour: they have
+// no verified-email claim to check, and adding the requirement would break
+// GitHub logins (which never send one).
+func assertEmailTrusted(channel string, cfg config.OAuthChannel, info *oauth.UserInfo) error {
+	if !isOIDCChannel(cfg) || info.EmailVerified || cfg.TrustEmailVerified {
+		return nil
+	}
+	return fmt.Errorf("%w: identity provider did not return a verified email for channel %s", ErrOAuthEmailUnverified, channel)
+}
+
+// isOIDCChannel reports whether the channel authenticates users through an OIDC
+// id token, i.e. whether it carries an `email_verified` claim at all. Mirrors
+// the client selection rule: an explicit "oidc" type or a configured issuer.
+func isOIDCChannel(cfg config.OAuthChannel) bool {
+	return strings.EqualFold(strings.TrimSpace(cfg.Type), "oidc") || cfg.Issuer != ""
 }
 
 // registerOAuthUser provisions a new user + tenant for an OAuth identity.
@@ -312,15 +361,20 @@ func lookupOAuthConfig(channel string) (config.OAuthChannel, bool) {
 // fields like Icon) into the oauth.Config the client package consumes.
 func toOAuthClientConfig(cfg config.OAuthChannel) oauth.Config {
 	return oauth.Config{
-		Type:             cfg.Type,
-		ClientID:         cfg.ClientID,
-		ClientSecret:     cfg.ClientSecret,
-		AuthorizationURL: cfg.AuthorizationURL,
-		TokenURL:         cfg.TokenURL,
-		UserinfoURL:      cfg.UserinfoURL,
-		RedirectURI:      cfg.RedirectURI,
-		Scope:            cfg.Scope,
-		Issuer:           cfg.Issuer,
+		Type:               cfg.Type,
+		ClientID:           cfg.ClientID,
+		ClientSecret:       cfg.ClientSecret,
+		AuthorizationURL:   cfg.AuthorizationURL,
+		TokenURL:           cfg.TokenURL,
+		UserinfoURL:        cfg.UserinfoURL,
+		RedirectURI:        cfg.RedirectURI,
+		Scope:              cfg.Scope,
+		Issuer:             cfg.Issuer,
+		TrustEmailVerified: cfg.TrustEmailVerified,
+		UsernameClaims:     cfg.UsernameClaims,
+		EmailClaims:        cfg.EmailClaims,
+		NicknameClaims:     cfg.NicknameClaims,
+		AvatarClaims:       cfg.AvatarClaims,
 	}
 }
 
