@@ -172,8 +172,8 @@ func TestListUserAgentsRejectsInvalidQuery(t *testing.T) {
 			if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
 				t.Fatal(err)
 			}
-			if recorder.Code != http.StatusBadRequest || response.Code != int(common.CodeBadRequest) ||
-				response.Message != tt.message || string(response.Data) != "null" {
+			if recorder.Code != http.StatusOK || response.Code != int(common.CodeBadRequest) ||
+				response.Message != tt.message || response.Data != nil {
 				t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
 			}
 		})
@@ -511,12 +511,13 @@ func TestEEUserDatasetsRejectsInvalidPagination(t *testing.T) {
 			var response struct {
 				Code    common.ErrorCode `json:"code"`
 				Message string           `json:"message"`
+				Data    json.RawMessage  `json:"data"`
 			}
 			if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
 				t.Fatalf("decode invalid-pagination response: %v", err)
 			}
-			if recorder.Code != http.StatusBadRequest || response.Code != common.CodeBadRequest || response.Message == "" {
-				t.Fatalf("invalid pagination status/body = %d/%s, want HTTP 400 with an error message", recorder.Code, recorder.Body.String())
+			if recorder.Code != http.StatusOK || response.Code != common.CodeBadRequest || response.Message == "" || response.Data != nil {
+				t.Fatalf("invalid pagination status/body = %d/%s, want HTTP 200 with business code 400 and an error message", recorder.Code, recorder.Body.String())
 			}
 		})
 	}

@@ -24,6 +24,22 @@ import (
 	"gorm.io/gorm"
 )
 
+// GetIngestionLogDocument loads only the document fields needed by the log dialog.
+func (dao *DocumentDAO) GetIngestionLogDocument(ctx context.Context, db *gorm.DB, documentID string) (*entity.DocumentListItem, error) {
+	var document entity.DocumentListItem
+	statement := &gorm.Statement{DB: db}
+	err := db.WithContext(ctx).Table("document").
+		Select("document.id, document.name, document.suffix, document.size, document.chunk_num, "+
+			"document.create_date, document.process_begin_at, usr.nickname, ingestion_task.pipeline_log_id").
+		Joins("LEFT JOIN "+statement.Quote("user")+" AS usr ON usr.id = document.created_by").
+		Joins(latestIngestionTaskJoin).
+		Take(&document, "document.id = ?", documentID).Error
+	if err != nil {
+		return nil, err
+	}
+	return &document, nil
+}
+
 // SumDocSizeByKBID returns the total document size for a knowledgebase.
 func (dao *DocumentDAO) SumDocSizeByKBID(ctx context.Context, db *gorm.DB, kbID string) (int64, error) {
 	var total int64

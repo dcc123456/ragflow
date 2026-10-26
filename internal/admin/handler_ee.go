@@ -1124,12 +1124,12 @@ func (h *Handler) ListUserDatasets(c *gin.Context) {
 	}
 	page, err := strconv.Atoi(c.DefaultQuery("page", "1"))
 	if err != nil || page < 1 || page > 1_000_000 {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "page must be between 1 and 1000000")
+		common.ErrorWithCode(c, common.CodeBadRequest, "page must be between 1 and 1000000")
 		return
 	}
 	pageSize, err := strconv.Atoi(c.DefaultQuery("page_size", "10"))
 	if err != nil || pageSize < 1 || pageSize > 100 {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "page_size must be between 1 and 100")
+		common.ErrorWithCode(c, common.CodeBadRequest, "page_size must be between 1 and 100")
 		return
 	}
 	ctx := c.Request.Context()
@@ -1157,21 +1157,21 @@ func (h *Handler) ListUserAgents(c *gin.Context) {
 	}
 	canvasCategory := strings.TrimSpace(c.Query("canvas_category"))
 	if canvasCategory == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "canvas_category is required")
+		common.ErrorWithCode(c, common.CodeBadRequest, "canvas_category is required")
 		return
 	}
 	if canvasCategory != "agent_canvas" && canvasCategory != "dataflow_canvas" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "canvas_category must be agent_canvas or dataflow_canvas")
+		common.ErrorWithCode(c, common.CodeBadRequest, "canvas_category must be agent_canvas or dataflow_canvas")
 		return
 	}
 	page, err := strconv.Atoi(c.DefaultQuery("page", "1"))
 	if err != nil || page < 1 || page > 1_000_000 {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "page must be between 1 and 1000000")
+		common.ErrorWithCode(c, common.CodeBadRequest, "page must be between 1 and 1000000")
 		return
 	}
 	pageSize, err := strconv.Atoi(c.DefaultQuery("page_size", "10"))
 	if err != nil || pageSize < 1 || pageSize > 100 {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "page_size must be between 1 and 100")
+		common.ErrorWithCode(c, common.CodeBadRequest, "page_size must be between 1 and 100")
 		return
 	}
 	ctx := c.Request.Context()

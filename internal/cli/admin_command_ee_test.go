@@ -20,7 +20,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -29,16 +28,16 @@ import (
 func TestAdminListUserAgentsCommandPassesOptions(t *testing.T) {
 	tests := []struct {
 		options, query, message string
-		status, code            int
+		code                    int
 	}{
-		{"WITH CaNvAs_CaTeGoRy 'dataflow_canvas' PaGe 2 PAGE_SIZE 5", "canvas_category=dataflow_canvas&page=2&page_size=5", "success", 200, 0},
-		{"WITH canvas_category 'agent_canvas'", "canvas_category=agent_canvas", "success", 200, 0},
-		{"", "", "canvas_category is required", 400, 400},
-		{"WITH canvas_category ''", "canvas_category=", "canvas_category is required", 400, 400},
-		{"WITH canvas_category agent_canvas page ''", "canvas_category=agent_canvas&page=", "page must be a positive integer", 400, 400},
-		{"WITH canvas_category agent_canvas page invalid", "canvas_category=agent_canvas&page=invalid", "page must be a positive integer", 400, 400},
-		{"WITH canvas_category 'Custom_/画布 +&?=%'", "canvas_category=" + url.QueryEscape("Custom_/画布 +&?=%"), "success", 200, 0},
-		{"WITH canvas_category agent_canvas", "canvas_category=agent_canvas", "User not found", 200, 404},
+		{"WITH CaNvAs_CaTeGoRy 'dataflow_canvas' PaGe 2 PAGE_SIZE 5", "canvas_category=dataflow_canvas&page=2&page_size=5", "success", 0},
+		{"WITH canvas_category 'agent_canvas'", "canvas_category=agent_canvas", "success", 0},
+		{"", "", "canvas_category is required", 400},
+		{"WITH canvas_category ''", "canvas_category=", "canvas_category is required", 400},
+		{"WITH canvas_category agent_canvas page ''", "canvas_category=agent_canvas&page=", "page must be between 1 and 1000000", 400},
+		{"WITH canvas_category agent_canvas page invalid", "canvas_category=agent_canvas&page=invalid", "page must be between 1 and 1000000", 400},
+		{"WITH canvas_category 'Custom_/画布 +&?=%'", "canvas_category=" + url.QueryEscape("Custom_/画布 +&?=%"), "success", 0},
+		{"WITH canvas_category agent_canvas", "canvas_category=agent_canvas", "User not found", 404},
 	}
 	for _, tt := range tests {
 		t.Run(tt.options+"/"+tt.message, func(t *testing.T) {
@@ -55,13 +54,13 @@ func TestAdminListUserAgentsCommandPassesOptions(t *testing.T) {
 				if r.Method != http.MethodGet || r.URL.Path != "/api/v1/admin/users/user@example.com/agents" || r.URL.RawQuery != tt.query {
 					t.Errorf("request = %s %s, want GET user agents with query %q", r.Method, r.URL, tt.query)
 				}
-				var data interface{}
+				body := map[string]interface{}{"code": tt.code, "message": tt.message}
 				if tt.code == 0 {
-					data = []map[string]interface{}{{"id": "canvas-1", "title": "current page"}}
+					body["data"] = []map[string]interface{}{{"id": "canvas-1", "title": "current page"}}
+					body["total"] = 101
 				}
 				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(tt.status)
-				if err := json.NewEncoder(w).Encode(map[string]interface{}{"code": tt.code, "message": tt.message, "data": data, "total": 101}); err != nil {
+				if err := json.NewEncoder(w).Encode(body); err != nil {
 					t.Error(err)
 				}
 			}))
@@ -73,7 +72,7 @@ func TestAdminListUserAgentsCommandPassesOptions(t *testing.T) {
 				t.Fatalf("requests = %d, want 1", requests.Load())
 			}
 			if tt.code != 0 {
-				if err == nil || !strings.Contains(err.Error(), tt.message) || response != nil || (tt.status != http.StatusOK && !strings.Contains(err.Error(), "HTTP "+strconv.Itoa(tt.status))) {
+				if err == nil || !strings.Contains(err.Error(), tt.message) || response != nil {
 					t.Fatalf("response = %v, error = %v; want nil and %q", response, err, tt.message)
 				}
 				return
@@ -111,13 +110,13 @@ func TestParseAPIListDatasets(t *testing.T) {
 func TestAdminListUserDatasetsCommandPassesOptions(t *testing.T) {
 	tests := []struct {
 		command, query, message string
-		status, code            int
+		code                    int
 	}{
-		{"DATASETS", "", "success", 200, 0},
-		{"DATASETS WITH PaGe 2 PAGE_SIZE 5;", "page=2&page_size=5", "success", 200, 0},
-		{"DATASETS WITH page_size 1;", "page_size=1", "success", 200, 0},
-		{"DATASETS WITH page invalid;", "page=invalid", "page must be a positive integer", 400, 400},
-		{"DATASETS;", "", "User not found", 200, 404},
+		{"DATASETS", "", "success", 0},
+		{"DATASETS WITH PaGe 2 PAGE_SIZE 5;", "page=2&page_size=5", "success", 0},
+		{"DATASETS WITH page_size 1;", "page_size=1", "success", 0},
+		{"DATASETS WITH page invalid;", "page=invalid", "page must be between 1 and 1000000", 400},
+		{"DATASETS;", "", "User not found", 404},
 	}
 	for _, tt := range tests {
 		t.Run(tt.command+"/"+tt.message, func(t *testing.T) {
@@ -134,13 +133,13 @@ func TestAdminListUserDatasetsCommandPassesOptions(t *testing.T) {
 				if r.Method != http.MethodGet || r.URL.Path != "/api/v1/admin/users/user@example.com/datasets" || r.URL.RawQuery != tt.query {
 					t.Errorf("request = %s %s, want GET user datasets with query %q", r.Method, r.URL, tt.query)
 				}
-				var data interface{}
+				body := map[string]interface{}{"code": tt.code, "message": tt.message}
 				if tt.code == 0 {
-					data = []map[string]interface{}{{"id": "dataset-1", "tenant_id": "tenant-2", "tenant_name": "Team workspace", "file_size": 123}}
+					body["data"] = []map[string]interface{}{{"id": "dataset-1", "tenant_id": "tenant-2", "tenant_name": "Team workspace", "file_size": 123}}
+					body["total"] = 101
 				}
 				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(tt.status)
-				if err := json.NewEncoder(w).Encode(map[string]interface{}{"code": tt.code, "message": tt.message, "data": data, "total": 101}); err != nil {
+				if err := json.NewEncoder(w).Encode(body); err != nil {
 					t.Error(err)
 				}
 			}))
@@ -152,7 +151,7 @@ func TestAdminListUserDatasetsCommandPassesOptions(t *testing.T) {
 				t.Fatalf("requests = %d, want 1", requests.Load())
 			}
 			if tt.code != 0 {
-				if err == nil || response != nil || !strings.Contains(err.Error(), tt.message) || (tt.status != http.StatusOK && !strings.Contains(err.Error(), "HTTP "+strconv.Itoa(tt.status))) {
+				if err == nil || response != nil || !strings.Contains(err.Error(), tt.message) {
 					t.Fatalf("response = %v, error = %v; want nil and %q", response, err, tt.message)
 				}
 				return
