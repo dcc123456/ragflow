@@ -1,0 +1,193 @@
+# EE DeepDoc (Go) server — slim image that serves the in-process, statically
+# linked Go DeepDoc backend over HTTP, a drop-in replacement for the EE Python
+# DeepDoc inference service (ragflow_enterprise/deepdoc/servers/deepdoc_svr.py).
+# The EE image runs the single `ragflow_server` binary in its `--deepdoc` mode
+# which exposes five inference endpoints:
+#   POST /predict/dla      → DLA layout analysis      (native.RunDLA)
+#   POST /predict/tsr      → EE 2-class table struct  (native.RunTSREE)
+#   POST /predict/ocr      → operator-switched OCR (mirrors the Python EE docker:
+#                            ?operator=det | rec, image field "request")
+#   POST /predict/ocr_det  → OCR text-box detection    (native.RunDet)
+#   POST /predict/ocr_rec  → OCR batch text recognition(native.RunOCRRecBatchReal)
+#   GET  /health           → liveness probe
+# Model files are the EE deployment's own weights, loaded by the Go backend as
+# *.ee.cpu.ort (det.ee.cpu.ort/layout.ee.cpu.ort/tsr.ee.cpu.ort/rec.ee.cpu.ort/ocr.res); the
+# *.ee.cpu.ort naming keeps them distinct from the OSS *.ort files, which are
+# DIFFERENT weights by design (OSS 6-class RunTSR is retired in EE).
+#
+# Build (context must be the worktree root so `internal`/`cmd`/`build.sh` resolve):
+#   docker build -f Dockerfile_deepdoc_ee_cpu -t deepdoc_ee_cpu:latest .
+# With China mirror:
+#   docker build --build-arg NEED_MIRROR=1 -f Dockerfile_deepdoc_ee_cpu -t deepdoc_ee_cpu:latest .
+#
+# Run:
+#   docker run -p 8001:8001 -e EE_MODEL_DIR=/ragflow/models deepdoc_ee_cpu
+# Probe:
+#   curl -F request=@table.png http://localhost:8001/predict/tsr
+#   curl -F request=@page.png  http://localhost:8001/predict/dla
+#   curl -F request=@page.png -F operator=det http://localhost:8001/predict/ocr
+#   curl -F request=@line.png -F operator=rec http://localhost:8001/predict/ocr
+#   curl -F request=@page.png  http://localhost:8001/predict/ocr_det
+#   curl -F "files=@line1.png" -F "files=@line2.png" http://localhost:8001/predict/ocr_rec
+#   curl http://localhost:8001/health
+#
+# Model set baked into EE_MODEL_DIR (/ragflow/models), matching the Go backend's
+# expected filenames (internal/deepdoc/native/model_files_ee.go):
+#   det.ee.cpu.ort    - OCR text detection        (native.RunDet)
+#   layout.ee.cpu.ort - DLA layout recognition     (native.RunDLA)
+#   tsr.ee.cpu.ort    - EE 2-class table structure (native.RunTSREE)  [EE; OSS 6-class retired]
+#   rec.ee.cpu.ort    - OCR text recognition       (native.RunOCRRec)
+#   ocr.res        - OCR char dictionary         (native.RunOCRRec)
+# All four weights are staged in deepdoc_ee_models/ as ORT format (det/rec
+# from the EE Paddle PP-OCRv4 weights via paddle2onnx then converted to .ort;
+# layout the YOLOv10 export; tsr the opset-17 export). The reduced ORT build
+# loads .ort directly (no .onnx parser linked).
+
+# ── go-builder stage ──
+# Mirrors the go-builder stage of Dockerfile_go: seed the ORT static libs, build
+# the C++ native libs (office_oxide/pdfium/pdf_oxide), then statically link the
+# ragflow_server binary (tags cgo,static,sonic => ORT + native libs in-process).
+# RUNNER_IMAGE can be overridden; the EE build links the ORT static lib baked in
+# the runner image (github_action_runner:latest ships the patched MINIMAL ORT
+# static lib, onnxruntime-v1.29.0-patch2 / Clip@13, required by the EE rec model).
+ARG RUNNER_IMAGE=infiniflow/github_action_runner:latest
+FROM ${RUNNER_IMAGE} AS go-builder
+USER root
+SHELL ["/bin/bash", "-c"]
+WORKDIR /ragflow
+
+# Cache Go modules BEFORE copying source (mirrors Dockerfile_go).
+COPY go.mod go.sum ./
+RUN --mount=type=cache,id=ragflow_gomod,target=/root/.cache/gomod \
+    --mount=type=cache,id=ragflow_gobuild,target=/root/.cache/gobuild \
+    GOMODCACHE=/root/.cache/gomod GOCACHE=/root/.cache/gobuild \
+    GOPROXY=${GOPROXY:-https://goproxy.cn,https://proxy.golang.org,direct} \
+    go mod download
+
+COPY internal internal
+COPY cmd cmd
+COPY build.sh ./
+# build.sh's check_ort_version_consistency greps ORT pins from
+# internal/common/environments.go (already under `internal`, copied above) and
+# the Dockerfile's `ARG ORT_VERSION` (copied below). ragflow_deps/ is a separate
+# build context excluded by .dockerignore, and download_deps.py is no longer
+# read for the ORT pin — so only the Dockerfile is copied here.
+COPY Dockerfile ./
+
+# ONNX Runtime static archives are pre-baked in the runner image at
+# /opt/ragflow-native-libs; copy them into build.sh's expected user-cache path.
+# Both the OSS and EE servers link the MINIMAL reduced operator set (see
+# build.sh: the EE binary reuses the same CGO_LDFLAGS as the OSS server, which
+# links the minimal .a), so the selected dir MUST be the `...-glibc2_28`
+# (minimal) variant — build.sh errors out ("ONNX Runtime 1.29.0 MINIMAL static
+# lib required") if only `-full` is present. EE models are ORT format
+# (*.ee.cpu.ort) consumed by that reduced set
+# (Clip@13, SimplifiedLayerNormalization, SkipLayerNormalization, etc. — see
+# ragflow-build/onnxruntime/required_operators.config). Prefer the minimal
+# `...-${ORT_VERSION}-glibc2_28` dir explicitly; fall back to any 1.29.0 dir,
+# then any available lib — never `ls ... | head -1` unguarded, which can
+# silently pick an older version (e.g. 1.23.2) when several are seeded.
+ARG ORT_VERSION=1.29.0
+ARG TARGETARCH
+RUN set -eux; \
+    mkdir -p "${HOME}/ragflow-native-libs/onnxruntime/static_lib"; \
+    _src="/opt/ragflow-native-libs/onnxruntime/static_lib"; \
+    _ort_token="x64"; [ "$TARGETARCH" = "arm64" ] && _ort_token="aarch64"; \
+    _v="$(ls -d "${_src}"/onnxruntime-linux-${_ort_token}-static_lib-"${ORT_VERSION}"-glibc2_28 2>/dev/null | head -1)"; \
+    if [ -z "${_v}" ]; then \
+      _v="$(ls -d "${_src}"/onnxruntime-linux-${_ort_token}-static_lib-"${ORT_VERSION}"-* 2>/dev/null | head -1)"; \
+    fi; \
+    if [ -z "${_v}" ]; then \
+      _v="$(ls -d "${_src}"/onnxruntime-linux-${_ort_token}-static_lib-* 2>/dev/null | head -1)"; \
+    fi; \
+    if [ -n "${_v}" ]; then \
+      cp -r "${_v}" "${HOME}/ragflow-native-libs/onnxruntime/static_lib/"; \
+    else \
+      echo "Warning: no pre-baked onnxruntime static_lib in runner image; build.sh will attempt download" >&2; \
+    fi; \
+    find "${HOME}/ragflow-native-libs/onnxruntime/static_lib" -name '*.a' | head -5
+
+# office_oxide: the runner image bakes v0.1.9 at /opt/ragflow-native-libs, but
+# the (saas) build.sh pins a newer version. _seed_from_system prefers the user
+# cache, so pre-seed ${HOME}/ragflow-native-libs/office_oxide with the pinned
+# release (same CN mirror ragflow_deps/download_deps.py uses; the runner has no
+# direct github.com access and its python lacks `requests` for the auto-refresh
+# path). Version is read from go.mod (same source as build.sh) so the two
+# cannot drift apart.
+RUN set -eux; \
+    _v="$(grep -m1 -E '^[[:space:]]*github.com/yfedoseev/office_oxide/go[[:space:]]+v' go.mod | sed -E 's/.*v([0-9][^[:space:]]*).*/\1/')"; \
+    echo "office_oxide pinned version: ${_v}"; \
+    mkdir -p "${HOME}/ragflow-native-libs/office_oxide"; \
+    curl -fSL --retry 3 --connect-timeout 30 -o /tmp/office_oxide.tar.gz \
+      "https://gh-proxy.com/https://github.com/yfedoseev/office_oxide/releases/download/v${_v}/native-linux-x86_64.tar.gz"; \
+    tar xzf /tmp/office_oxide.tar.gz -C "${HOME}/ragflow-native-libs/office_oxide"; \
+    rm -f /tmp/office_oxide.tar.gz; \
+    strings "${HOME}/ragflow-native-libs/office_oxide/lib/liboffice_oxide.a" | grep -Fxq "${_v}"
+
+RUN git config --global safe.directory "*" && \
+    cd /ragflow && ./build.sh --cpp
+
+RUN --mount=type=cache,id=ragflow_gomod,target=/root/.cache/gomod \
+    --mount=type=cache,id=ragflow_gobuild,target=/root/.cache/gobuild \
+    GOMODCACHE=/root/.cache/gomod GOCACHE=/root/.cache/gobuild \
+    git config --global safe.directory "*" && \
+    ./build.sh --go
+
+
+# ── production stage ──
+FROM ubuntu:24.04 AS production
+USER root
+SHELL ["/bin/bash", "-c"]
+
+ARG NEED_MIRROR=0
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Runtime deps only: ca-certificates (TLS), curl (HEALTHCHECK probe),
+# libgomp1 (OpenMP used by some statically-linked native libs).
+RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
+    if [ "$NEED_MIRROR" == "1" ]; then \
+        sed -i 's|http://archive.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources; \
+        sed -i 's|http://security.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources; \
+    fi; \
+    rm -f /etc/apt/apt.conf.d/docker-clean && \
+    echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache && \
+    chmod 1777 /tmp && \
+    apt update && \
+    apt --no-install-recommends install -y ca-certificates curl libgomp1 && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /ragflow
+
+# Go DeepDoc models: the EE deployment's own weights, shipped as ORT format
+# (the minimal ORT build links only the reduced operator set and drops the
+# protobuf .onnx parser, so it consumes .ort exclusively — same contract as
+# OSS). Names are *.ee.cpu.ort so they can never be confused with the OSS *.ort
+# files — the two sets are DIFFERENT weights by design (det/rec exported from the
+# EE Paddle PP-OCRv4 weights with paddle2onnx then converted to .ort; layout the
+# ultralytics YOLOv10 export; tsr the opset-17 export of the EE 2-class weights)
+# + the ocr.res dictionary. The *.ee.cpu.ort naming keeps these visually distinct
+# from the OSS *.ort files. Stage them into deepdoc_ee_models/ before building.
+COPY deepdoc_ee_models/det.ee.cpu.ort /ragflow/models/det.ee.cpu.ort
+COPY deepdoc_ee_models/layout.ee.cpu.ort /ragflow/models/layout.ee.cpu.ort
+COPY deepdoc_ee_models/rec.ee.cpu.ort /ragflow/models/rec.ee.cpu.ort
+COPY deepdoc_ee_models/ocr.res /ragflow/models/ocr.res
+
+# EE 2-class TSR model. The Go backend loads it as tsr.ee.cpu.ort (EE 2-class
+# weights; OSS 6-class RunTSR is retired in EE). Already present in
+# deepdoc_ee_models/, so COPY it directly — no manual staging into the
+# build-context root required.
+COPY deepdoc_ee_models/tsr.ee.cpu.ort /ragflow/models/tsr.ee.cpu.ort
+
+# The statically-linked `ragflow_server` binary (native libs are in-process;
+# nothing else needed). The EE DeepDoc inference service is the `--deepdoc` mode
+# of this single binary, booted via the ENTRYPOINT below.
+COPY --from=go-builder --chmod=755 /ragflow/bin/ragflow_server /ragflow/bin/ragflow_server
+
+ENV EE_MODEL_DIR=/ragflow/models
+
+EXPOSE 8001
+
+HEALTHCHECK --interval=10s --timeout=10s --retries=5 \
+    CMD curl -f http://localhost:8001/health || exit 1
+
+ENTRYPOINT ["/ragflow/bin/ragflow_server", "--deepdoc", "--port", "8001"]
