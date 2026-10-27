@@ -28,6 +28,7 @@ import (
 	"ragflow/internal/engine/elasticsearch"
 	"ragflow/internal/entity"
 	"ragflow/internal/server"
+	servicepkg "ragflow/internal/service"
 	"ragflow/internal/utility"
 	"sort"
 	"strings"
@@ -794,7 +795,7 @@ func (s *Service) ShowUserPermission(ctx context.Context, email string) (map[str
 }
 
 // ListUserDatasets lists datasets created by the user identified by email.
-func (s *Service) ListUserDatasets(ctx context.Context, email string, page, pageSize int) ([]map[string]interface{}, int64, error) {
+func (s *Service) ListUserDatasets(ctx context.Context, email string, page, pageSize int, order dao.OrderTerm) ([]map[string]interface{}, int64, error) {
 	user, err := s.userDAO.GetByEmail(ctx, dao.DB, email)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -803,7 +804,7 @@ func (s *Service) ListUserDatasets(ctx context.Context, email string, page, page
 		return nil, 0, fmt.Errorf("failed to get user: %w", err)
 	}
 
-	datasets, total, err := s.kbDAO.ListCreatedByUser(ctx, dao.DB, user.ID, page, pageSize)
+	datasets, total, err := s.kbDAO.ListCreatedByUser(ctx, dao.DB, user.ID, page, pageSize, order)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to list user datasets: %w", err)
 	}
@@ -848,7 +849,7 @@ func (s *Service) ListUserDatasets(ctx context.Context, email string, page, page
 
 // ListUserAgents lists canvases created by the user identified by email,
 // filtered by the stored canvasCategory.
-func (s *Service) ListUserAgents(ctx context.Context, email, canvasCategory string, page, pageSize int) ([]map[string]interface{}, int64, error) {
+func (s *Service) ListUserAgents(ctx context.Context, email, canvasCategory string, page, pageSize int, order dao.OrderTerm) ([]map[string]interface{}, int64, error) {
 	user, err := s.userDAO.GetByEmail(ctx, dao.DB, email)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -857,7 +858,7 @@ func (s *Service) ListUserAgents(ctx context.Context, email, canvasCategory stri
 		return nil, 0, fmt.Errorf("failed to get user: %w", err)
 	}
 
-	agents, total, err := s.canvasDAO.ListCreatedByUser(ctx, dao.DB, user.ID, canvasCategory, page, pageSize)
+	agents, total, err := s.canvasDAO.ListCreatedByUser(ctx, dao.DB, user.ID, canvasCategory, page, pageSize, order)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to get user agents: %w", err)
 	}
@@ -2138,103 +2139,9 @@ func (s *Service) ListUserAPIKeys(ctx context.Context, username string) ([]map[s
 	return result, nil
 }
 
-func progressToStatus(progress float64) string {
-	switch {
-	case progress == 0:
-		return "CREATED"
-	case progress > 0 && progress < 1:
-		return "RUNNING"
-	case progress == 1:
-		return "COMPLETED"
-	case progress < 0:
-		return "FAILED"
-	default:
-		return "UNKNOWN"
-	}
-}
-
-func statusToProgressCondition(status string) string {
-	switch strings.ToUpper(status) {
-	case "CREATED":
-		return "t.progress = 0"
-	case "RUNNING":
-		return "t.progress > 0 AND t.progress < 1"
-	case "COMPLETED":
-		return "t.progress = 1"
-	case "FAILED":
-		return "t.progress < 0"
-	default:
-		return ""
-	}
-}
-
-func (s *Service) ListIngestionTasksByCondition(ctx context.Context, email, status *string) ([]map[string]interface{}, error) {
-	if email == nil {
-		return nil, fmt.Errorf("email is required")
-	}
-
-	user, err := s.userDAO.GetByEmail(ctx, dao.DB, *email)
-	if err != nil {
-		return nil, common.ErrUserNotFound
-	}
-
-	tenantIDs, err := s.userTenantDAO.GetTenantIDsByUserID(ctx, dao.DB, user.ID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get tenant IDs: %w", err)
-	}
-	if len(tenantIDs) == 0 {
-		return []map[string]interface{}{}, nil
-	}
-
-	condition := ""
-	if status != nil {
-		condition = statusToProgressCondition(*status)
-		if condition == "" {
-			return nil, fmt.Errorf("unsupported status '%s', supported: CREATED, RUNNING, COMPLETED, FAILED", *status)
-		}
-	}
-
-	rows, err := s.taskDAO.ListTasksByTenantIDs(ctx, dao.DB, tenantIDs, condition)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query tasks: %w", err)
-	}
-
-	showTasks := make([]map[string]interface{}, 0, len(rows))
-	for _, r := range rows {
-		docName := "N/A"
-		if r.DocName != nil {
-			docName = *r.DocName
-		}
-
-		beginAt := "N/A"
-		if r.BeginAt != nil {
-			beginAt = r.BeginAt.Format("2006-01-02 15:04:05")
-		}
-
-		createdTime := formatTime(r.CreateTime)
-
-		showTasks = append(showTasks, map[string]interface{}{
-			"id":         r.ID,
-			"document":   docName,
-			"status":     progressToStatus(r.Progress),
-			"progress":   fmt.Sprintf("%.2f", r.Progress),
-			"duration":   fmt.Sprintf("%.1fs", r.ProcessDuration),
-			"begin_at":   beginAt,
-			"created_at": createdTime,
-		})
-	}
-
-	return showTasks, nil
-}
-
-// ListIngestionTasks reports that admin task listing is not supported.
-func (s *Service) ListIngestionTasks(ctx context.Context) ([]map[string]interface{}, error) {
-	return []map[string]interface{}{
-		{
-			"command": "list_ingestion_tasks",
-			"error":   "'list ingestion tasks' is not supported",
-		},
-	}, nil
+// ListIngestionTasks lists current ingestion tasks across all users for administrators.
+func (s *Service) ListIngestionTasks(ctx context.Context, filter dao.AdminIngestionTaskFilter) ([]servicepkg.AdminIngestionTask, int64, error) {
+	return s.ingestionTaskSvc.ListForAdmin(ctx, filter)
 }
 
 // RemoveIngestionTasks reports that admin task removal is not supported.
@@ -2389,7 +2296,7 @@ func (s *Service) GetTokenStats(ctx context.Context, userName, fromDate, toDate,
 		maps[i] = map[string]interface{}{
 			"stat_date":            r.StatDate,
 			"user_id":              r.UserID,
-			"user_email":           r.UserEmail,
+			"email":                r.UserEmail,
 			"group_id":             r.GroupID,
 			"group_name":           r.GroupName,
 			"app_id":               r.AppID,
@@ -2455,7 +2362,7 @@ func (s *Service) ListLogs(ctx context.Context, userName string, days int) ([]ma
 		maps[i] = map[string]interface{}{
 			"event_id":      r.EventID,
 			"event_time":    r.EventTime,
-			"user_email":    userName,
+			"email":         userName,
 			"ip":            r.IPAddress,
 			"operation":     r.Operation,
 			"method":        r.HTTPMethod,

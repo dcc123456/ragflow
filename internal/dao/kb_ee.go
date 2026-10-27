@@ -92,10 +92,13 @@ type AdminUserDatasetInfo struct {
 	UpdateDate *time.Time `gorm:"column:update_date"`
 }
 
-// ListCreatedByUser lists a page of valid datasets created by userID.
-func (dao *KnowledgebaseDAO) ListCreatedByUser(ctx context.Context, db *gorm.DB, userID string, page, pageSize int) ([]AdminUserDatasetInfo, int64, error) {
+// ListCreatedByUser lists valid datasets created by userID, ordered by creation or update time.
+func (dao *KnowledgebaseDAO) ListCreatedByUser(ctx context.Context, db *gorm.DB, userID string, page, pageSize int, order OrderTerm) ([]AdminUserDatasetInfo, int64, error) {
 	if page < 1 || pageSize < 1 {
 		return nil, 0, errors.New("page and page_size must be positive integers")
+	}
+	if order.Column != "create_time" && order.Column != "update_time" {
+		return nil, 0, fmt.Errorf("unsupported user dataset order %q", order.Column)
 	}
 
 	query := db.WithContext(ctx).Model(&entity.Knowledgebase{}).
@@ -112,9 +115,9 @@ func (dao *KnowledgebaseDAO) ListCreatedByUser(ctx context.Context, db *gorm.DB,
 	var datasets []AdminUserDatasetInfo
 	if err := query.Select("knowledgebase.id, knowledgebase.name, knowledgebase.tenant_id, tenant.name AS tenant_name, knowledgebase.avatar, knowledgebase.language, knowledgebase.doc_num, knowledgebase.token_num, knowledgebase.chunk_num, knowledgebase.status, knowledgebase.create_date, knowledgebase.update_date").
 		Joins("LEFT JOIN tenant ON tenant.id = knowledgebase.tenant_id").
-		Order("CASE WHEN knowledgebase.create_time IS NULL THEN 0 ELSE 1 END ASC").
-		Order("knowledgebase.create_time ASC").
-		Order("knowledgebase.id ASC").
+		Order("CASE WHEN knowledgebase." + order.Column + " IS NULL THEN 0 ELSE 1 END DESC").
+		Order(renderTerm("knowledgebase", order)).
+		Order(renderTerm("knowledgebase", OrderTerm{Column: "id", Desc: order.Desc})).
 		Offset((page - 1) * pageSize).Limit(pageSize).
 		Scan(&datasets).Error; err != nil {
 		return nil, 0, fmt.Errorf("failed to get user datasets: %w", err)

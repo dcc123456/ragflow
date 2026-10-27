@@ -19,6 +19,7 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 )
@@ -35,7 +36,7 @@ func (c *CLI) AdminListUserAgentsCommand(commandCount int, cmd *Command) (Respon
 	}
 
 	query := url.Values{}
-	for _, name := range []string{"canvas_category", "page", "page_size"} {
+	for _, name := range []string{"canvas_category", "page", "page_size", "order_by", "desc"} {
 		if value, ok := cmd.Params[name]; ok {
 			query.Set(name, fmt.Sprint(value))
 		}
@@ -51,19 +52,19 @@ func (c *CLI) AdminListUserAgentsCommand(commandCount int, cmd *Command) (Respon
 	return HandleCommonResponse(resp, fmt.Sprintf("list agents created by user %s", userName))
 }
 
-// LIST USER 'user@example.com' AGENTS WITH canvas_category 'agent_canvas' page 1 page_size 10.
+// LIST USER 'user@example.com' AGENTS WITH canvas_category 'agent_canvas' order_by update_time desc true;
 func (p *Parser) parseAdminListUserAgentsEE(userName string) (*Command, error) {
 	p.nextToken()
 	cmd := NewCommand("admin_list_user_agents")
 	if p.curToken.Type == TokenWith {
 		p.nextToken()
 		if p.curToken.Type == TokenEOF || p.curToken.Type == TokenSemicolon {
-			return nil, fmt.Errorf("expected canvas_category, page or page_size after WITH")
+			return nil, fmt.Errorf("expected an AGENTS parameter after WITH")
 		}
 		for p.curToken.Type != TokenEOF && p.curToken.Type != TokenSemicolon {
 			name := strings.ToLower(p.curToken.Value)
 			switch name {
-			case "canvas_category", "page", "page_size":
+			case "canvas_category", "page", "page_size", "order_by", "desc":
 			default:
 				return nil, fmt.Errorf("unknown AGENTS parameter %q", name)
 			}
@@ -99,7 +100,7 @@ func (c *CLI) AdminListUserDatasetsCommand(commandCount int, cmd *Command) (Resp
 	}
 
 	query := url.Values{}
-	for _, name := range []string{"page", "page_size"} {
+	for _, name := range []string{"page", "page_size", "order_by", "desc"} {
 		if value, ok := cmd.Params[name]; ok {
 			query.Set(name, fmt.Sprint(value))
 		}
@@ -115,19 +116,19 @@ func (c *CLI) AdminListUserDatasetsCommand(commandCount int, cmd *Command) (Resp
 	return HandleCommonResponse(resp, fmt.Sprintf("list user %s datasets", userName))
 }
 
-// LIST USER 'user@example.com' DATASETS WITH page 2 page_size 5;
+// LIST USER 'user@example.com' DATASETS WITH page 2 page_size 5 order_by create_time desc true;
 func (p *Parser) parseAdminListUserDatasetsEE(userName string) (*Command, error) {
 	p.nextToken()
 	cmd := NewCommand("admin_list_user_datasets")
 	if p.curToken.Type == TokenWith {
 		p.nextToken()
 		if p.curToken.Type == TokenEOF || p.curToken.Type == TokenSemicolon {
-			return nil, fmt.Errorf("expected page or page_size after WITH")
+			return nil, fmt.Errorf("expected a DATASETS parameter after WITH")
 		}
 		for p.curToken.Type != TokenEOF && p.curToken.Type != TokenSemicolon {
 			name := strings.ToLower(p.curToken.Value)
 			switch name {
-			case "page", "page_size":
+			case "page", "page_size", "order_by", "desc":
 			default:
 				return nil, fmt.Errorf("unknown DATASETS parameter %q", name)
 			}
@@ -154,11 +155,11 @@ func (p *Parser) parseAdminListUserDatasetsEE(userName string) (*Command, error)
 }
 
 func (c *CLI) ListAdminIngestionTasks(commandCount int, cmd *Command) (ResponseIf, error) {
-	return nil, errors.New("listing admin ingestion tasks is not supported in the open-source edition")
+	return c.listAdminIngestionTasks(commandCount, cmd)
 }
 
 func (p *Parser) parseAdminListIngestionTasks() (*Command, error) {
-	return nil, errors.New("listing admin ingestion tasks is not supported in the open-source edition")
+	return p.parseAdminIngestionTaskList("list_admin_ingestion_tasks", "")
 }
 
 func (p *Parser) parseAdminShowIngestionLog() (*Command, error) {
@@ -174,11 +175,100 @@ func (c *CLI) AdminShowIngestionMessagesCommand(commandCount int, cmd *Command) 
 }
 
 func (c *CLI) AdminListUserIngestionTasksCommand(commandCount int, cmd *Command) (ResponseIf, error) {
-	return nil, errors.New("listing user ingestion tasks in admin mode is not supported in the open-source edition")
+	if userName, ok := cmd.Params["user_name"].(string); !ok || strings.TrimSpace(userName) == "" {
+		return nil, errors.New("user_name not provided")
+	}
+	return c.listAdminIngestionTasks(commandCount, cmd)
 }
 
 func (p *Parser) parseAdminListUserIngestionTasks(userName string) (*Command, error) {
-	return nil, errors.New("listing user ingestion tasks in admin mode is not supported in the open-source edition")
+	if strings.TrimSpace(userName) == "" {
+		return nil, errors.New("user_name is required")
+	}
+	return p.parseAdminIngestionTaskList("admin_list_user_ingestion_tasks", userName)
+}
+
+func (c *CLI) listAdminIngestionTasks(commandCount int, cmd *Command) (ResponseIf, error) {
+	if c.Config == nil || c.Config.CLIMode != AdminMode || c.AdminServerClient == nil || c.AdminServerClient.LoginToken == nil {
+		return nil, errors.New("listing admin ingestion tasks requires admin mode and login")
+	}
+	query := url.Values{}
+	for name, value := range cmd.Params {
+		if !isAdminIngestionTaskParameter(name) {
+			return nil, fmt.Errorf("unknown ingestion task parameter %q", name)
+		}
+		text, ok := value.(string)
+		if !ok {
+			return nil, fmt.Errorf("invalid value for %s", name)
+		}
+		query.Set(name, text)
+	}
+	path := "/admin/ingestion/tasks"
+	if len(query) > 0 {
+		path += "?" + query.Encode()
+	}
+	response, err := c.AdminServerClient.Request(commandCount, http.MethodGet, path, "admin", nil, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list admin ingestion tasks: %w", err)
+	}
+	result, err := handleAdminIngestionTasksResponse(response)
+	if err != nil {
+		return nil, err
+	}
+	result.SetOutputFormat(c.Config.OutputFormat)
+	return result, nil
+}
+
+// LIST [USER 'email'] INGESTION TASKS [WITH parameter value ...].
+// USER and the user_name filter both take an account email address.
+func (p *Parser) parseAdminIngestionTaskList(commandType, userName string) (*Command, error) {
+	p.nextToken() // INGESTION
+	if p.curToken.Type != TokenTasks {
+		return nil, errors.New("expected TASKS after INGESTION")
+	}
+	p.nextToken()
+	cmd := NewCommand(commandType)
+	if userName != "" {
+		cmd.Params["user_name"] = userName
+	}
+	if p.curToken.Type == TokenWith {
+		p.nextToken()
+		if p.curToken.Type == TokenEOF || p.curToken.Type == TokenSemicolon {
+			return nil, errors.New("expected an ingestion task parameter after WITH")
+		}
+		for p.curToken.Type != TokenEOF && p.curToken.Type != TokenSemicolon {
+			name := strings.ToLower(p.curToken.Value)
+			if !isAdminIngestionTaskParameter(name) {
+				return nil, fmt.Errorf("unknown ingestion task parameter %q", name)
+			}
+			if _, exists := cmd.Params[name]; exists {
+				return nil, fmt.Errorf("duplicate ingestion task parameter %q", name)
+			}
+			p.nextToken()
+			value, err := p.parseVariableValue()
+			if err != nil {
+				return nil, fmt.Errorf("invalid value for %s: %w", name, err)
+			}
+			cmd.Params[name] = value
+			p.nextToken()
+		}
+	}
+	if p.curToken.Type == TokenSemicolon {
+		p.nextToken()
+	}
+	if p.curToken.Type != TokenEOF {
+		return nil, errors.New("expected WITH or end of ingestion task command")
+	}
+	return cmd, nil
+}
+
+func isAdminIngestionTaskParameter(name string) bool {
+	switch name {
+	case "user_name", "status", "dataset_id", "dataset_name", "document_name", "order_by", "page", "page_size", "desc":
+		return true
+	default:
+		return false
+	}
 }
 
 func (c *CLI) AdminStopIngestionCommand(commandCount int, cmd *Command) (ResponseIf, error) {

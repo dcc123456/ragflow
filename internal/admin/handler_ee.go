@@ -18,7 +18,9 @@ package admin
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
+	"net/url"
 	"ragflow/internal/common"
 	"ragflow/internal/dao"
 	"strconv"
@@ -1116,7 +1118,30 @@ func (h *Handler) ShowUserPermission(c *gin.Context) {
 	common.SuccessWithData(c, permissions, "")
 }
 
-// ListUserDatasets lists datasets created by the target user, with pagination.
+func parseAdminListOrder(query url.Values, defaultColumn string) (dao.OrderTerm, error) {
+	order := dao.OrderTerm{Column: defaultColumn, Desc: true}
+	for _, name := range []string{"order_by", "desc"} {
+		if values, exists := query[name]; exists && len(values) != 1 {
+			return order, fmt.Errorf("%s must be provided once", name)
+		}
+	}
+	if values, exists := query["order_by"]; exists {
+		order.Column = strings.ToLower(strings.TrimSpace(values[0]))
+		if order.Column != "create_time" && order.Column != "update_time" {
+			return order, fmt.Errorf("order_by must be create_time or update_time")
+		}
+	}
+	if values, exists := query["desc"]; exists {
+		value, err := strconv.ParseBool(strings.TrimSpace(values[0]))
+		if err != nil {
+			return order, fmt.Errorf("desc must be a boolean")
+		}
+		order.Desc = value
+	}
+	return order, nil
+}
+
+// ListUserDatasets lists datasets created by the target user, with pagination and sorting.
 func (h *Handler) ListUserDatasets(c *gin.Context) {
 	username, err := getUserName(c)
 	if err != nil {
@@ -1132,9 +1157,14 @@ func (h *Handler) ListUserDatasets(c *gin.Context) {
 		common.ErrorWithCode(c, common.CodeBadRequest, "page_size must be between 1 and 100")
 		return
 	}
+	order, err := parseAdminListOrder(c.Request.URL.Query(), "create_time")
+	if err != nil {
+		common.ErrorWithCode(c, common.CodeBadRequest, err.Error())
+		return
+	}
 	ctx := c.Request.Context()
 
-	datasets, total, err := h.service.ListUserDatasets(ctx, username, page, pageSize)
+	datasets, total, err := h.service.ListUserDatasets(ctx, username, page, pageSize, order)
 	if err != nil {
 		if errors.Is(err, common.ErrUserNotFound) {
 			common.ErrorWithCode(c, common.CodeNotFound, "User not found")
@@ -1174,9 +1204,14 @@ func (h *Handler) ListUserAgents(c *gin.Context) {
 		common.ErrorWithCode(c, common.CodeBadRequest, "page_size must be between 1 and 100")
 		return
 	}
+	order, err := parseAdminListOrder(c.Request.URL.Query(), "update_time")
+	if err != nil {
+		common.ErrorWithCode(c, common.CodeBadRequest, err.Error())
+		return
+	}
 	ctx := c.Request.Context()
 
-	agents, total, err := h.service.ListUserAgents(ctx, username, canvasCategory, page, pageSize)
+	agents, total, err := h.service.ListUserAgents(ctx, username, canvasCategory, page, pageSize, order)
 	if err != nil {
 		if errors.Is(err, common.ErrUserNotFound) {
 			common.ErrorWithCode(c, common.CodeNotFound, "User not found")
@@ -1659,14 +1694,61 @@ func (h *Handler) ShowIngestionTasksSummary(c *gin.Context) {
 	common.SuccessWithData(c, ingestionTasksSummary, "")
 }
 
-// ListIngestionTasks requires the enterprise edition.
+// ListIngestionTasks handles the admin ingestion task list.
 func (h *Handler) ListIngestionTasks(c *gin.Context) {
-	tasks, err := h.service.ListIngestionTasks(c.Request.Context())
+	filter, err := parseAdminIngestionTaskFilter(c.Request.URL.Query())
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.ErrorWithCode(c, common.CodeBadRequest, err.Error())
 		return
 	}
-	common.SuccessWithData(c, tasks, "")
+	tasks, total, err := h.service.ListIngestionTasks(c.Request.Context(), filter)
+	if err != nil {
+		var coded *common.CodedError
+		if errors.As(err, &coded) {
+			common.ErrorWithCode(c, coded.Code, coded.Message)
+		} else {
+			common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		}
+		return
+	}
+	common.SuccessWithDataAndTotal(c, tasks, total, "")
+}
+
+func parseAdminIngestionTaskFilter(query url.Values) (dao.AdminIngestionTaskFilter, error) {
+	filter := dao.AdminIngestionTaskFilter{Page: 1, PageSize: 20}
+	order, err := parseAdminListOrder(query, "update_time")
+	if err != nil {
+		return filter, err
+	}
+	filter.OrderBy, filter.Desc = order.Column, order.Desc
+	for name, values := range query {
+		switch name {
+		case "user_name", "status", "dataset_id", "dataset_name", "document_name", "page", "page_size":
+		default:
+			continue
+		}
+		if len(values) != 1 {
+			return filter, fmt.Errorf("%s must be provided once", name)
+		}
+	}
+	// user_name is the account email address.
+	for name, target := range map[string]*string{
+		"user_name": &filter.UserEmail, "status": &filter.Status,
+		"dataset_id": &filter.DatasetID, "dataset_name": &filter.DatasetName,
+		"document_name": &filter.DocumentName,
+	} {
+		*target = query.Get(name)
+	}
+	for name, target := range map[string]*int{"page": &filter.Page, "page_size": &filter.PageSize} {
+		if values, exists := query[name]; exists {
+			value, err := strconv.Atoi(strings.TrimSpace(values[0]))
+			if err != nil {
+				return filter, fmt.Errorf("%s must be an integer", name)
+			}
+			*target = value
+		}
+	}
+	return filter, nil
 }
 
 // RemoveIngestionTasks requires the enterprise edition.

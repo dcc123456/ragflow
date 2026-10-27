@@ -41,7 +41,7 @@ func GetIngestionLogForAdmin(ctx context.Context, logID string) (map[string]inte
 		"run_count":        0,
 		"name":             run.DocumentName,
 		"suffix":           run.DocumentSuffix,
-		"nickname":         nil,
+		"nickname":         "",
 		"create_date":      nil,
 		"size":             nil,
 		"chunk_count":      nil,
@@ -64,7 +64,7 @@ func GetIngestionLogForAdmin(ctx context.Context, logID string) (map[string]inte
 		result["name"] = *document.Name
 	}
 	result["suffix"] = document.Suffix
-	result["nickname"] = stringPointerValue(document.Nickname)
+	result["nickname"] = ptrStringValue(document.Nickname)
 	result["create_date"] = document.CreateDate
 	result["size"] = document.Size
 	result["chunk_count"] = document.ChunkNum

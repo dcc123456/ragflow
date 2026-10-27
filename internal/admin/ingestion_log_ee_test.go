@@ -168,13 +168,19 @@ func TestGetAdminIngestionLogReturnsFileDetails(t *testing.T) {
 	}
 
 	// Deleted supplemental records must not make the run itself unreadable.
-	for _, record := range []any{&doc, &entity.User{ID: "creator"}} {
-		if err := db.Delete(record).Error; err != nil {
-			t.Fatal(err)
-		}
+	if err := db.Delete(&entity.User{ID: "creator"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	want["nickname"] = ""
+	response = requestAdminIngestionLog(t, router, "/api/v1/admin/ingestion/logs/"+run.ID)
+	if response.Code != common.CodeSuccess || !reflect.DeepEqual(response.Data, want) {
+		t.Fatalf("without uploader: response = %+v, want exactly %v", response, want)
+	}
+	if err := db.Delete(&doc).Error; err != nil {
+		t.Fatal(err)
 	}
 	want["name"], want["suffix"] = run.DocumentName, run.DocumentSuffix
-	for _, key := range []string{"nickname", "create_date", "size", "chunk_count"} {
+	for _, key := range []string{"create_date", "size", "chunk_count"} {
 		want[key] = nil
 	}
 	response = requestAdminIngestionLog(t, router, "/api/v1/admin/ingestion/logs/"+run.ID)

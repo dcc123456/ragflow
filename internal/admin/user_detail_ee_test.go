@@ -159,6 +159,13 @@ func TestListUserAgentsRejectsInvalidQuery(t *testing.T) {
 		{"?canvas_category=agent_canvas&page_size=0", "page_size must be between 1 and 100"},
 		{"?canvas_category=agent_canvas&page_size=101", "page_size must be between 1 and 100"},
 		{"?canvas_category=agent_canvas&page_size=invalid", "page_size must be between 1 and 100"},
+		{"?canvas_category=agent_canvas&order_by=", "order_by must be create_time or update_time"},
+		{"?canvas_category=agent_canvas&order_by=title", "order_by must be create_time or update_time"},
+		{"?canvas_category=agent_canvas&order_by=create_time%3BDROP+TABLE+user_canvas", "order_by must be create_time or update_time"},
+		{"?canvas_category=agent_canvas&order_by=create_time&order_by=update_time", "order_by must be provided once"},
+		{"?canvas_category=agent_canvas&desc=", "desc must be a boolean"},
+		{"?canvas_category=agent_canvas&desc=invalid", "desc must be a boolean"},
+		{"?canvas_category=agent_canvas&desc=true&desc=false", "desc must be provided once"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.query, func(t *testing.T) {
@@ -230,30 +237,69 @@ func TestListUserAgentsPaginatesCreatedCanvases(t *testing.T) {
 		category string
 		ids      []string
 	}{
-		{"agent_canvas", []string{"agent-own", "agent-own-shared"}},
-		{"dataflow_canvas", []string{"pipeline-own", "pipeline-own-shared"}},
+		{"agent_canvas", []string{"agent-new", "agent-own-shared", "agent-own", "agent-unknown"}},
+		{"dataflow_canvas", []string{"pipeline-new", "pipeline-own-shared", "pipeline-own", "pipeline-unknown"}},
 	} {
 		t.Run(tt.category, func(t *testing.T) {
-			for _, page := range []int{1, 2, 3, 1_000_000} {
-				pageSize := 1
-				if page == 1_000_000 {
-					pageSize = 100
-				}
-				response := callAdminUserAgentsHandler(t, handler.ListUserAgents, "/api/v1/admin/users/user@example.com/agents?canvas_category="+tt.category+"&page_size="+strconv.Itoa(pageSize)+"&page="+strconv.Itoa(page))
-				var agents []adminAgentDetail
-				if err := json.Unmarshal(response.Data, &agents); err != nil {
+			newestTime := time.Date(2026, time.September, 16, 13, 0, 0, 0, time.UTC).UnixMilli()
+			newestID, missingTimeID := tt.ids[0], tt.ids[len(tt.ids)-1]
+			for _, id := range []string{newestID, missingTimeID} {
+				if err := dao.DB.Create(&entity.UserCanvas{
+					ID: id, UserID: "user-1", CanvasCategory: tt.category,
+					BaseModel: entity.BaseModel{CreateTime: &newestTime},
+				}).Error; err != nil {
 					t.Fatal(err)
 				}
-				if response.Total == nil || *response.Total != int64(len(tt.ids)) || agents == nil {
-					t.Fatalf("page %d: unexpected total or data: %+v, %s", page, response, response.Data)
+			}
+			for index, id := range tt.ids[:len(tt.ids)-1] {
+				updated := newestTime
+				if index > 0 {
+					updated += time.Hour.Milliseconds()
 				}
-				if page <= len(tt.ids) {
-					if len(agents) != 1 || agents[0].ID != tt.ids[page-1] {
-						t.Fatalf("page %d: data = %s, want %q", page, response.Data, tt.ids[page-1])
+				if err := dao.DB.Model(&entity.UserCanvas{}).Where("id = ?", id).
+					UpdateColumn("update_time", updated).Error; err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := dao.DB.Model(&entity.UserCanvas{}).Where("id = ?", missingTimeID).
+				UpdateColumns(map[string]interface{}{"create_time": nil, "update_time": nil}).Error; err != nil {
+				t.Fatal(err)
+			}
+			for _, sortCase := range []struct {
+				query string
+				ids   []string
+			}{
+				{"", []string{tt.ids[1], tt.ids[2], tt.ids[0], tt.ids[3]}},
+				{"&order_by=create_time&desc=true", tt.ids},
+				{"&order_by=create_time&desc=false", []string{tt.ids[2], tt.ids[1], tt.ids[0], tt.ids[3]}},
+				{"&desc=false", []string{tt.ids[0], tt.ids[2], tt.ids[1], tt.ids[3]}},
+				{"&order_by=update_time", []string{tt.ids[1], tt.ids[2], tt.ids[0], tt.ids[3]}},
+				{"&order_by=update_time&desc=false", []string{tt.ids[0], tt.ids[2], tt.ids[1], tt.ids[3]}},
+				{"&order_by=%20UPDATE_TIME%20&desc=%20false%20", []string{tt.ids[0], tt.ids[2], tt.ids[1], tt.ids[3]}},
+			} {
+				t.Run(sortCase.query, func(t *testing.T) {
+					for _, page := range []int{1, 2, 3, 4, 5, 1_000_000} {
+						pageSize := 1
+						if page == 1_000_000 {
+							pageSize = 100
+						}
+						response := callAdminUserAgentsHandler(t, handler.ListUserAgents, "/api/v1/admin/users/user@example.com/agents?canvas_category="+tt.category+"&page_size="+strconv.Itoa(pageSize)+"&page="+strconv.Itoa(page)+sortCase.query)
+						var agents []adminAgentDetail
+						if err := json.Unmarshal(response.Data, &agents); err != nil {
+							t.Fatal(err)
+						}
+						if response.Total == nil || *response.Total != int64(len(sortCase.ids)) || agents == nil {
+							t.Fatalf("page %d: unexpected total or data: %+v, %s", page, response, response.Data)
+						}
+						if page <= len(sortCase.ids) {
+							if len(agents) != 1 || agents[0].ID != sortCase.ids[page-1] {
+								t.Fatalf("page %d: data = %s, want %q", page, response.Data, sortCase.ids[page-1])
+							}
+						} else if len(agents) != 0 {
+							t.Fatalf("page %d: data = %s, want []", page, response.Data)
+						}
 					}
-				} else if len(agents) != 0 {
-					t.Fatalf("page %d: data = %s, want []", page, response.Data)
-				}
+				})
 			}
 		})
 	}
@@ -415,8 +461,8 @@ func TestEEUserDatasetsReturnsOnlyCreatedDatasets(t *testing.T) {
 		t.Fatalf("drop membership table: %v", err)
 	}
 	for index, want := range []struct{ id, name, tenantID, tenantName string }{
-		{id: "dataset-own", name: "Own dataset", tenantID: "user-1", tenantName: "Personal workspace"},
 		{id: "dataset-team", name: "Team dataset", tenantID: "tenant-2", tenantName: "Team workspace"},
+		{id: "dataset-own", name: "Own dataset", tenantID: "user-1", tenantName: "Personal workspace"},
 	} {
 		page := readEEUserDatasetPage(t, requestEEUserDatasets(handler, fmt.Sprintf("?page=%d&page_size=1", index+1)))
 		if *page.Total != 2 || len(page.Data) != 1 {
@@ -465,23 +511,45 @@ func TestEEUserDatasetsStablePagination(t *testing.T) {
 	if err := db.Where("1 = 1").Delete(&entity.Knowledgebase{}).Error; err != nil {
 		t.Fatalf("clear datasets: %v", err)
 	}
-	created := int64(100)
-	for _, name := range []string{"c", "a", "b"} {
+	for _, name := range []string{"c", "a", "b", "z"} {
+		created, updated := int64(100), int64(300)
+		if name == "c" {
+			created, updated = 200, 100
+		}
 		dataset := entity.Knowledgebase{
 			ID: "dataset-" + name, Name: name, TenantID: "user-1", EmbdID: "embedding",
-			Permission: "me", CreatedBy: "user-1", BaseModel: entity.BaseModel{CreateTime: &created},
+			Permission: "me", CreatedBy: "user-1", BaseModel: entity.BaseModel{CreateTime: &created, UpdateTime: &updated},
 		}
 		if err := db.Create(&dataset).Error; err != nil {
 			t.Fatalf("create tied dataset: %v", err)
 		}
 	}
-	first := readEEUserDatasetPage(t, requestEEUserDatasets(handler, "?page=1&page_size=2"))
-	last := readEEUserDatasetPage(t, requestEEUserDatasets(handler, "?page=2&page_size=2"))
-	if *first.Total != 3 || *last.Total != 3 || len(first.Data) != 2 || len(last.Data) != 1 {
-		t.Fatalf("unexpected tied pages: first = %+v, last = %+v", first, last)
+	if err := db.Model(&entity.Knowledgebase{}).Where("id = ?", "dataset-z").
+		UpdateColumns(map[string]interface{}{"create_time": nil, "update_time": nil}).Error; err != nil {
+		t.Fatal(err)
 	}
-	if first.Data[0].ID != "dataset-a" || first.Data[1].ID != "dataset-b" || last.Data[0].ID != "dataset-c" {
-		t.Fatalf("tied page IDs = %q, %q, %q, want dataset-a, dataset-b, dataset-c", first.Data[0].ID, first.Data[1].ID, last.Data[0].ID)
+	for _, tt := range []struct {
+		query string
+		ids   []string
+	}{
+		{"", []string{"dataset-c", "dataset-b", "dataset-a", "dataset-z"}},
+		{"&order_by=create_time&desc=true", []string{"dataset-c", "dataset-b", "dataset-a", "dataset-z"}},
+		{"&desc=false", []string{"dataset-a", "dataset-b", "dataset-c", "dataset-z"}},
+		{"&order_by=update_time", []string{"dataset-b", "dataset-a", "dataset-c", "dataset-z"}},
+		{"&order_by=update_time&desc=false", []string{"dataset-c", "dataset-a", "dataset-b", "dataset-z"}},
+		{"&order_by=%20UPDATE_TIME%20&desc=%20false%20", []string{"dataset-c", "dataset-a", "dataset-b", "dataset-z"}},
+	} {
+		t.Run(tt.query, func(t *testing.T) {
+			first := readEEUserDatasetPage(t, requestEEUserDatasets(handler, "?page=1&page_size=2"+tt.query))
+			last := readEEUserDatasetPage(t, requestEEUserDatasets(handler, "?page=2&page_size=2"+tt.query))
+			if *first.Total != 4 || *last.Total != 4 || len(first.Data) != 2 || len(last.Data) != 2 {
+				t.Fatalf("unexpected tied pages: first = %+v, last = %+v", first, last)
+			}
+			ids := []string{first.Data[0].ID, first.Data[1].ID, last.Data[0].ID, last.Data[1].ID}
+			if !reflect.DeepEqual(ids, tt.ids) {
+				t.Fatalf("page IDs = %v, want %v", ids, tt.ids)
+			}
+		})
 	}
 }
 
@@ -500,11 +568,13 @@ func TestEEUserDatasetsOutOfRangePage(t *testing.T) {
 	}
 }
 
-func TestEEUserDatasetsRejectsInvalidPagination(t *testing.T) {
+func TestEEUserDatasetsRejectsInvalidQuery(t *testing.T) {
 	handler, _ := setupEEUserDatasetsTest(t)
 	for _, query := range []string{
 		"?page=abc", "?page=0", "?page=-1", "?page=1000001", "?page=999999999999999999999999",
 		"?page_size=abc", "?page_size=0", "?page_size=-1", "?page_size=101",
+		"?order_by=", "?order_by=name", "?order_by=create_time%3BDROP+TABLE+knowledgebase",
+		"?order_by=create_time&order_by=update_time", "?desc=", "?desc=invalid", "?desc=true&desc=false",
 	} {
 		t.Run(query, func(t *testing.T) {
 			recorder := requestEEUserDatasets(handler, query)
@@ -514,10 +584,10 @@ func TestEEUserDatasetsRejectsInvalidPagination(t *testing.T) {
 				Data    json.RawMessage  `json:"data"`
 			}
 			if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
-				t.Fatalf("decode invalid-pagination response: %v", err)
+				t.Fatalf("decode invalid-query response: %v", err)
 			}
 			if recorder.Code != http.StatusOK || response.Code != common.CodeBadRequest || response.Message == "" || response.Data != nil {
-				t.Fatalf("invalid pagination status/body = %d/%s, want HTTP 200 with business code 400 and an error message", recorder.Code, recorder.Body.String())
+				t.Fatalf("invalid query status/body = %d/%s, want HTTP 200 with business code 400 and an error message", recorder.Code, recorder.Body.String())
 			}
 		})
 	}
@@ -567,17 +637,17 @@ func TestEEUserDatasetsOnlySumsCurrentPage(t *testing.T) {
 	handler, db := setupEEUserDatasetsTest(t)
 	const largeSize int64 = 1 << 40
 	documents := []entity.Document{
-		{ID: "document-large", KbID: "dataset-own", Size: largeSize, ParserConfig: entity.JSONMap{}},
-		{ID: "document-small", KbID: "dataset-own", Size: 1024, ParserConfig: entity.JSONMap{}},
+		{ID: "document-large", KbID: "dataset-team", Size: largeSize, ParserConfig: entity.JSONMap{}},
+		{ID: "document-small", KbID: "dataset-team", Size: 1024, ParserConfig: entity.JSONMap{}},
 		// An overflowing sum on another page must not prevent reading this page.
-		{ID: "document-off-page-large", KbID: "dataset-team", Size: math.MaxInt64, ParserConfig: entity.JSONMap{}},
-		{ID: "document-off-page-extra", KbID: "dataset-team", Size: 1, ParserConfig: entity.JSONMap{}},
+		{ID: "document-off-page-large", KbID: "dataset-own", Size: math.MaxInt64, ParserConfig: entity.JSONMap{}},
+		{ID: "document-off-page-extra", KbID: "dataset-own", Size: 1, ParserConfig: entity.JSONMap{}},
 	}
 	if err := db.Create(&documents).Error; err != nil {
 		t.Fatalf("create documents: %v", err)
 	}
 	page := readEEUserDatasetPage(t, requestEEUserDatasets(handler, "?page=1&page_size=1"))
-	if *page.Total != 2 || len(page.Data) != 1 || page.Data[0].Name != "Own dataset" || *page.Data[0].FileSize != largeSize+1024 {
+	if *page.Total != 2 || len(page.Data) != 1 || page.Data[0].Name != "Team dataset" || *page.Data[0].FileSize != largeSize+1024 {
 		t.Fatalf("unexpected page or truncated file size: %+v", page)
 	}
 }

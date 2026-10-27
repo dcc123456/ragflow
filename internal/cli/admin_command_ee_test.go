@@ -32,10 +32,18 @@ func TestAdminListUserAgentsCommandPassesOptions(t *testing.T) {
 	}{
 		{"WITH CaNvAs_CaTeGoRy 'dataflow_canvas' PaGe 2 PAGE_SIZE 5", "canvas_category=dataflow_canvas&page=2&page_size=5", "success", 0},
 		{"WITH canvas_category 'agent_canvas'", "canvas_category=agent_canvas", "success", 0},
+		{"WITH CaNvAs_CaTeGoRy dataflow_canvas OrDeR_By 'update_time' DeSc false PaGe 2 PAGE_SIZE 5", "canvas_category=dataflow_canvas&desc=false&order_by=update_time&page=2&page_size=5", "success", 0},
+		{"WITH canvas_category agent_canvas order_by create_time", "canvas_category=agent_canvas&order_by=create_time", "success", 0},
+		{"WITH canvas_category agent_canvas desc true", "canvas_category=agent_canvas&desc=true", "success", 0},
+		{"WITH canvas_category agent_canvas order_by ' UPDATE_TIME ' desc ' false '", "canvas_category=agent_canvas&desc=+false+&order_by=+UPDATE_TIME+", "success", 0},
 		{"", "", "canvas_category is required", 400},
 		{"WITH canvas_category ''", "canvas_category=", "canvas_category is required", 400},
 		{"WITH canvas_category agent_canvas page ''", "canvas_category=agent_canvas&page=", "page must be between 1 and 1000000", 400},
 		{"WITH canvas_category agent_canvas page invalid", "canvas_category=agent_canvas&page=invalid", "page must be between 1 and 1000000", 400},
+		{"WITH canvas_category agent_canvas order_by title", "canvas_category=agent_canvas&order_by=title", "order_by must be create_time or update_time", 400},
+		{"WITH canvas_category agent_canvas order_by ''", "canvas_category=agent_canvas&order_by=", "order_by must be create_time or update_time", 400},
+		{"WITH canvas_category agent_canvas desc sideways", "canvas_category=agent_canvas&desc=sideways", "desc must be a boolean", 400},
+		{"WITH canvas_category agent_canvas desc ''", "canvas_category=agent_canvas&desc=", "desc must be a boolean", 400},
 		{"WITH canvas_category 'Custom_/画布 +&?=%'", "canvas_category=" + url.QueryEscape("Custom_/画布 +&?=%"), "success", 0},
 		{"WITH canvas_category agent_canvas", "canvas_category=agent_canvas", "User not found", 404},
 	}
@@ -88,6 +96,7 @@ func TestAdminListUserAgentsCommandPassesOptions(t *testing.T) {
 func TestParseAdminListUserAgentsRejectsOptions(t *testing.T) {
 	for _, options := range []string{
 		"WITH unknown 1", "WITH page 1 PAGE 2", "WITH page", "WITH",
+		"WITH order_by create_time ORDER_BY update_time", "WITH desc true DESC false", "WITH order_by", "WITH desc",
 		"canvas_category agent_canvas", "; page 2",
 	} {
 		t.Run(options, func(t *testing.T) {
@@ -115,7 +124,15 @@ func TestAdminListUserDatasetsCommandPassesOptions(t *testing.T) {
 		{"DATASETS", "", "success", 0},
 		{"DATASETS WITH PaGe 2 PAGE_SIZE 5;", "page=2&page_size=5", "success", 0},
 		{"DATASETS WITH page_size 1;", "page_size=1", "success", 0},
+		{"DATASETS WITH OrDeR_By 'update_time' DeSc false PaGe 2 PAGE_SIZE 5;", "desc=false&order_by=update_time&page=2&page_size=5", "success", 0},
+		{"DATASETS WITH order_by create_time;", "order_by=create_time", "success", 0},
+		{"DATASETS WITH desc true;", "desc=true", "success", 0},
+		{"DATASETS WITH order_by ' UPDATE_TIME ' desc ' false ';", "desc=+false+&order_by=+UPDATE_TIME+", "success", 0},
 		{"DATASETS WITH page invalid;", "page=invalid", "page must be between 1 and 1000000", 400},
+		{"DATASETS WITH order_by 'name';", "order_by=name", "order_by must be create_time or update_time", 400},
+		{"DATASETS WITH order_by '';", "order_by=", "order_by must be create_time or update_time", 400},
+		{"DATASETS WITH desc sideways;", "desc=sideways", "desc must be a boolean", 400},
+		{"DATASETS WITH desc '';", "desc=", "desc must be a boolean", 400},
 		{"DATASETS;", "", "User not found", 404},
 	}
 	for _, tt := range tests {
@@ -167,6 +184,7 @@ func TestAdminListUserDatasetsCommandPassesOptions(t *testing.T) {
 func TestParseAdminListUserDatasetsRejectsOptions(t *testing.T) {
 	for _, options := range []string{
 		"WITH unknown 1", "WITH page 1 PAGE 2", "WITH page", "WITH", "; page 2",
+		"WITH order_by create_time ORDER_BY update_time", "WITH desc true DESC false", "WITH order_by", "WITH desc",
 	} {
 		t.Run(options, func(t *testing.T) {
 			if _, err := NewParser("LIST USER 'user@example.com' DATASETS " + options + ";").Parse(AdminMode); err == nil {

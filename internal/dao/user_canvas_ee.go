@@ -18,6 +18,7 @@ package dao
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"ragflow/internal/entity"
@@ -43,8 +44,11 @@ func (dao *UserCanvasDAO) CountAgentCanvasByTenantIDs(ctx context.Context, db *g
 	return total, err
 }
 
-// ListCreatedByUser lists a page of canvases created by userID in the category.
-func (dao *UserCanvasDAO) ListCreatedByUser(ctx context.Context, db *gorm.DB, userID, canvasCategory string, page, pageSize int) ([]*AdminUserCanvasInfo, int64, error) {
+// ListCreatedByUser lists canvases created by userID in the category, ordered by creation or update time.
+func (dao *UserCanvasDAO) ListCreatedByUser(ctx context.Context, db *gorm.DB, userID, canvasCategory string, page, pageSize int, order OrderTerm) ([]*AdminUserCanvasInfo, int64, error) {
+	if order.Column != "create_time" && order.Column != "update_time" {
+		return nil, 0, fmt.Errorf("unsupported user canvas order %q", order.Column)
+	}
 	query := db.WithContext(ctx).Model(&entity.UserCanvas{}).
 		Where("user_canvas.user_id = ?", userID).
 		Where("user_canvas.canvas_category = ?", canvasCategory)
@@ -56,7 +60,9 @@ func (dao *UserCanvasDAO) ListCreatedByUser(ctx context.Context, db *gorm.DB, us
 	var results []*AdminUserCanvasInfo
 	err := query.Select("user_canvas.id, user_canvas.tenant_id, tenant.name AS tenant_name, user_canvas.avatar, user_canvas.title, user_canvas.canvas_category, user_canvas.create_date, user_canvas.update_date").
 		Joins("LEFT JOIN tenant ON tenant.id = user_canvas.tenant_id").
-		Order("user_canvas.create_time ASC, user_canvas.id ASC").
+		Order("CASE WHEN user_canvas." + order.Column + " IS NULL THEN 0 ELSE 1 END DESC").
+		Order(renderTerm("user_canvas", order)).
+		Order(renderTerm("user_canvas", OrderTerm{Column: "id", Desc: order.Desc})).
 		Offset((page - 1) * pageSize).Limit(pageSize).
 		Scan(&results).Error
 	return results, total, err
