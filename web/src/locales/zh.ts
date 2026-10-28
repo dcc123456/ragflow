@@ -1985,12 +1985,8 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取 Entities 和 R
         '请输入 Google Cloud Service Account Key in base64 format',
       addGoogleRegion: 'Google Cloud 区域',
       GoogleRegionMessage: '请输入 Google Cloud 区域',
-<<<<<<< HEAD
-      modelProvidersWarn: `请先在<b>模型提供商</b>中添加 Embedding 模型和 LLM，然后在“设置默认模型”中设置它们。`,
-      requestAdminAddModel: '请联系管理员添加模型。',
-=======
       modelProvidersWarn: `请先在<b>模型供应商</b>中添加 Embedding 模型和 LLM，然后在“设置默认模型”中设置它们。`,
->>>>>>> dev-20261028-3
+      requestAdminAddModel: '请联系管理员添加模型。',
       apiVersion: 'API版本',
       apiVersionMessage: '请输入API版本!',
       add: '添加',
@@ -3862,18 +3858,18 @@ Tokenizer 会根据所选方式将内容存储为对应的数据结构。`,
 
     license: {
       title: '许可证',
-          description: '管理您的许可证，确保持续运行。',
-          addLicense: '添加许可证',
-          table: {
+      description: '管理您的许可证，确保持续运行。',
+      addLicense: '添加许可证',
+      table: {
         id: 'ID',
-            startTime: '开始时间',
-            expiryTime: '到期时间',
-            status: '状态',
+        startTime: '开始时间',
+        expiryTime: '到期时间',
+        status: '状态',
       },
       status: {
         valid: '有效',
-            expired: '已过期',
-            pending: '待处理',
+        expired: '已过期',
+        pending: '待处理',
       },
     },
   },

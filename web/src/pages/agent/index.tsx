@@ -355,19 +355,19 @@ export default function Agent() {
                   {t('explore.title')}
                 </Button>
               )}
-              </*PublishConfirmDialog
+              {/* <PublishConfirmDialog
                 agentDetail={agentDetail}
                 loading={loading}
                 onPublish={() => saveGraph(undefined, undefined, true)}
                 onBeforeOpen={hasBlockingIssues}
-              / */>
+              /> */}
+              <PublishConfirmDialog
+                agentDetail={agentDetail}
+                loading={loading}
+                onPublish={handlePublish}
+              />
             </>
           )}
-          <PublishConfirmDialog
-            agentDetail={agentDetail}
-            loading={loading}
-            onPublish={handlePublish}
-          />
           <CanvasChecklist issues={issues} />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
