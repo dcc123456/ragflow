@@ -16,6 +16,7 @@
 
 import { AgentCategory, AgentQuery } from '@/constants/agent';
 import { EvaluationType } from '@/constants/evaluation';
+import { AgentListItemType } from '@/interfaces/database/agent';
 import { NavigateToDataflowResultProps } from '@/pages/dataflow-result/interface';
 import { FileTabs } from '@/pages/files';
 import { PrivateRoutes } from '@/private-routes';
@@ -113,9 +114,19 @@ export const useNavigatePage = () => {
     [navigate],
   );
 
-  const navigateToAgents = useCallback(() => {
-    navigate(Routes.Agents);
-  }, [navigate]);
+  // The agents list selects its tab from the canvas_category query param, so
+  // callers back on a canvas page pass their own category to land on the
+  // matching tab instead of the default workflow tab.
+  const navigateToAgents = useCallback(
+    (canvasCategory?: AgentCategory) => {
+      navigate(
+        canvasCategory
+          ? `${Routes.Agents}?${AgentQuery.CanvasCategory}=${canvasCategory}`
+          : Routes.Agents,
+      );
+    },
+    [navigate],
+  );
 
   const navigateToAgentList = useCallback(() => {
     navigate(Routes.AgentList);
@@ -154,9 +165,29 @@ export const useNavigatePage = () => {
     [navigate],
   );
 
-  const navigateToAgentTemplates = useCallback(() => {
-    navigate(Routes.AgentTemplates);
-  }, [navigate]);
+  const navigateToAgentTemplates = useCallback(
+    (canvasCategory: string) => {
+      const params = new URLSearchParams({
+        [AgentQuery.CanvasCategory]: canvasCategory,
+      });
+      navigate(`${Routes.AgentTemplates}?${params.toString()}`);
+    },
+    [navigate],
+  );
+
+  const navigateToCompilationEditor = useCallback(
+    (id?: string) => {
+      const params = new URLSearchParams({
+        source: 'agents',
+        [AgentQuery.CanvasCategory]: AgentListItemType.CompilationTemplateGroup,
+      });
+      const path = id
+        ? `${Routes.CompilationTemplatesEditNext}/${id}`
+        : Routes.CompilationTemplatesEditNext;
+      navigate(`${path}?${params.toString()}`);
+    },
+    [navigate],
+  );
 
   const navigateToSearchList = useCallback(() => {
     navigate(Routes.Searches);
@@ -286,6 +317,7 @@ export const useNavigatePage = () => {
     navigateToAgentExplore,
     navigateToAgentLogs,
     navigateToAgentTemplates,
+    navigateToCompilationEditor,
     navigateToBuiltinPipeline,
     navigateToSearchList,
     navigateToSearch,
