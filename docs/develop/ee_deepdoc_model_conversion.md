@@ -165,7 +165,7 @@ python tools/scripts/convert_deepdoc_model.py --input layout.onnx
   OSS `.ort` on multiple real inputs as a cross-engine regression baseline (EE and OSS are two
   independent weight sets, so byte-for-byte equality is *not* expected; same-input inference
   outputs should stay within an explainable range — used to catch accidental conversion drift).
-- **`tsr_ee_overlay`** (in-repo, `tools/scripts/tsr_ee_overlay/`): parity-diff visualization
+- **`generate_overlay_ee`** (in-repo, `tools/scripts/generate_overlay_ee.go`): parity-diff visualization
   for human review of TSR boxes.
 
 ## 6. `required_operators.config` (minimal-build op allow-list)

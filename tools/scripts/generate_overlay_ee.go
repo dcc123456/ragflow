@@ -1,6 +1,6 @@
 //go:build cgo
 
-// Command tsr_ee_overlay runs the EE 2-class TSR Go port (RunTSREE) on the
+// Command generate_overlay_ee runs the EE 2-class TSR Go port (RunTSREE) on the
 // parity fixture, matches its output against the EE Python golden using the SAME
 // tolerance logic as the parity test (MatchBoxesRelaxed: coord tol 3.5px, score
 // tol 0.05), and renders a PNG that highlights the divergent separators so a
@@ -17,7 +17,7 @@
 //	DL="$(pwd)/.cache/ort_dynamic_list.txt"; printf '{\n  OrtGetApiBase;\n};\n' > "$DL"
 //	export MODEL_DIR=/tmp/eemodel_ee CGO_ENABLED=1
 //	export CGO_LDFLAGS="-Wl,--undefined=OrtGetApiBase -Wl,--dynamic-list=$DL $V/libonnxruntime.a -lstdc++ -lm -lpthread -ldl -lrt -lgcc_s -lutil -lc"
-//	go run -tags cgo ./tools/scripts/tsr_ee_overlay -out docs/develop/ee_tsr_ee_overlay.png
+//	go run -tags cgo ./tools/scripts/generate_overlay_ee.go -out docs/develop/ee_tsr_ee_overlay.png
 package main
 
 import (
