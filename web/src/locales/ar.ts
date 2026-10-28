@@ -2409,10 +2409,10 @@ export default {
         write: 'يكتب',
         share: 'يشارك',
       },
-      serviceStatus: 'حالة الخدمة',
-      userManagement: 'إدارة المستخدم',
-      sandboxSettings: 'إعدادات وضع الحماية',
-      registrationWhitelist: 'القائمة البيضاء للتسجيل',
+      serviceStatus: 'الخدمات',
+      userManagement: 'المستخدمون',
+      sandboxSettings: 'صندوق الرمل',
+      registrationWhitelist: 'القائمة البيضاء',
       roles: 'الأدوار',
       monitoring: 'يراقب',
       sandboxSettingsPage: {
@@ -2499,7 +2499,7 @@ export default {
       importSelectExcelFile: 'ملف اكسل (.xlsx)',
       importOverwriteExistingEmails:
         'الكتابة فوق رسائل البريد الإلكتروني الموجودة',
-      importInvalidExcelFile: 'الرجاء تحديد ملف Excel صالح',
+      importValidExcelFile: 'الرجاء تحديد ملف Excel صالح',
       importFileRequired: 'الرجاء تحديد ملف لاستيراده',
       importFileTips:
         'يجب أن يحتوي الملف على عمود رأس واحد يسمى <code>email</code>.',

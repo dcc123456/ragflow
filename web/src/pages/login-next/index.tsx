@@ -4,12 +4,7 @@
 
 import SvgIcon from '@/components/svg-icon';
 import { useAuth } from '@/hooks/auth-hooks';
-import {
-  useLogin,
-  useLoginChannels,
-  useLoginWithChannel,
-  useRegister,
-} from '@/hooks/use-login-request';
+import { useLogin, useRegister } from '@/hooks/use-login-request';
 import { useSystemConfig } from '@/hooks/use-system-request';
 import { rsaPsw } from '@/utils';
 import { useEffect, useState } from 'react';
@@ -248,6 +243,185 @@ import './index.less';
 //     </div>
 //   );
 // }
+type LoginFormContentProps = {
+  isLoginPage: boolean;
+  title: string;
+  form: UseFormReturn<any>;
+  loading: boolean;
+  onCheck: (params: any) => Promise<void>;
+  changeTitle: () => void;
+  registerEnabled: boolean;
+  t: ReturnType<typeof useTranslation>['t'];
+};
+
+function LoginFormContent({
+  isLoginPage,
+  title,
+  form,
+  loading,
+  onCheck,
+  changeTitle,
+  registerEnabled,
+  t,
+}: LoginFormContentProps) {
+  const face = useContext(FlipFaceContext);
+  const isActiveFace = isLoginPage ? face === 'front' : face === 'back';
+
+  return (
+    <div className="flex flex-col items-center justify-center w-full">
+      <div className="text-center mb-8">
+        <h2 className="text-xl font-semibold text-text-primary">
+          {title === 'login' ? t('loginTitle') : t('signUpTitle')}
+        </h2>
+      </div>
+      <div className=" w-full max-w-[540px] bg-bg-component backdrop-blur-sm rounded-2xl shadow-xl pt-14 pl-10 pr-10 pb-2 border border-border-button ">
+        <Form {...form}>
+          <form
+            className="flex flex-col gap-8 text-text-primary "
+            data-testid="auth-form"
+            data-active={isActiveFace ? 'true' : undefined}
+            onSubmit={form.handleSubmit(onCheck)}
+          >
+            <FormField
+              control={form.control}
+              name="email"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel required>{t('emailLabel')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      data-testid="auth-email"
+                      placeholder={t('emailPlaceholder')}
+                      autoComplete="email"
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            {title === 'register' && (
+              <FormField
+                control={form.control}
+                name="nickname"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel required>{t('nicknameLabel')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        data-testid="auth-nickname"
+                        placeholder={t('nicknamePlaceholder')}
+                        autoComplete="username"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
+
+            <FormField
+              control={form.control}
+              name="password"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel required>{t('passwordLabel')}</FormLabel>
+                  <FormControl>
+                    <div className="relative">
+                      <Input
+                        data-testid="auth-password"
+                        type={'password'}
+                        placeholder={t('passwordPlaceholder')}
+                        autoComplete={
+                          title === 'login'
+                            ? 'current-password'
+                            : 'new-password'
+                        }
+                        {...field}
+                      />
+                    </div>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {title === 'login' && (
+              <FormField
+                control={form.control}
+                name="remember"
+                render={({ field }) => (
+                  <FormItem>
+                    <div className="flex gap-2 group">
+                      <FormControl>
+                        <Checkbox
+                          checked={field.value}
+                          onCheckedChange={(checked) => {
+                            field.onChange(checked);
+                          }}
+                          className="group-hover:border-border-default group-hover:bg-border-button"
+                        />
+                      </FormControl>
+                      <FormLabel
+                        className={cn('cursor-pointer', {
+                          'text-text-disabled': !field.value,
+                          'text-text-primary': field.value,
+                        })}
+                      >
+                        {t('rememberMe')}
+                      </FormLabel>
+                    </div>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
+            <ButtonLoading
+              data-testid="auth-submit"
+              type="submit"
+              loading={loading}
+              className="bg-metallic-gradient border-b-[#00BEB4] border-b-2 hover:bg-metallic-gradient hover:border-b-[#02bcdd] w-full my-8"
+            >
+              {title === 'login' ? t('login') : t('continue')}
+            </ButtonLoading>
+          </form>
+        </Form>
+
+        {title === 'login' && registerEnabled && (
+          <div className="mt-10 text-right">
+            <p className="text-text-disabled text-sm">
+              {t('signInTip')}
+              <Button
+                data-testid="auth-toggle-register"
+                variant={'transparent'}
+                onClick={changeTitle}
+                className="text-accent-primary/90 hover:text-accent-primary hover:bg-transparent font-medium border-none transition-colors duration-200"
+              >
+                {t('signUp')}
+              </Button>
+            </p>
+          </div>
+        )}
+        {title === 'register' && (
+          <div className="mt-10 text-right">
+            <p className="text-text-disabled text-sm">
+              {t('signUpTip')}
+              <Button
+                data-testid="auth-toggle-login"
+                variant={'transparent'}
+                onClick={changeTitle}
+                className="text-accent-primary/90 hover:text-accent-primary hover:bg-transparent font-medium border-none transition-colors duration-200"
+              >
+                {t('login')}
+              </Button>
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 const Login = () => {
   const [title, setTitle] = useState('login');
@@ -255,20 +429,13 @@ const Login = () => {
   const [searchParams] = useSearchParams();
   const { login, loading: signLoading } = useLogin();
   const { register, loading: registerLoading } = useRegister();
-  const { channels, loading: channelsLoading } = useLoginChannels();
-  const { login: loginWithChannel, loading: loginWithChannelLoading } =
-    useLoginWithChannel();
   const { t } = useTranslation('translation', { keyPrefix: 'login' });
   const { t: tSetting } = useTranslation('translation', {
     keyPrefix: 'setting',
   });
   const [isLoginPage, setIsLoginPage] = useState(true);
 
-  const loading =
-    signLoading ||
-    registerLoading ||
-    channelsLoading ||
-    loginWithChannelLoading;
+  const loading = signLoading || registerLoading;
   const { config } = useSystemConfig();
   // const registerEnabled = config?.registerEnabled !== 0;
   const [isForgetPassword, setIsForgetPassword] = useState(false);
@@ -282,10 +449,6 @@ const Login = () => {
       navigate(redirectTo, { replace: true });
     }
   }, [isLogin, navigate, redirectTo]);
-
-  const handleLoginWithChannel = async (channel: string) => {
-    await loginWithChannel(channel);
-  };
 
   const changeTitle = () => {
     setIsLoginPage(title !== 'login');

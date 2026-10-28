@@ -5,7 +5,6 @@ import ArXivForm from '../form/arxiv-form';
 import BeginForm from '../form/begin-form';
 import BGPTForm from '../form/bgpt-form';
 import BingForm from '../form/bing-form';
-import BrowserForm from '../form/browser-use-form';
 import CategorizeForm from '../form/categorize-form';
 import CodeForm from '../form/code-form';
 import CompilationForm from '../form/compilation-form';
@@ -145,9 +144,6 @@ export const FormConfigMap: Partial<Record<Operator, OperatorFormConfig>> = {
   },
   [Operator.DocGenerator]: {
     component: DocGeneratorForm,
-  },
-  [Operator.Browser]: {
-    component: BrowserForm,
   },
   [Operator.Note]: {
     component: () => <></>,
