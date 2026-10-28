@@ -29,7 +29,7 @@ import { useAuth } from '@/hooks/auth-hooks';
 import { cn } from '@/lib/utils';
 import { Routes } from '@/routes';
 import { rsaPsw } from '@/utils';
-import { adminStorage } from '@/utils/authorization-util';
+import authorizationUtil, { adminStorage } from '@/utils/authorization-util';
 
 import { login } from '@/services/admin-service';
 
