@@ -1094,10 +1094,10 @@ func (s *Service) ShowUsersActivity(ctx context.Context, days, windows *int) (ma
 	return result, nil
 }
 
-func (s *Service) listUsersInactiveByPlan(ctx context.Context, days int) ([]map[string]interface{}, error) {
+func (s *Service) listUsersInactiveByPlan(ctx context.Context, days int) ([]map[string]interface{}, int64, error) {
 	rows, err := s.userDAO.ListInactiveByPlan(ctx, dao.DB, days)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query inactive users: %w", err)
+		return nil, 0, fmt.Errorf("failed to query inactive users: %w", err)
 	}
 
 	var totalInactive int64
@@ -1118,10 +1118,10 @@ func (s *Service) listUsersInactiveByPlan(ctx context.Context, days int) ([]map[
 		"inactive_users": common.FormatNumber(totalInactive),
 	})
 
-	return result, nil
+	return result, totalInactive, nil
 }
 
-func (s *Service) ListUsersEE(ctx context.Context, pageIndex, pageSize int, name string, status, role, sort, orderBy, plan string, top, days int, quota *int) ([]map[string]interface{}, error) {
+func (s *Service) ListUsersEE(ctx context.Context, pageIndex, pageSize int, name string, status, role, sort, orderBy, plan string, top, days int, quota *int) ([]map[string]interface{}, int64, error) {
 	if status != "" && strings.EqualFold(status, "inactive") {
 		daysVal := 90
 		if days > 0 {
@@ -1226,7 +1226,7 @@ func (s *Service) ListUsersStorage(ctx context.Context, pageIndex, pageSize, top
 		top = 10
 	}
 
-	users, err := s.listUsersStorageRows(ctx, top)
+	users, _, err := s.listUsersStorageRows(ctx, top)
 	if err != nil {
 		return nil, err
 	}
@@ -1240,10 +1240,10 @@ func (s *Service) ListUsersStorage(ctx context.Context, pageIndex, pageSize, top
 	return result, nil
 }
 
-func (s *Service) listUsersStorageRows(ctx context.Context, top int) ([]map[string]interface{}, error) {
+func (s *Service) listUsersStorageRows(ctx context.Context, top int) ([]map[string]interface{}, int64, error) {
 	rows, err := s.userDAO.ListStorageRows(ctx, dao.DB, top)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query users storage: %w", err)
+		return nil, 0, fmt.Errorf("failed to query users storage: %w", err)
 	}
 
 	result := make([]map[string]interface{}, 0, len(rows))
@@ -1267,13 +1267,13 @@ func (s *Service) listUsersStorageRows(ctx context.Context, top int) ([]map[stri
 		})
 	}
 
-	return result, nil
+	return result, int64(len(rows)), nil
 }
 
-func (s *Service) listUsersDocumentsRows(ctx context.Context, top int) ([]map[string]interface{}, error) {
+func (s *Service) listUsersDocumentsRows(ctx context.Context, top int) ([]map[string]interface{}, int64, error) {
 	rows, err := s.userDAO.ListDocumentsRows(ctx, dao.DB, top)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query users documents: %w", err)
+		return nil, 0, fmt.Errorf("failed to query users documents: %w", err)
 	}
 
 	result := make([]map[string]interface{}, 0, len(rows))
@@ -1291,32 +1291,32 @@ func (s *Service) listUsersDocumentsRows(ctx context.Context, top int) ([]map[st
 		})
 	}
 
-	return result, nil
+	return result, int64(len(rows)), nil
 }
 
-func (s *Service) listUsersIndexRows(ctx context.Context, top int) ([]map[string]interface{}, error) {
+func (s *Service) listUsersIndexRows(ctx context.Context, top int) ([]map[string]interface{}, int64, error) {
 
 	cfg := server.GetConfig()
 	docEngine := cfg.DocEngineType()
 	if docEngine != "elasticsearch" {
-		return nil, fmt.Errorf("elasticsearch is not in use, current doc engine: %s", docEngine)
+		return nil, 0, fmt.Errorf("elasticsearch is not in use, current doc engine: %s", docEngine)
 	}
 
 	if !cfg.IsElasticConfigured() {
-		return nil, fmt.Errorf("elasticsearch configuration not found")
+		return nil, 0, fmt.Errorf("elasticsearch configuration not found")
 	}
 
 	esConfig := cfg.GetElasticsearchConfig()
 
 	esEngine, err := elasticsearch.NewEngine(ctx, esConfig)
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to elasticsearch: %w", err)
+		return nil, 0, fmt.Errorf("failed to connect to elasticsearch: %w", err)
 	}
 	defer esEngine.Close()
 
 	allIndexStats, err := esEngine.GetIndexStats(ctx, []string{"ragflow*"})
 	if err != nil {
-		return nil, fmt.Errorf("failed to get index stats: %w", err)
+		return nil, 0, fmt.Errorf("failed to get index stats: %w", err)
 	}
 
 	type indexRow struct {
@@ -1382,7 +1382,7 @@ func (s *Service) listUsersIndexRows(ctx context.Context, top int) ([]map[string
 
 	users, err := s.userDAO.ListUsersWithPlan(context.Background(), dao.DB, tenantIDs)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query users with plan: %w", err)
+		return nil, 0, fmt.Errorf("failed to query users with plan: %w", err)
 	}
 
 	userMap := make(map[string]dao.UserWithPlanRow, len(users))
@@ -1416,13 +1416,13 @@ func (s *Service) listUsersIndexRows(ctx context.Context, top int) ([]map[string
 		})
 	}
 
-	return result, nil
+	return result, int64(len(rows)), nil
 }
 
-func (s *Service) listUsersQuotaRows(ctx context.Context, top, quotaThreshold int) ([]map[string]interface{}, error) {
+func (s *Service) listUsersQuotaRows(ctx context.Context, top, quotaThreshold int) ([]map[string]interface{}, int64, error) {
 	rows, err := s.userDAO.ListQuotaRows(ctx, dao.DB, top, quotaThreshold)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query users quota: %w", err)
+		return nil, 0, fmt.Errorf("failed to query users quota: %w", err)
 	}
 
 	result := make([]map[string]interface{}, 0, len(rows))
@@ -1446,16 +1446,16 @@ func (s *Service) listUsersQuotaRows(ctx context.Context, top, quotaThreshold in
 		})
 	}
 
-	return result, nil
+	return result, int64(len(rows)), nil
 }
 
 // listUsersPlanRows returns active users filtered by plan name within the last N days.
 // Active users are defined by last_login_time >= now - days.
 // Results are sorted by last_login_time descending, limited to top N.
-func (s *Service) listUsersPlanRows(ctx context.Context, top int, planName string, days int) ([]map[string]interface{}, error) {
+func (s *Service) listUsersPlanRows(ctx context.Context, top int, planName string, days int) ([]map[string]interface{}, int64, error) {
 	rows, err := s.userDAO.ListPlanRows(ctx, dao.DB, top, planName, days)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query users by plan: %w", err)
+		return nil, 0, fmt.Errorf("failed to query users by plan: %w", err)
 	}
 
 	result := make([]map[string]interface{}, 0, len(rows))
@@ -1473,17 +1473,17 @@ func (s *Service) listUsersPlanRows(ctx context.Context, top int, planName strin
 		})
 	}
 
-	return result, nil
+	return result, int64(len(rows)), nil
 }
 
 // listUsersPlanQuotaRows returns active users filtered by plan name whose storage usage
 // percentage meets or exceeds the quota threshold within the last N days.
 // Active users are defined by last_login_time >= now - days.
 // Results are sorted by storage_used descending, limited to top N.
-func (s *Service) listUsersPlanQuotaRows(ctx context.Context, top int, planName string, quotaThreshold, days int) ([]map[string]interface{}, error) {
+func (s *Service) listUsersPlanQuotaRows(ctx context.Context, top int, planName string, quotaThreshold, days int) ([]map[string]interface{}, int64, error) {
 	rows, err := s.userDAO.ListPlanQuotaRows(ctx, dao.DB, top, planName, quotaThreshold, days)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query users plan quota: %w", err)
+		return nil, 0, fmt.Errorf("failed to query users plan quota: %w", err)
 	}
 
 	result := make([]map[string]interface{}, 0, len(rows))
@@ -1507,7 +1507,7 @@ func (s *Service) listUsersPlanQuotaRows(ctx context.Context, top int, planName 
 		})
 	}
 
-	return result, nil
+	return result, int64(len(rows)), nil
 }
 
 // ListUsersDocuments list users documents for enterprise edition
