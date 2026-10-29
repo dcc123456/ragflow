@@ -71,69 +71,64 @@ func loadDoc1(t *testing.T) []byte {
 	return data
 }
 
-// TestPDFParser_ParseWithResult_DeepDocEE_RoutesToEE proves the DeepDoc_EE parse
-// method resolves to the EE HTTP client and reaches the external service, not
-// the in-process OSS backend.
-func TestPDFParser_ParseWithResult_DeepDocEE_RoutesToEE(t *testing.T) {
+// TestPDFParser_ParseWithResult_DeepDocEECPU_RoutesToEE proves the
+// deepdoc_cpu_ee parse method resolves to the EE HTTP client and reaches the
+// external service, not the in-process OSS backend.
+func TestPDFParser_ParseWithResult_DeepDocEECPU_RoutesToEE(t *testing.T) {
 	useMockDocAnalyzer(t) // irrelevant for EE, but keeps OSS factory sane.
 	srv, hits := standUpEEMock(t, false)
-	old := deepDocEEBaseURL
-	defer func() { deepDocEEBaseURL = old }()
-	SetDeepDocEEURL(srv.URL)
+	t.Setenv("DEEPDOC_CPU_EE_URL", srv.URL)
 
 	pdf := NewPDFParser()
-	pdf.ConfigureFromSetup(map[string]any{"parse_method": "DeepDoc_EE"})
+	pdf.ConfigureFromSetup(map[string]any{"parse_method": "deepdoc_cpu_ee"})
 	data := loadDoc1(t)
 
 	res := pdf.ParseWithResult(t.Context(), "Doc1.pdf", data)
 	if res.Err != nil {
-		t.Fatalf("ParseWithResult(DeepDoc_EE) err = %v", res.Err)
+		t.Fatalf("ParseWithResult(deepdoc_cpu_ee) err = %v", res.Err)
 	}
 	if atomic.LoadInt32(hits) == 0 {
-		t.Fatal("EE service received no predict calls; DeepDoc_EE did not route to EE HTTP client")
+		t.Fatal("EE service received no predict calls; deepdoc_cpu_ee did not route to EE HTTP client")
 	}
 }
 
-// TestPDFParser_ParseWithResult_DeepDocEE_ServiceError verifies that a failing
-// EE service (HTTP 500) is still reached through the DeepDoc_EE route. The
-// shared DeepDoc pipeline intentionally degrades per-page inference errors to
-// "no regions" for resilience (OSS and EE alike), so a 500 must not panic or
-// hard-fail the whole parse — it must be swallowed at page level. The client
-// side error mapping itself is covered in the client package.
-func TestPDFParser_ParseWithResult_DeepDocEE_ServiceError(t *testing.T) {
+// TestPDFParser_ParseWithResult_DeepDocEECPU_ServiceError verifies that a
+// failing EE service (HTTP 500) is still reached through the deepdoc_cpu_ee
+// route. The shared DeepDoc pipeline intentionally degrades per-page inference
+// errors to "no regions" for resilience (OSS and EE alike), so a 500 must not
+// panic or hard-fail the whole parse -- it must be swallowed at page level.
+// The client side error mapping itself is covered in the client package.
+func TestPDFParser_ParseWithResult_DeepDocEECPU_ServiceError(t *testing.T) {
 	useMockDocAnalyzer(t)
 	srv, hits := standUpEEMock(t, true)
-	old := deepDocEEBaseURL
-	defer func() { deepDocEEBaseURL = old }()
-	SetDeepDocEEURL(srv.URL)
+	t.Setenv("DEEPDOC_CPU_EE_URL", srv.URL)
 
 	pdf := NewPDFParser()
-	pdf.ConfigureFromSetup(map[string]any{"parse_method": "DeepDoc_EE"})
+	pdf.ConfigureFromSetup(map[string]any{"parse_method": "deepdoc_cpu_ee"})
 	data := loadDoc1(t)
 
 	res := pdf.ParseWithResult(t.Context(), "Doc1.pdf", data)
 	if res.Err != nil {
-		t.Fatalf("DeepDoc_EE must degrade gracefully on EE 500, got hard error: %v", res.Err)
+		t.Fatalf("deepdoc_cpu_ee must degrade gracefully on EE 500, got hard error: %v", res.Err)
 	}
 	if atomic.LoadInt32(hits) == 0 {
-		t.Fatal("EE service received no calls; DeepDoc_EE did not route to the failing EE client")
+		t.Fatal("EE service received no calls; deepdoc_cpu_ee did not route to the failing EE client")
 	}
 }
 
-// TestPDFParser_ParseWithResult_DeepDocEE_UnconfiguredError proves that
-// selecting DeepDoc_EE without a configured EE URL fails loudly at parse time.
-func TestPDFParser_ParseWithResult_DeepDocEE_UnconfiguredError(t *testing.T) {
+// TestPDFParser_ParseWithResult_DeepDocEECPU_UnconfiguredError proves that
+// selecting deepdoc_cpu_ee without a configured EE URL fails loudly at parse
+// time.
+func TestPDFParser_ParseWithResult_DeepDocEECPU_UnconfiguredError(t *testing.T) {
 	useMockDocAnalyzer(t)
-	old := deepDocEEBaseURL
-	defer func() { deepDocEEBaseURL = old }()
-	SetDeepDocEEURL("")
+	t.Setenv("DEEPDOC_CPU_EE_URL", "")
 
 	pdf := NewPDFParser()
-	pdf.ConfigureFromSetup(map[string]any{"parse_method": "DeepDoc_EE"})
+	pdf.ConfigureFromSetup(map[string]any{"parse_method": "deepdoc_cpu_ee"})
 	data := loadDoc1(t)
 
 	res := pdf.ParseWithResult(t.Context(), "Doc1.pdf", data)
 	if res.Err == nil {
-		t.Fatal("want error when DeepDoc_EE selected but no EE URL configured")
+		t.Fatal("want error when deepdoc_cpu_ee selected but no EE URL configured")
 	}
 }

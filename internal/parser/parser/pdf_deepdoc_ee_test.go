@@ -25,12 +25,13 @@ import (
 	deepdoctype "ragflow/internal/deepdoc/parser/type"
 )
 
-// TestDeepDocEEValidateParseMethod ensures the new method passes validation,
-// so a PDFParser configured with it does not error out before parsing.
-func TestDeepDocEEValidateParseMethod(t *testing.T) {
-	p := &PDFParser{ParseMethod: "DeepDoc_EE"}
+// TestDeepDocEECPUValidateParseMethod ensures the suffixed method passes
+// validation, so a PDFParser configured with it does not error out before
+// parsing.
+func TestDeepDocEECPUValidateParseMethod(t *testing.T) {
+	p := &PDFParser{ParseMethod: "deepdoc_cpu_ee"}
 	if err := p.validateParseMethod(); err != nil {
-		t.Fatalf("validateParseMethod(DeepDoc_EE) = %v, want nil", err)
+		t.Fatalf("validateParseMethod(deepdoc_cpu_ee) = %v, want nil", err)
 	}
 }
 
@@ -50,16 +51,14 @@ func TestResolveDocAnalyzerForMethod_OSS(t *testing.T) {
 	}
 }
 
-// TestResolveDocAnalyzerForMethod_EE_Configured confirms DeepDoc_EE resolves to
-// a client when a URL is configured.
-func TestResolveDocAnalyzerForMethod_EE_Configured(t *testing.T) {
-	old := deepDocEEBaseURL
-	defer func() { deepDocEEBaseURL = old }()
-	SetDeepDocEEURL("http://ee.test:8001")
+// TestResolveDocAnalyzerForMethod_EECPU_Configured confirms deepdoc_cpu_ee
+// resolves to a client when its URL is configured.
+func TestResolveDocAnalyzerForMethod_EECPU_Configured(t *testing.T) {
+	t.Setenv("DEEPDOC_CPU_EE_URL", "http://ee.test:8001")
 
-	a, err := resolveDocAnalyzerForMethod("DeepDoc_EE", deepdoctype.NativeDocAnalyzerFactory)
+	a, err := resolveDocAnalyzerForMethod("deepdoc_cpu_ee", deepdoctype.NativeDocAnalyzerFactory)
 	if err != nil {
-		t.Fatalf("resolveDocAnalyzerForMethod(DeepDoc_EE) err = %v", err)
+		t.Fatalf("resolveDocAnalyzerForMethod(deepdoc_cpu_ee) err = %v", err)
 	}
 	// client.Client implements DocAnalyzer; verify via the interface contract.
 	var _ deepdoctype.DocAnalyzer = a
@@ -68,14 +67,12 @@ func TestResolveDocAnalyzerForMethod_EE_Configured(t *testing.T) {
 	}
 }
 
-// TestResolveDocAnalyzerForMethod_EE_Unconfigured confirms DeepDoc_EE errors
-// loudly (not a silent empty analyzer) when no EE URL is configured.
-func TestResolveDocAnalyzerForMethod_EE_Unconfigured(t *testing.T) {
-	old := deepDocEEBaseURL
-	defer func() { deepDocEEBaseURL = old }()
-	SetDeepDocEEURL("")
+// TestResolveDocAnalyzerForMethod_EECPU_Unconfigured confirms deepdoc_cpu_ee
+// errors loudly (not a silent empty analyzer) when no EE URL is configured.
+func TestResolveDocAnalyzerForMethod_EECPU_Unconfigured(t *testing.T) {
+	t.Setenv("DEEPDOC_CPU_EE_URL", "")
 
-	if _, err := resolveDocAnalyzerForMethod("DeepDoc_EE", deepdoctype.NativeDocAnalyzerFactory); err == nil {
-		t.Fatal("want error when DeepDoc_EE selected but no EE URL configured")
+	if _, err := resolveDocAnalyzerForMethod("deepdoc_cpu_ee", deepdoctype.NativeDocAnalyzerFactory); err == nil {
+		t.Fatal("want error when deepdoc_cpu_ee selected but no EE URL configured")
 	}
 }

@@ -19,39 +19,34 @@
 package parser
 
 import (
-	"os"
-
 	"ragflow/internal/deepdoc/client"
 	deepdoctype "ragflow/internal/deepdoc/parser/type"
 )
 
-// deepDocEEBaseURL mirrors the DEEPDOC_EE_URL endpoint for the EE DeepDoc
-// inference service. The parser resolves external analyzers through the generic
-// <METHOD>_URL environment convention (see externalAnalyzerURL), so this
-// variable is a convenience mirror kept in sync by SetDeepDocEEURL and used by
-// tests to save/restore state. It is inert unless a PDFParser is configured
-// with parse_method "DeepDoc_EE" and the endpoint is set.
-var deepDocEEBaseURL = os.Getenv("DEEPDOC_EE_URL")
-
-// SetDeepDocEEURL configures the EE DeepDoc inference endpoint. It is the
-// single setter the EE deployment and tests use; the parser's dispatch reads it
-// back through the generic DEEPDOC_EE_URL env convention.
-func SetDeepDocEEURL(url string) {
-	deepDocEEBaseURL = url
-	if url == "" {
-		os.Unsetenv("DEEPDOC_EE_URL")
-	} else {
-		os.Setenv("DEEPDOC_EE_URL", url)
-	}
-}
+// eeDeepDocMethods are the EE DeepDoc parse methods routed to the EE HTTP
+// inference service (a single binary serving cpu/gpu/ascend variants). They
+// share one client factory -- only the endpoint (<METHOD>_URL) and the UI label
+// differ -- so they are registered by the same loop in init. Every method is
+// fully suffixed (cpu/gpu/ascend): there is no un-suffixed "deepdoc_ee" alias and
+// no DEEPDOC_EE_URL, so every EE identifier carries its hardware suffix. Kept as
+// data (not inline) so the test suite can assert dispatch for exactly these
+// methods and never drift from the registration.
+var eeDeepDocMethods = []string{"deepdoc_cpu_ee", "deepdoc_gpu_ee", "deepdoc_ascend_ee"}
 
 func init() {
-	// Register DeepDoc_EE as an external analyzer method routed to the EE HTTP
-	// inference service (ragflow/internal/deepdoc/server, spoken to via
-	// client). The OSS in-process "deepdoc" path is untouched, and this
-	// registration is inert unless a PDFParser is configured with parse_method
-	// "DeepDoc_EE" and DEEPDOC_EE_URL is set.
-	RegisterAnalyzerFactory("deepdoc_ee", func(baseURL string) (deepdoctype.DocAnalyzer, error) {
-		return client.New(baseURL), nil
-	})
+	// Register the EE DeepDoc variants (cpu/gpu/ascend) as external analyzer
+	// methods. They are served by the same EE inference binary; only the UI
+	// label and the endpoint (<METHOD>_URL) differ, so they share one client
+	// factory. Each variant resolves through the generic <METHOD>_URL env
+	// convention (see externalAnalyzerURL), and fails loudly (never the
+	// in-process native path) when its URL is unset.
+	//
+	// There is deliberately no un-suffixed "deepdoc_ee" / "DeepDoc_EE" alias and
+	// no DEEPDOC_EE_URL: the UI selects an explicit hardware variant, and the
+	// parser only speaks suffixed methods.
+	for _, m := range eeDeepDocMethods {
+		RegisterAnalyzerFactory(m, func(baseURL string) (deepdoctype.DocAnalyzer, error) {
+			return client.New(baseURL), nil
+		})
+	}
 }
