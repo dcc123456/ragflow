@@ -27,7 +27,7 @@ import (
 	"testing"
 )
 
-// standUpEEMock returns an httptest server emulating the EE DeepDoc inference
+// standUpEEMock returns a httptest server emulating the EE DeepDoc inference
 // service. It records how many predict calls it received and can be switched
 // into a failing mode (every predict returns 500) to exercise the error path.
 func standUpEEMock(t *testing.T, fail bool) (*httptest.Server, *int32) {
