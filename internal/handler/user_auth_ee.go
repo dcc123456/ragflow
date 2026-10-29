@@ -169,7 +169,7 @@ func (h *UserHandler) OAuthChannelCallback(c *gin.Context) {
 		return
 	}
 
-	setOAuthAuthCookie(c, authToken)
+	//setOAuthAuthCookie(c, authToken)
 	c.Header("Authorization", authToken)
 	c.Header("Access-Control-Expose-Headers", "Authorization")
 	c.Redirect(http.StatusFound, frontendBase+"?auth="+result.User.ID)
