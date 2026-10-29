@@ -278,6 +278,8 @@ jobs:
           ./build.sh --go
 
       - name: Run Go unit tests
+        # Skip when only frontend (web) code changed: HAS_GO is false then.
+        if: ${{ env.HAS_GO == 'true' }}
         # Runs after `./build.sh --go`, which guarantees the C++ static
         # library (librag_tokenizer_c_api.a) is present on disk. The Go
         # test binaries link against it transitively through
@@ -828,6 +830,8 @@ jobs:
           ./build.sh --go
 
       - name: Run Go unit tests
+        # Skip when only frontend (web) code changed: HAS_GO is false then.
+        if: ${{ env.HAS_GO == 'true' }}
         # Runs after `./build.sh --go`, which guarantees the C++ static
         # library (librag_tokenizer_c_api.a) is present on disk. The Go
         # test binaries link against it transitively through
