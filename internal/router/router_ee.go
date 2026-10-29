@@ -30,7 +30,9 @@ func SetupEERouter(engine *gin.Engine) {
 	engine.Use(utility.GetRateLimit().Middleware())
 }
 
-func RegisterEENoAuthRouter(apiNoAuth *gin.RouterGroup, r *Router) {
+func RegisterEEAuthRouter(_ *gin.RouterGroup, _ *Router) {}
+
+func RegisterEENoAuthRouter(_ *gin.Engine, apiNoAuth *gin.RouterGroup, r *Router) {
 	// For EE
 	apiNoAuth.POST("/auth/register/captcha", r.userHandler.Captcha)
 	apiNoAuth.POST("/auth/register/otp", r.userHandler.SendOTP)
