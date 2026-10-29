@@ -14,4 +14,6 @@
 // limitations under the License.
 //
 
+//go:build ee
+
 package service

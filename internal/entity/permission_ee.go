@@ -14,6 +14,8 @@
 // limitations under the License.
 //
 
+//go:build ee
+
 package entity
 
 // Permission stores a bitmask grant for a user or group on one tenant resource.

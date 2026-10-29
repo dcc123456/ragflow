@@ -25,6 +25,8 @@
 //
 // It deliberately shares NO cgo/onnxruntime code: it only speaks HTTP/JSON to
 // the EE service, mirroring the exact wire contract that server emits.
+//go:build ee
+
 package client
 
 import (

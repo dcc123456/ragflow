@@ -280,10 +280,6 @@ func insertTestIngestionTask(t *testing.T, id, userID, docID, datasetID string) 
 func grantServiceTestResource(_ *testing.T, _ string, _ string, _ string, _ string, _ int32) {
 }
 
-// permissionChangeLogTestModels adds no tables: the community edition has no
-// permission audit log.
-func permissionChangeLogTestModels() []interface{} { return nil }
-
 // insertTestIngestionTaskWithStatus inserts a test IngestionTask with a specific status.
 func insertTestIngestionTaskWithStatus(t *testing.T, id, userID, docID, datasetID, status string) {
 	t.Helper()

@@ -14,6 +14,8 @@
 //  limitations under the License.
 //
 
+//go:build ee
+
 package config
 
 import "github.com/spf13/viper"

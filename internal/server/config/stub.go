@@ -82,3 +82,10 @@ func (c *Config) GetDefaultOCRModel() ModelConfig { return c.defaultModels.OCRMo
 
 // GetDefaultTTSModel returns the deployment TTS model, empty in the OSS build.
 func (c *Config) GetDefaultTTSModel() ModelConfig { return c.defaultModels.TTSModel }
+
+// OAuthConfig carries the OAuth deployment settings. The OSS build ships no SSO
+// channels, so the config struct is empty.
+type OAuthConfig struct{}
+
+// OAuthChannel is one OAuth provider channel, absent from the OSS build.
+type OAuthChannel struct{}

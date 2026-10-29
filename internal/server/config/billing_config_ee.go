@@ -14,6 +14,8 @@
 //  limitations under the License.
 //
 
+//go:build ee
+
 package config
 
 // BillingConfig carries the billing deployment settings. The OSS build has no

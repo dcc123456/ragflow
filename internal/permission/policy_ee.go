@@ -14,6 +14,8 @@
 // limitations under the License.
 //
 
+//go:build ee
+
 package permission
 
 // Community Edition has no alternate permission policy.

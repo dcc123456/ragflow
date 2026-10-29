@@ -1,3 +1,4 @@
+//
 // Copyright 2026 The InfiniFlow Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,14 +12,16 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
 
-package testsupport
+//go:build !ee
 
-import "gorm.io/gorm"
+package service
 
-// PrepareEnterprisePermissionFixture is a no-op in the community edition.
-// Enterprise tests replace this hook with fixture setup for permission roles
-// and tenant membership.
-func PrepareEnterprisePermissionFixture(_ *gorm.DB, _ string, _ ...string) error {
-	return nil
-}
+import "testing"
+
+func restrictServiceTestFeatureRole(_ *testing.T, _ string, _ string, _ int32) {}
+
+// permissionChangeLogTestModels adds no tables: the community edition has no
+// permission audit log.
+func permissionChangeLogTestModels() []interface{} { return nil }

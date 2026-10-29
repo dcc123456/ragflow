@@ -25,5 +25,5 @@ var (
 
 // GetRAGFlowType reports the edition this binary was built for.
 func GetRAGFlowType() string {
-	return EnterpriseEdition
+	return OpenSourceVersion
 }

@@ -14,6 +14,8 @@
 // limitations under the License.
 //
 
+//go:build ee
+
 package entity
 
 // PermissionChangeLog records permission and authorization-scope changes.
