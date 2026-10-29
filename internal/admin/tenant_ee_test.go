@@ -205,3 +205,5 @@ func TestAdminTenantListKeywordAndStatusValidation(t *testing.T) {
 		t.Fatalf("GET /admin/tenants invalid filter = (%d, %s), want bad request", response.Code, response.Body.String())
 	}
 }
+
+func tenantDAOTestExtraModels() []interface{} { return nil }

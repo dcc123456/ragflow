@@ -74,6 +74,7 @@ deps/*
 **/node_modules/
 **/web/node_modules/
 
+<<<<<<< HEAD
 # Build artifacts (will be created in container)
 **/web/dist/
 **/web/.next/
@@ -106,3 +107,15 @@ deps/*
 **/*.pid
 **/*.seed
 **/*.pid.lock
+
+# ── Docker env (contains secrets) ───────────────────────────────────────────
+docker/.env
+
+# ── Local build artifacts / caches (never needed inside the container) ──
+# Go build output (binaries are compiled fresh inside the go-builder stage).
+/bin/
+# Local Go module cache (go mod download runs inside the container via cache mount).
+/gomod_cache/
+# Local model backups / superseded exports in deepdoc_ee_models/.
+deepdoc_ee_models/.bak*/
+deepdoc_ee_models/.superseded*/
