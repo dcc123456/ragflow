@@ -60,6 +60,6 @@ func (h *TenantHandler) SwitchTenant(c *gin.Context) {
 
 	c.Header("Authorization", authToken)
 	c.Header("Access-Control-Expose-Headers", "Authorization")
-	setOAuthAuthCookie(c, authToken)
+	//setOAuthAuthCookie(c, authToken)
 	common.SuccessWithData(c, gin.H{"tenant_id": tenantID}, "Tenant switched")
 }

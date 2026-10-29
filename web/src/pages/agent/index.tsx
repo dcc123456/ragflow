@@ -118,9 +118,17 @@ export default function Agent() {
 
   const { handleExportJson } = useHandleExportJsonFile();
   const { saveGraph, loading } = useSaveGraph();
+  // Manual Save is a draft save, same as auto-save: it refreshes the live
+  // canvas without minting a user_canvas_version row. Publishing does that.
   const handleSave = useCallback(() => {
-    saveGraph();
+    saveGraph(undefined, undefined, undefined, true);
   }, [saveGraph]);
+  const handlePublish = useCallback(
+    (alias?: string) => {
+      saveGraph(undefined, undefined, true, undefined, alias);
+    },
+    [saveGraph],
+  );
   // Back-link lands on the agents list tab matching this canvas: ingestion
   // pipeline canvases return to the pipeline tab, agent canvases to workflow.
   const handleBackToAgents = useCallback(() => {
@@ -347,11 +355,16 @@ export default function Agent() {
                   {t('explore.title')}
                 </Button>
               )}
-              <PublishConfirmDialog
+              {/* <PublishConfirmDialog
                 agentDetail={agentDetail}
                 loading={loading}
                 onPublish={() => saveGraph(undefined, undefined, true)}
                 onBeforeOpen={hasBlockingIssues}
+              /> */}
+              <PublishConfirmDialog
+                agentDetail={agentDetail}
+                loading={loading}
+                onPublish={handlePublish}
               />
             </>
           )}

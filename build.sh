@@ -11,6 +11,11 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$SCRIPT_DIR"
 
+# EE (enterprise) build extensions - sourced so the OSS body below stays
+# untouched and merge conflicts against the EE branch are limited to this
+# single line plus the guarded hook call inside run_native_integration_tests.
+[[ -f "${SCRIPT_DIR}/build_ee.sh" ]] && source "${SCRIPT_DIR}/build_ee.sh"
+
 # Build directories
 CPP_DIR="$PROJECT_ROOT/internal/binding/cpp"
 BUILD_DIR="$CPP_DIR/cmake-build-release"
@@ -1092,36 +1097,13 @@ run_native_integration_tests() {
       go test -tags "cgo static integration fetch_testdata" -race -count=1 \
       ./internal/deepdoc/parser/pdf/inference/native_analyzer/... )
 
-    # EE-deployment parity: the same native package, with the EE weights and
-    # DLA post-processor activated at runtime via InitCPUEE (see eeActivate in
-    # native_ee_test.go) and the EE-only integration tests (ocr_rec_integration_ee_test.go,
-    # tsr_*_ee_test.go). These tests self-skip unless RUN_EE_TESTS=1 AND EE_DEEPDOC=1
-    # AND EE_MODEL_DIR point at the EE model dir (see checkEE), so an OSS-only CI
-    # box simply skips them. The EE DLA golden (testdata/<stem>.dla.ee.golden.json)
-    # is the EE docker's own wire output — never the OSS golden. EE_MODEL_DIR is a
-    # dedicated variable, fully separate from the OSS MODEL_DIR (which holds the
-    # OSS *.ort weights) — the two weight sets are different files by design.
-    # CGO_LDFLAGS_EE is optional: when CI does not inject an EE-specific link
-    # line, fall back to the OSS CGO_LDFLAGS that check_go_deps already built
-    # with -Wl,--undefined=OrtGetApiBase -Wl,--dynamic-list. Without that flag
-    # the statically-linked ORT drops OrtGetApiBase and the EE inference tests
-    # fail at runtime with "Error looking up OrtGetApiBase". The EE and OSS
-    # backends share the same minimal patch2 ORT, so the fallback is equivalent.
-    # NOTE: this comment MUST stay OUTSIDE the backslash-continued command
-    # below. A '#' placed after a trailing '\' terminates that logical line,
-    # which would drop every env assignment above it (RUN_EE_TESTS,
-    # EE_MODEL_DIR, RAGFLOW_TESTDATA_REF) from `go test` and silently skip all
-    # EE tests — a false-green gate.
-    print_section "Running EE-deployment native integration tests (RUN_EE_TESTS=1)"
-    ( cd "$PROJECT_ROOT" && \
-      GOPROXY=${GOPROXY:-https://goproxy.cn,https://proxy.golang.org,direct} \
-      CGO_ENABLED=1 \
-      RUN_EE_TESTS=1 EE_DEEPDOC=1 \
-      EE_MODEL_DIR="${EE_MODEL_DIR:-/home/infiniflow/runners_work/artifacts/infiniflow-ai/ee_weights}" \
-      RAGFLOW_TESTDATA_REF=deepdoc-native-testdata-v2-ee \
-      CGO_LDFLAGS="${CGO_LDFLAGS_EE:-$CGO_LDFLAGS}" \
-      go test -tags "cgo static integration fetch_testdata" -count=1 \
-      "${native_run_filter[@]}" ./internal/deepdoc/native/... )
+    # EE build extensions hook (build_ee.sh, sourced near the top of this
+    # script). Guarded so an empty/absent build_ee.sh is a safe no-op on the
+    # OSS path; the EE build defines run_ee_native_integration_tests to run its
+    # own native integration/parity tests at this point.
+    if declare -F run_ee_native_integration_tests >/dev/null 2>&1; then
+        run_ee_native_integration_tests
+    fi
 }
 
 # Run Go tests gated behind a build tag (or space-separated tag list), e.g.

@@ -65,8 +65,8 @@ export const useAuth = (
   const [isLogin, setIsLogin] = useState<Nullable<boolean>>(null);
 
   useEffect(() => {
-    setIsLogin(!!credentialStorage.getAuthorization() || !!auth);
-  }, [auth, credentialStorage]);
+    setIsLogin(!!credentialStorage.getAuthorization());
+  }, [credentialStorage]);
 
   return { isLogin, redirectUrl };
 };
