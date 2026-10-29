@@ -291,12 +291,3 @@ deps/*.zip
 # external DeepDoc testdata, fetched on demand via scripts/fetch_deepdoc_testdata.sh
 # (symlinked into place from ~/.cache/ragflow-testdata; never committed)
 internal/deepdoc/native/testdata
-
-# EE DeepDoc docker build staging: the *.ee.onnx model files are staged here before
-# the docker build (Dockerfile_deepdoc_ee COPYs them into the image); they are
-# large binaries and must never be committed.
-deepdoc_ee_models/
-# local scratch go module cache
-gomod_cache
-# unreferenced e2e sample data (scratch)
-parity/
