@@ -28,7 +28,6 @@ export default {
       next: 'Next',
       create: 'Create',
       edit: 'Edit',
-      view: 'View',
       upload: 'Upload',
       english: 'English',
       portugueseBr: 'Portuguese (Brazil)',
@@ -79,8 +78,6 @@ export default {
       add: 'Add',
       remove: 'Remove',
       search: 'Search',
-      duplicate: 'Duplicate',
-      duplicateSuffix: '(copy)',
       reset: 'Reset',
       noDataFound: 'No data found.',
       searchOrEnterToAdd: 'Search or enter to add',
@@ -94,8 +91,6 @@ export default {
         tokenPlaceholder: 'e.g. eyJhbGciOiJIUzI1Ni...',
       },
       selected: 'Selected',
-      sync: 'Sync',
-      all: 'All',
       seeAll: 'See all',
       bulkOperate: 'Bulk operate',
       owner: 'Owner',
@@ -103,7 +98,6 @@ export default {
     },
     login: {
       loginTitle: 'Sign in to your account',
-      signInWith: 'Sign in with {{name}}',
       signUpTitle: 'Create an account',
       login: 'Sign in',
       signUp: 'Sign up',
@@ -113,15 +107,9 @@ export default {
       emailPlaceholder: 'Please input email',
       passwordLabel: 'Password',
       passwordPlaceholder: 'Please input password',
-      usernameLabel: 'Username',
-      usernamePlaceholder: 'Please input username',
-      ldapServerLabel: 'LDAP server',
-      ldapServerPlaceholder: 'Please select LDAP server',
       rememberMe: 'Remember me',
       signInTip: 'Don’t have an account?',
       signUpTip: 'Already have an account?',
-      licenseExpired:
-        'License expired. Please contact your administrator to renew the license.',
       nicknameLabel: 'Nickname',
       nicknamePlaceholder: 'Please input nickname',
       register: 'Create an account',
@@ -148,7 +136,6 @@ export default {
       welcome: 'Welcome to',
       dataset: 'Dataset',
       memories: 'Memory',
-      tickets: 'Support',
       discord: 'Discord',
       github: 'GitHub',
       help: 'Help',
@@ -340,59 +327,6 @@ Procedural Memory: Learned skills, habits, and automated procedures.`,
       llm: 'LLM',
       delMemoryWarn: `After deletion, all messages in this memory will be deleted and cannot be retrieved by agents.`,
     },
-    tickets: {
-      title: 'Tickets',
-      createTicket: 'Create Ticket',
-      state: 'State',
-      priority: 'Priority',
-      group: 'Group',
-      customer: 'Customer',
-      createdAt: 'Created At',
-      viewConversation: 'View conversation',
-      closeTitle: 'Close Ticket',
-      closeConfirmMessage: 'Has your problem been resolved?',
-      myTicket: 'My Ticket',
-      states: {
-        new: 'New',
-        open: 'Open',
-        pendingClose: 'Pending Close',
-        pendingReminder: 'Pending Reminder',
-        closed: 'Closed',
-      },
-      priorities: {
-        low: 'Low',
-        normal: 'Medium',
-        high: 'High',
-      },
-      detail: {
-        subject: 'Subject',
-        group: 'Group',
-        priority: 'Priority',
-        state: 'State',
-        updatedAt: 'Updated At',
-        replyLabel: 'Reply',
-        replyPlaceholder: 'Enter your reply...',
-        sendReply: 'Send',
-        closedNotice: 'This ticket has been closed.',
-        dragDropHint: 'Drag & drop files here',
-        uploadLimit: 'Upload max {{count}} files, each up to {{size}}',
-      },
-      form: {
-        title: 'Title',
-        titlePlaceholder: 'Please input ticket title',
-        group: 'Group',
-        customerName: 'Customer Name',
-        customerNamePlaceholder: 'Please input customer name',
-        customer: 'Customer Email',
-        customerPlaceholder: 'Please input customer email',
-        articleSubject: 'Article Subject',
-        articleSubjectPlaceholder: 'Please input subject',
-        articleBody: 'Article Body',
-        articleBodyPlaceholder: 'Please input ticket description',
-        attachments: 'Attachments',
-        uploadAttachment: 'Click or drag files to upload',
-      },
-    },
     memory: {
       taskLogDialog: {
         title: 'Memory',
@@ -463,12 +397,6 @@ Example: A 1 KB message with 1024-dim embedding uses ~9 KB. The 5 MB default lim
       searchKnowledgePlaceholder: 'Search',
       noMoreData: `That's all. Nothing more.`,
       parserRequired: 'Chunk method is required',
-
-      duplicatingTip: 'Duplicating...',
-      duplicateModal: {
-        title: 'Duplicate dataset',
-        description: 'Create a copy with a new name',
-      },
       dataFlowRequired: 'Data flow is required',
     },
     knowledgeDetails: {
@@ -761,8 +689,6 @@ Example: A 1 KB message with 1024-dim embedding uses ~9 KB. The 5 MB default lim
       builtInPipelines: 'Built-in pipelines',
       parserSelectPlaceholder: 'Select a parser',
       parserOptionUnavailable: 'unavailable',
-      parserOptionUnavailableMessage:
-        'The selected parser or pipeline version is no longer available. Please select again.',
       randomSeedTip:
         'Seed is the starting point for a pseudo-random algorithm that ensures reproducibility of the same output across different runs.',
       datasetDescription: 'Describe your dataset',
@@ -867,14 +793,6 @@ Example: A 1 KB message with 1024-dim embedding uses ~9 KB. The 5 MB default lim
       embeddingModel: 'Embedding model',
       chunkTokenNumber: 'Recommended chunk size',
       chunkTokenNumberMessage: 'Chunk token number for text is required',
-
-      switchEmbeddingModel: {
-        title: 'Switch embedding model',
-        description: `<p>Different embedding models use different vector spaces.</p>
-<p>Switching the model will:</p>
-<ol><li>trigger a full re-processing</li><li>re-embedding of all existing files.</li></ol>
-<p>This may take some time depending on the size of your dataset.</p>`,
-      },
       embeddingModelTip:
         'The default embedding model used by the dataset. Once the dataset has chunks, when switching the embedding model, the system randomly samples a few chunks for a compatibility check, re-embeds them with the new embedding model, and computes cosine similarity between the new and old vectors. Switching is allowed only when the average similarity of the sample is ≥ 0.9. Otherwise, you must delete all chunks in the dataset before you can change it.',
       permissionsTip:
@@ -1870,9 +1788,6 @@ Example: Virtual Hosted Style`,
         'Connect to your IMAP mailbox to sync emails for knowledge retrieval.',
       dropboxAccessTokenTip:
         'Generate a long-lived access token in the Dropbox App Console with files.metadata.read, files.content.read, and sharing.read scopes.',
-      larkDescription: 'Sync files from a specified Lark folder.',
-      larkFolderTip: 'Leave blank to skip.',
-      larkWikiTip: 'Leave blank to skip.',
       moodleDescription:
         'Connect to your Moodle LMS to sync course content, forums, and resources.',
       moodleUrlTip:
@@ -2233,8 +2148,6 @@ Example: Virtual Hosted Style`,
       baseUrl: 'Base URL',
       baseUrlTip:
         'If your API Key is from OpenAI, just ignore it. Any other intermediate providers will give this Base URL with the API Key.',
-      openRouterProviderOrderTip:
-        'Comma-separated provider list, e.g. Groq,Fireworks',
       tongyiBaseUrlTip:
         'For Chinese users, no need to fill in or use https://dashscope.aliyuncs.com/compatible-mode/v1. For international users, use https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
       siliconBaseUrlTip:
@@ -2431,8 +2344,6 @@ Example: Virtual Hosted Style`,
       addGoogleRegion: 'Google Cloud Region',
       GoogleRegionMessage: 'Please input Google Cloud Region',
       modelProvidersWarn: `Please add both embedding model and LLM in <b>Settings > Model providers</b> first. Then, set them in 'Set default models'.`,
-      requestAdminAddModel:
-        'Please contact the administrator to add the model.',
       apiVersion: 'API-Version',
       apiVersionMessage: 'Please input API version',
       add: 'Add',
@@ -2710,8 +2621,6 @@ Example: Virtual Hosted Style`,
       modified: 'Modified',
       created: 'Created',
       deleted: 'Deleted',
-      deleteIncomplete:
-        'Could not confirm complete deletion. Check the remaining documents before retrying.',
       noLangfuseConfigToDelete: 'No Langfuse configuration to delete',
       renamed: 'Renamed',
       operated: 'Operated',
@@ -2721,7 +2630,6 @@ Example: Virtual Hosted Style`,
         'Manual compilation is not supported here; it runs automatically when documents are parsed.',
       updated: 'Updated',
       uploaded: 'Uploaded',
-      duplicated: 'Duplicated successfully',
       200: 'The server successfully returns the requested data.',
       201: 'Create or modify data successfully.',
       202: 'A request has been queued in the background (asynchronous task).',
@@ -2758,14 +2666,6 @@ Example: Virtual Hosted Style`,
       newFolder: 'New folder',
       file: 'File',
       uploadFile: 'Upload file',
-
-      syncFile: 'Sync file',
-      syncFiles: 'Sync files',
-      importData: 'Import data',
-      dataSource: 'Data source',
-      targetFolder: 'Target folder',
-      syncFileSuccess: 'Sync file successfully',
-
       parseOnCreation: 'Parse on creation',
       directory: 'Directory',
       uploadTitle: 'Drag and drop your file here to upload',
@@ -3533,13 +3433,8 @@ This delimiter is used to split the input text into several text pieces echo of 
         select: 'No version selected',
         label: 'Pipeline version',
         latest: 'Latest version',
-        noPublished: 'No published versions',
         filterByAlias: 'Filter by alias',
         alias: 'Alias',
-        addAlias: 'Add alias',
-        editAlias: 'Edit alias',
-        editAliasDescription:
-          'Give this version a memorable alias so you can find it quickly later.',
         pinnedTooltip:
           'This dataset is pinned to a specific version. New versions published on the agent will not affect it.',
         outdated:
@@ -3552,6 +3447,8 @@ This delimiter is used to split the input text into several text pieces echo of 
         restoreConfirmTitle: 'Restore this version as the current agent?',
         restoreConfirmContent:
           'The current agent DSL will be replaced by this version. Save again to create a new version.',
+        missingContent:
+          'The pinned pipeline version no longer exists, so this file cannot be parsed. Please choose a version (or the latest) to continue.',
       },
       setting: 'Settings',
       settings: {
@@ -3681,6 +3578,9 @@ This process aggregates variables from multiple branches into a single variable 
         'Write your SQL query here. You can use variables, raw SQL, or mix both using variable syntax.',
       frameworkPrompts: 'Framework',
       release: 'Publish',
+      production: 'Production',
+      productionTooltip:
+        'This version is published to production. Access it via the API or the embedded page.',
       confirmPublish: 'Confirm publish',
       publishIngestionPipeline:
         'You are about to publish this Ingestion pipeline.',
@@ -4135,60 +4035,6 @@ Important structured information may include: names, dates, locations, events, k
       delChat: 'Delete chat',
       delMember: 'Delete member',
       delMemory: 'Delete memory',
-      delDepartment: 'Delete department',
-      delGroup: 'Delete group',
-    },
-
-    evaluation: {
-      title: 'Evaluation',
-      newEvaluation: 'New evaluation',
-      caseId: 'Case ID',
-      question: 'Question',
-      referenceAnswer: 'Reference answer',
-      modelAnswer: 'Model answer',
-      score: 'Score',
-      status: 'Status',
-      actions: 'Actions',
-      viewDetails: 'View Details',
-      rerun: 'Rerun',
-      clear: 'Clear',
-      avgScore: 'Avg Score',
-      relevance: 'Relevance',
-      accuracy: 'Accuracy',
-      fluency: 'Fluency',
-      relevancy: 'Relevancy',
-      factuality: 'Factuality',
-      consistency: 'Consistency',
-      contextRelevanceTip:
-        'Measures the degree of correlation between the generated answer and the original query, without assessing its factual accuracy.',
-      faithfulnessTip:
-        'Evaluates the factual consistency between the answer and the reference answer, including factual completeness.',
-      semanticSimilarityTip:
-        "Uses prompt-based LLM evaluation to measure whether the overall meaning and logic of the output align with the user's answer. Since it relies entirely on LLM scoring, the prompt is editable for customization.",
-      contextRelevance: 'Relevancy',
-      faithfulness: 'Factuality',
-      semanticSimilarity: 'Consistency',
-      all: 'All',
-      metricsDetail: 'Evaluation Metrics Detail',
-      metrics: 'Metrics',
-      additionalInfo: 'Additional Information',
-      executionTime: 'Execution Time',
-      tokenUsage: 'Token Usage',
-      settings: 'Evaluation Settings',
-      evaluationData: 'Evaluation data',
-      evaluationMetrics: 'Evaluation metrics',
-      selectCollection: 'Select evaluation data',
-      selectModel: 'Select model',
-      prompt: 'Prompt',
-      promptPlaceholder: 'input',
-      defaultModel: 'default model',
-      errors: {
-        collectionRequired: 'Please select a collection',
-      },
-      notConfigured: 'Not configured',
-      failed: 'Run failed',
-      completed: 'Run finished',
-      configuration: 'Configuration',
     },
 
     empty: {
@@ -4231,7 +4077,6 @@ Important structured information may include: names, dates, locations, events, k
         file: 'File',
         team: 'Team',
         memory: 'Memory',
-        model_provider: 'Model provider',
       },
 
       permissionType: {
@@ -4239,7 +4084,6 @@ Important structured information may include: names, dates, locations, events, k
         read: 'Read',
         write: 'Write',
         share: 'Share',
-        accessControl: 'Access control',
       },
 
       serviceStatus: 'Services',
@@ -4248,192 +4092,6 @@ Important structured information may include: names, dates, locations, events, k
       registrationWhitelist: 'Whitelist',
       roles: 'Roles',
       monitoring: 'Monitoring',
-      settings: 'Settings',
-      ssoProvider: 'SSO provider',
-
-      ssoProviderSubtitle:
-        'Choose one identity source for your organization: Cloud IDP or Enterprise directory (LDAP).',
-      ssoProviderRadioGroup: {
-        label: 'Provider',
-        values: {
-          none: 'None',
-          cloud_idp: 'Cloud IDP',
-          ldap: 'LDAP',
-        },
-      },
-      ssoProviderTabs: {
-        cloud_idp: {
-          title: 'Cloud identity providers',
-          github: {
-            title: 'GitHub',
-            dialogTitle: 'Configure GitHub SSO',
-            loginTip: 'Login with GitHub',
-            fields: {
-              clientId: 'Client ID',
-              clientSecret: 'Client secret',
-              url: 'URL',
-            },
-          },
-          google: {
-            title: 'Google',
-            dialogTitle: 'Configure Google SSO',
-            loginTip: 'Login with Google',
-            fields: {
-              clientId: 'Client ID',
-              clientSecret: 'Client secret',
-              redirectUri: 'Redirect URI',
-            },
-            placeholder: {
-              redirectUri: 'http://<domain>/api/v1/auth/oauth/google/callback',
-            },
-          },
-          feishu: {
-            title: 'Feishu',
-            dialogTitle: 'Configure Feishu',
-            loginTip: 'Login with Feishu',
-            fields: {
-              appId: 'App ID',
-              appSecret: 'App secret',
-              appAccessTokenUrl: 'App access token URL',
-              userAccessTokenUrl: 'User access token URL',
-            },
-          },
-        },
-        ldap: {
-          title: 'Enterprise directory (LDAP)',
-          addDialogTitle: 'Add LDAP',
-          editDialogTitle: 'Configure LDAP',
-
-          fields: {
-            name: 'Name',
-            url: 'URL',
-            dn: 'DN (Distinguished name)',
-            password: 'Password',
-            searchFilter: 'Search filter',
-            attributeList: 'Attribute list',
-          },
-
-          placeholder: {
-            name: 'Server name',
-            url: 'ldaps://ad01.mycompany.com:636',
-            dn: 'CN=svc_ldap_app, OU=Service...',
-          },
-        },
-      },
-
-      roleModelProviders: {
-        setDefaultModels: 'Set default models for role "{{role}}"',
-        addedModels: 'Added models',
-        noModelsAdded: 'No models added yet',
-
-        setupStatus: {
-          not_set: 'No models are configured.',
-          partial: 'Some models are not configured.',
-          complete: 'All models are configured.',
-        },
-      },
-
-      settingsSubtitle: 'Manage system-wide configurations.',
-      settingsForm: {
-        smtp: {
-          title: 'SMTP',
-          description:
-            'Configure the system email sender and connection details.',
-
-          testConnection: 'Test connection',
-          testConnectionMessageSuccess: 'Test connection successful',
-          testConnectionMessageError: 'Test connection failed',
-
-          fields: {
-            server: 'Server',
-            port: 'Port',
-            timeout: 'Timeout (seconds)',
-            username: 'Username',
-            password: 'Password',
-            defaultSender: 'Default sender',
-            ssl: 'SSL',
-            tls: 'TLS',
-          },
-
-          placeholder: {
-            server: 'smtp.example.com',
-            username: 'your-email@example.com',
-            defaultSender: 'noreply@example.com',
-          },
-
-          messages: {
-            server: 'Please enter the server address',
-            port: 'Port number must be an integer and must be between 1 and 65535',
-            timeout: 'Please enter the timeout between 0 and 300',
-            username: 'Please enter the username',
-            password: 'Please enter the password',
-            defaultSender: 'Please enter the default sender',
-          },
-        },
-        whitelist: {
-          title: 'Registration whitelist',
-          description: 'Configure system whitelist who can register RAGFlow.',
-
-          fields: {
-            enableModule: 'Enable module',
-          },
-        },
-        notification: {
-          title: 'Notification',
-          description: 'Manage notification content and delivery settings.',
-          fields: {
-            content: 'Content',
-            enableModule: 'Enable',
-          },
-        },
-        sensitiveWordFilter: {
-          title: 'Sensitive Word Filtering',
-          description:
-            'Block questions containing configured sensitive words across chat, search, and agent chat.',
-          fields: {
-            enableModule: 'Enable',
-            response: 'Response',
-            file: 'Sensitive words file',
-          },
-          placeholder: {
-            response:
-              'Your request could not be processed because it contains restricted content. Please modify your input and try again.',
-          },
-          fileTip:
-            'Upload one .txt file up to 30 MiB. Use one sensitive word or phrase per line.',
-          download: 'Download current file',
-          downloadFailed: 'Sensitive words file is not available',
-          uploaded:
-            'Sensitive words file "{{filename}}" uploaded. {{count}} words loaded.',
-          messages: {
-            response: 'Please enter the response',
-            fileType: 'Only .txt files are allowed',
-            fileSize: 'The file must be 30 MiB or smaller',
-          },
-        },
-        exposeModelProvider: {
-          title: 'Expose Model Provider',
-          description: 'Display the model provider page to non-admin users.',
-          fields: {
-            enableModule: 'Enable',
-          },
-        },
-        exposeApi: {
-          title: 'Expose API',
-          description: 'Display the API page to non-admin users.',
-          fields: {
-            enableModule: 'Enable',
-          },
-        },
-        emailVerification: {
-          title: 'Email Verification',
-          description:
-            "Send verification code to the user's registered email via the system default mailbox.",
-          fields: {
-            enableModule: 'Enable',
-          },
-        },
-      },
 
       sandboxSettingsPage: {
         description:
@@ -4489,17 +4147,11 @@ Important structured information may include: names, dates, locations, events, k
       user: 'User',
       userType: 'User type',
       superuser: 'Superuser',
-      ldapServer: 'LDAP server',
       normalUser: 'Normal',
 
-      signInWith: 'Sign in with {{name}}',
       createTime: 'Create time',
       lastLoginTime: 'Last login time',
       lastUpdateTime: 'Last update time',
-      plan: 'Plan',
-      trial: 'Trial',
-      starter: 'Starter',
-      pro: 'Pro',
 
       isAnonymous: 'Is anonymous',
       isSuperuser: 'Is superuser',
@@ -4570,22 +4222,6 @@ Important structured information may include: names, dates, locations, events, k
       alive: 'Alive',
       timeout: 'Timeout',
       fail: 'Fail',
-    },
-    license: {
-      title: 'License',
-      description: 'Manage your licenses and ensure continuous operation.',
-      addLicense: 'Add license',
-      table: {
-        id: 'ID',
-        startTime: 'Start time',
-        expiryTime: 'Expiry time',
-        status: 'Status',
-      },
-      status: {
-        valid: 'Valid',
-        expired: 'Expired',
-        pending: 'Pending',
-      },
     },
     explore: {
       title: 'Launch',

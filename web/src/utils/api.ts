@@ -19,24 +19,11 @@ const restAPIv1 = `/api/v1`;
 
 export { restAPIv1, webAPI };
 
-export default {
-  // notification
-  notification: `${restAPIv1}/notification`,
+import merge from 'lodash/merge';
+import apiPrivate from '@/ee/utils/api-private';
 
-  // expose model provider
-  exposeModelProvider: `${restAPIv1}/expose_model_provider`,
-
-  // expose api
-  exposeApi: `${restAPIv1}/expose_api`,
-
+const apiEndpoints = {
   // user
-  loginGetCaptcha: `${restAPIv1}/auth/password/forgot/captcha`,
-  loginSendVerifyCode: `${restAPIv1}/auth/password/forgot/otp`,
-  loginVerifyEmail: `${restAPIv1}/auth/password/forgot/otp/verify`,
-  submitResetPassword: `${restAPIv1}/auth/password/reset`,
-  registerGetCaptcha: `${restAPIv1}/auth/register/captcha`,
-  registerSendVerifyCode: `${restAPIv1}/auth/register/otp`,
-  registerVerifyEmail: `${restAPIv1}/auth/register/otp/verify`,
   login: `${restAPIv1}/auth/login`,
   logout: `${restAPIv1}/auth/logout`,
   register: `${restAPIv1}/users`,
@@ -139,10 +126,6 @@ export default {
     `${restAPIv1}/providers/${provider_name}/instances/${instance_name}/models`,
 
   // data source
-  dataSourceListFiles: (id: string) =>
-    `${restAPIv1}/connectors/${id}/list-files`,
-  dataSourceSyncFiles: (id: string) =>
-    `${restAPIv1}/connectors/${id}/sync-to-folder`,
   dataSourceUpdate: (id: string) => `${restAPIv1}/connectors/${id}`,
   dataSourceSet: `${restAPIv1}/connectors`,
   dataSourceList: `${restAPIv1}/connectors`,
@@ -174,8 +157,6 @@ export default {
 
   // knowledge base
 
-  duplicate_kb: `${webAPI}/kb/clone`,
-  check_embedding: `${webAPI}/kb/check_embedding`,
   checkEmbedding: (datasetId: string) =>
     `${restAPIv1}/datasets/${datasetId}/embedding/check`,
   kbList: `${restAPIv1}/datasets`,
@@ -240,17 +221,6 @@ export default {
       .map((s) => encodeURIComponent(s))
       .join('/')}`,
   // data pipeline log
-  runGraphRag: (datasetId: string) =>
-    `${restAPIv1}/datasets/${datasetId}/run_graphrag`,
-  traceGraphRag: (datasetId: string) =>
-    `${restAPIv1}/datasets/${datasetId}/trace_graphrag`,
-  runRaptor: (datasetId: string) =>
-    `${restAPIv1}/datasets/${datasetId}/run_raptor`,
-  traceRaptor: (datasetId: string) =>
-    `${restAPIv1}/datasets/${datasetId}/trace_raptor`,
-  traceDuplicate: (id: string) => `${webAPI}/kb/trace_clone?kb_id=${id}`,
-  switchEmbeddingModel: `${webAPI}/kb/switch_embedding`,
-  traceEmbedding: (id: string) => `${webAPI}/kb/trace_embedding?kb_id=${id}`,
   fetchDataPipelineLog: (datasetId: string) =>
     `${restAPIv1}/datasets/${datasetId}/ingestions`,
   getPipelineDetail: (datasetId: string, logId: string) =>
@@ -373,23 +343,6 @@ export default {
   setLangfuseConfig: `${restAPIv1}/langfuse/api-key`,
 
   // flow
-  joinCanvasPresence: `${webAPI}/canvas/presence/join`,
-  heartbeatCanvasPresence: `${webAPI}/canvas/presence/heartbeat`,
-  leaveCanvasPresence: `${webAPI}/canvas/presence/leave`,
-  fetchCanvasPresence: (canvasId: string) =>
-    `${webAPI}/canvas/${canvasId}/presence`,
-
-  listTemplates: `${webAPI}/canvas/templates`,
-  listCanvas: `${webAPI}/canvas/list`,
-  getCanvas: `${webAPI}/canvas/get`,
-  getCanvasSSE: (canvasId: string) => `${webAPI}/canvas/getsse/${canvasId}`,
-  removeCanvas: `${webAPI}/canvas/rm`,
-  setCanvas: `${webAPI}/canvas/set`,
-  settingCanvas: `${webAPI}/canvas/setting`,
-  getListVersion: `${webAPI}/canvas/getlistversion`,
-  getVersion: `${webAPI}/canvas/getversion`,
-  resetCanvas: `${webAPI}/canvas/reset`,
-  runCanvas: `${webAPI}/canvas/completion`,
   listAgentTemplate: `${restAPIv1}/agents/templates`,
   listAgents: `${restAPIv1}/agents`,
   listAgentTags: `${restAPIv1}/agents/tags`,
@@ -545,9 +498,9 @@ export default {
     `${restAPIv1}/admin/services/${serviceId}`,
 
   adminListRoles: `${restAPIv1}/admin/roles`,
-  adminListRolesWithPermission: `${restAPIv1}/admin/roles/permission`,
+  adminListRolesWithPermission: `${restAPIv1}/admin/roles_with_permission`,
   adminGetRolePermissions: (roleName: string) =>
-    `${restAPIv1}/admin/roles/${roleName}/permission`,
+    `${restAPIv1}/admin/roles/${roleName}/permissions`,
   adminAssignRolePermissions: (roleName: string) =>
     `${restAPIv1}/admin/roles/${roleName}/permission`,
   adminRevokeRolePermissions: (roleName: string) =>
@@ -556,15 +509,6 @@ export default {
   adminDeleteRole: (roleName: string) => `${restAPIv1}/admin/roles/${roleName}`,
   adminUpdateRoleDescription: (roleName: string) =>
     `${restAPIv1}/admin/roles/${roleName}`,
-  adminRoleDefaultModels: (roleName: string) =>
-    `${restAPIv1}/admin/roles/${roleName}/default-models`,
-
-  adminListMyLlm: `${restAPIv1}/admin/llm/my_llms`,
-  adminListLlmFactories: `${restAPIv1}/admin/llm/factories`,
-  adminListAllFactoryLlms: `${restAPIv1}/admin/llm/list`,
-  adminSetLlmApiKey: `${restAPIv1}/admin/llm/set_api_key`,
-  adminAddLlmFactory: `${restAPIv1}/admin/llm/add_llm`,
-  adminDeleteLlmFactory: `${restAPIv1}/admin/llm/delete_factory`,
 
   adminUpdateUserRole: (username: string) =>
     `${restAPIv1}/admin/users/${username}/role`,
@@ -583,83 +527,6 @@ export default {
 
   adminGetSystemVersion: `${restAPIv1}/admin/version`,
 
-  adminVariables: `${restAPIv1}/admin/variables`,
-  adminUploadSensitiveWordFilter: `${restAPIv1}/admin/sensitive_word_filter/upload`,
-  adminDownloadSensitiveWordFilter: `${restAPIv1}/admin/sensitive_word_filter/download`,
-  adminTestSMTPConnection: `${restAPIv1}/admin/validate_mail`,
-
-  // evaluation
-  listEvaluationDetailFile: (id: string) =>
-    `${webAPI}/evaluation/collection/${id}/cases`,
-  downloadEvaluationFile: (id: string) =>
-    `${webAPI}/evaluation/collection/${id}/case/export`,
-  // collection
-  evaluationCreateCollection: `${webAPI}/evaluation/collection/create`,
-  evaluationListCollection: `${webAPI}/evaluation/collection/list`,
-  evaluationGetCollection: (collectionId: string) =>
-    `${webAPI}/evaluation/collection/${collectionId}`,
-  evaluationUpdateCollection: (collectionId: string) =>
-    `${webAPI}/evaluation/collection/${collectionId}`,
-  evaluationDeleteCollection: `${webAPI}/evaluation/collection/remove`,
-
-  // case
-  evaluationAddCase: (collectionId: string) =>
-    `${webAPI}/evaluation/collection/${collectionId}/case/add`,
-  evaluationImportCase: (collectionId: string) =>
-    `${webAPI}/evaluation/collection/${collectionId}/case/import`,
-  evaluationListCase: (collectionId: string) =>
-    `${webAPI}/evaluation/collection/${collectionId}/cases`,
-  evaluationDeleteCase: (caseId: string) =>
-    `${webAPI}/evaluation/case/${caseId}`,
-  evaluationUpdateCase: (caseId: string) =>
-    `${webAPI}/evaluation/case/${caseId}`,
-
-  // run
-
-  evaluationStartRun: (runId: string) =>
-    `${webAPI}/evaluation/run/${runId}/start`,
-  evaluationRun: `${webAPI}/evaluation/run`,
-  evaluationGetRun: (runId: string) => `${webAPI}/evaluation/run/${runId}`,
-  evaluationGetRunResults: (runId: string) =>
-    `${webAPI}/evaluation/run/${runId}/results`,
-  evaluationListRun: `${webAPI}/evaluation/run/list`,
-  evaluationDeleteRun: (runId: string) => `${webAPI}/evaluation/run/${runId}`,
-  evaluationUpdateRun: (runId: string) => `${webAPI}/evaluation/run/${runId}`,
-  evaluationDuplicateRun: (runId: string) =>
-    `${webAPI}/evaluation/run/${runId}/duplicate`,
-
-  evaluationCancelRun: (runId: string) =>
-    `${webAPI}/evaluation/run/${runId}/cancel`,
-
-  // execute
-  evaluationExecuteAll: (runId: string) =>
-    `${webAPI}/evaluation/run/${runId}/execute_all`,
-  evaluationExecuteCase: (runId: string, caseId: string) =>
-    `${webAPI}/evaluation/run/${runId}/case/${caseId}/execute`,
-
-  // metrics
-  evaluationCalculateCaseMetric: (runId: string, caseId: string) =>
-    `${webAPI}/evaluation/run/${runId}/case/${caseId}/metric`,
-  evaluationCalculateRunsMetrics: (runId: string) =>
-    `${webAPI}/evaluation/run/${runId}/metrics`,
-  evaluationCalculateRunsMetric: (runId: string) =>
-    `${webAPI}/evaluation/run/${runId}/metric`,
-  evaluationCalculateCaseMetrics: (runId: string, caseId: string) =>
-    `${webAPI}/evaluation/run/${runId}/case/${caseId}/metrics`,
-
-  // clear results
-  evaluationClearCaseResult: (runId: string, caseId: string) =>
-    `${webAPI}/evaluation/run/${runId}/case/${caseId}/result`,
-  evaluationClearCaseMetricResult: (runId: string, caseId: string) =>
-    `${webAPI}/evaluation/run/${runId}/case/${caseId}/result/metric`,
-  evaluationClearCaseAnswer: (runId: string, caseId: string) =>
-    `${webAPI}/evaluation/run/${runId}/case/${caseId}/result/answer`,
-
-  // other
-  evaluationGetRecommendations: (runId: string) =>
-    `${webAPI}/evaluation/run/${runId}/recommendations`,
-  evaluationExportRun: (runId: string) =>
-    `${webAPI}/evaluation/run/${runId}/export`,
   // Sandbox settings
   adminListSandboxProviders: `${restAPIv1}/admin/sandbox/providers`,
   adminGetSandboxProviderSchema: (providerId: string) =>
@@ -668,17 +535,6 @@ export default {
   adminSetSandboxConfig: `${restAPIv1}/admin/sandbox/config`,
   adminTestSandboxConnection: `${restAPIv1}/admin/sandbox/test`,
 
-  // Model Usage Statistics (LLM Trace)
-  adminLlmTraceSummary: `${restAPIv1}/admin/llm_trace/stats/summary`,
-  adminLlmTraceByOrg: `${restAPIv1}/admin/llm_trace/stats/by-org`,
-  adminLlmTraceTopConsumers: `${restAPIv1}/admin/llm_trace/stats/top-consumers`,
-  adminLlmTraceTrends: `${restAPIv1}/admin/llm_trace/stats/trends`,
-  adminLlmTraceByModel: `${restAPIv1}/admin/llm_trace/stats/by-model`,
-  adminLlmTraceRecent: `${restAPIv1}/admin/llm_trace/recent`,
-  // License
-  adminGetLicense: `${restAPIv1}/admin/license`,
-  adminSetLicense: `${restAPIv1}/admin/license`,
-  adminGetFingerprint: `${restAPIv1}/admin/fingerprint`,
   // Skill spaces
   skillSpaces: `${restAPIv1}/skills/spaces`,
   skillSpace: (spaceId: string) => `${restAPIv1}/skills/spaces/${spaceId}`,
@@ -688,3 +544,10 @@ export default {
   skillIndex: `${restAPIv1}/skills/index`,
   skillReindex: `${restAPIv1}/skills/reindex`,
 };
+
+// Enterprise customization overlays: the enterprise repository carries a real
+// implementation of the same-path file `web/src/ee/utils/api-private.ts`;
+// upstream ships it as an empty object so this import resolves in both trees.
+// Enterprise endpoints must live only in the ee/ file, never here. Keys in
+// the overlay override or extend `apiEndpoints`.
+export default merge(apiEndpoints, apiPrivate);

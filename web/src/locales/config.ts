@@ -52,11 +52,14 @@ export const supportedLanguages = supportedLanguageCodes.map((code) => {
 export const DEFAULT_LANGUAGE_CODE =
   import.meta.env.VITE_DEFAULT_LANGUAGE_CODE || LanguageAbbreviation.En;
 
-// private
+// Enterprise customization overlays: the enterprise repository carries real
+// implementations of these same-path files (`web/src/ee/locales/*-private.ts`);
+// upstream ships them as empty objects so shared imports resolve in both
+// trees. Enterprise content must live only in the ee/ files, never here.
 import merge from 'lodash/merge';
-import translation_en_private from './en-private';
-import translation_zh_private from './zh-private';
-import translation_zh_traditional_private from './zh-traditional-private';
+import translation_en_private from '@/ee/locales/en-private';
+import translation_zh_private from '@/ee/locales/zh-private';
+import translation_zh_traditional_private from '@/ee/locales/zh-traditional-private';
 
 const resources = {
   [LanguageAbbreviation.En]: merge(translation_en, translation_en_private),
