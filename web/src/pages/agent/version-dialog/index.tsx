@@ -22,11 +22,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
 import { Spin } from '@/components/ui/spin';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+import { RAGFlowTooltip } from '@/components/ui/tooltip';
 import { useClientPagination } from '@/hooks/logic-hooks/use-pagination';
 import {
   useApplyVersion,
@@ -58,7 +54,9 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router';
 import { nodeTypes } from '../canvas';
+import { useIsPipeline } from '../hooks/use-is-pipeline';
 import { AliasFormDialog } from '../components/alias-form-dialog';
+import { CanvasSnapshot, CanvasSnapshotContext } from '../context';
 import { downloadDsl } from '../utils/download-dsl';
 
 type PendingAction =
@@ -73,6 +71,7 @@ export function VersionDialog({
 }: IModalProps<any> & { initialName?: string; title?: ReactNode }) {
   const { t } = useTranslation();
   const { id: canvasId } = useParams();
+  const isPipeline = useIsPipeline();
   const { data, loading } = useFetchVersionList();
   const [selectedId, setSelectedId] = useState<string>('');
   const {
@@ -109,6 +108,22 @@ export function VersionDialog({
     () => released.find((x) => x.id === selectedId)?.alias,
     [released, selectedId],
   );
+
+  // Snapshot handed to the preview so variable labels inside node components
+  // resolve against the version's own graph instead of the live canvas store
+  // (which holds the current draft).
+  const previewSnapshot = useMemo<CanvasSnapshot | null>(() => {
+    const dsl = agent?.dsl;
+    if (!dsl?.graph?.nodes) {
+      return null;
+    }
+    return {
+      nodes: dsl.graph.nodes,
+      edges: dsl.graph.edges ?? [],
+      globals: dsl.globals ?? {},
+      variables: dsl.variables ?? {},
+    };
+  }, [agent?.dsl]);
 
   // Filtering shrinks the list, so jump back to page 1; otherwise a stale
   // page 2+ selection would render an empty list with matches out of view.
@@ -163,6 +178,22 @@ export function VersionDialog({
       downloadDsl(agent.dsl, agent.title);
     }
   }, [agent?.dsl, agent?.title]);
+
+  const requestRestore = useCallback(() => {
+    setPending({
+      kind: 'restore',
+      versionId: selectedId,
+      title: agent?.title ?? '',
+    });
+  }, [selectedId, agent?.title]);
+
+  const requestDelete = useCallback(() => {
+    setPending({
+      kind: 'delete',
+      versionId: selectedId,
+      title: agent?.title ?? '',
+    });
+  }, [selectedId, agent?.title]);
 
   const runPending = useCallback(async () => {
     if (!pending || !canvasId) return;
@@ -232,26 +263,27 @@ export function VersionDialog({
                         {/* Alias edit entry (design G2, section 4.4): PATCHes
   the version metadata without creating a new version or touching the DSL.
   Pencil edits an existing alias, SavePlus adds one. */}
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <button
-                              type="button"
-                              className="ml-auto shrink-0 text-text-secondary opacity-0 group-hover:opacity-100 hover:text-text-primary"
-                              onClick={handleEditAlias(x.id, x.alias ?? '')}
-                            >
-                              {x.alias ? (
-                                <Pencil className="size-3.5" />
-                              ) : (
-                                <SavePlus className="size-4" />
-                              )}
-                            </button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            {x.alias
+                        <RAGFlowTooltip
+                          asChild
+                          tooltip={
+                            x.alias
                               ? t('flow.version.editAlias')
-                              : t('flow.version.addAlias')}
-                          </TooltipContent>
-                        </Tooltip>
+                              : t('flow.version.addAlias')
+                          }
+                        >
+                          <Button
+                            variant="static"
+                            size="auto"
+                            className="ml-auto opacity-0 group-hover:opacity-100"
+                            onClick={handleEditAlias(x.id, x.alias ?? '')}
+                          >
+                            {x.alias ? (
+                              <Pencil className="size-3.5" />
+                            ) : (
+                              <SavePlus className="size-4" />
+                            )}
+                          </Button>
+                        </RAGFlowTooltip>
                       </div>
                     </li>
                   );
@@ -274,7 +306,10 @@ export function VersionDialog({
                       <div className="flex min-w-0 items-center">
                         <span className="pb-1 truncate">{agent?.title}</span>
                         {selectedAlias && (
-                          <span className="ml-2 shrink-0 text-accent-primary text-sm">
+                          <span
+                            className="ml-2 max-w-[30%] truncate text-accent-primary text-sm"
+                            title={selectedAlias}
+                          >
                             {selectedAlias}
                           </span>
                         )}
@@ -286,69 +321,76 @@ export function VersionDialog({
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <Button
-                        variant={'ghost'}
-                        onClick={downloadFile}
-                        title={t('flow.version.download')}
+                      <RAGFlowTooltip
+                        asChild
+                        tooltip={t('flow.version.download')}
                       >
-                        <ArrowDownToLine />
-                      </Button>
-                      <Button
-                        variant={'ghost'}
-                        onClick={() =>
-                          setPending({
-                            kind: 'restore',
-                            versionId: selectedId,
-                            title: agent?.title ?? '',
-                          })
-                        }
-                        title={t('flow.version.restore')}
-                        disabled={!selectedId || applyRestoring}
+                        <Button
+                          variant={'ghost'}
+                          onClick={downloadFile}
+                          disabled={!selectedId}
+                        >
+                          <ArrowDownToLine />
+                        </Button>
+                      </RAGFlowTooltip>
+                      <RAGFlowTooltip
+                        asChild
+                        tooltip={t('flow.version.restore')}
                       >
-                        <RotateCcw />
-                      </Button>
-                      <Button
-                        variant={'ghost'}
-                        onClick={() =>
-                          setPending({
-                            kind: 'delete',
-                            versionId: selectedId,
-                            title: agent?.title ?? '',
-                          })
-                        }
-                        title={t('flow.version.delete')}
-                        disabled={!selectedId || deleting}
+                        <Button
+                          variant={'ghost'}
+                          onClick={requestRestore}
+                          disabled={!selectedId || applyRestoring}
+                        >
+                          <RotateCcw />
+                        </Button>
+                      </RAGFlowTooltip>
+                      <RAGFlowTooltip
+                        asChild
+                        tooltip={t('flow.version.delete')}
                       >
-                        <Trash2 />
-                      </Button>
+                        <Button
+                          variant={'ghost'}
+                          onClick={requestDelete}
+                          disabled={!selectedId || deleting}
+                        >
+                          <Trash2 />
+                        </Button>
+                      </RAGFlowTooltip>
                     </div>
                   </section>
                   <section className="relative flex-1">
                     <ReactFlowProvider key={'flow-' + selectedId}>
-                      <ReactFlow
-                        connectionMode={ConnectionMode.Loose}
-                        nodes={agent?.dsl?.graph?.nodes || []}
-                        edges={
-                          agent?.dsl?.graph?.edges?.flatMap((x) => ({
-                            ...x,
-                            type: 'default',
-                          })) || []
-                        }
-                        fitView
-                        nodeTypes={nodeTypes}
-                        edgeTypes={{}}
-                        zoomOnScroll={true}
-                        panOnDrag={true}
-                        zoomOnDoubleClick={false}
-                        preventScrolling={true}
-                        minZoom={0.1}
-                        nodesDraggable={false}
-                        nodesConnectable={false}
-                        elementsSelectable={false}
-                      >
-                        <AgentBackground></AgentBackground>
-                        <Spotlight className="z-0" opcity={0.7} coverage={70} />
-                      </ReactFlow>
+                      <CanvasSnapshotContext.Provider value={previewSnapshot}>
+                        <ReactFlow
+                          connectionMode={ConnectionMode.Loose}
+                          nodes={agent?.dsl?.graph?.nodes || []}
+                          edges={
+                            agent?.dsl?.graph?.edges?.flatMap((x) => ({
+                              ...x,
+                              type: 'default',
+                            })) || []
+                          }
+                          fitView
+                          nodeTypes={nodeTypes}
+                          edgeTypes={{}}
+                          zoomOnScroll={true}
+                          panOnDrag={true}
+                          zoomOnDoubleClick={false}
+                          preventScrolling={true}
+                          minZoom={0.1}
+                          nodesDraggable={false}
+                          nodesConnectable={false}
+                          elementsSelectable={false}
+                        >
+                          <AgentBackground></AgentBackground>
+                          <Spotlight
+                            className="z-0"
+                            opcity={0.7}
+                            coverage={70}
+                          />
+                        </ReactFlow>
+                      </CanvasSnapshotContext.Provider>
                     </ReactFlowProvider>
                   </section>
                 </CardContent>
@@ -369,7 +411,17 @@ export function VersionDialog({
         onOpenChange={handlePendingOpenChange}
         onOk={runPending}
         title={t('flow.version.deleteConfirmTitle')}
-        content={{ node: t('flow.version.deleteConfirmContent') }}
+        // Pipeline versions can be pinned by datasets/files, so deleting one
+        // breaks parsing; agent (workflow) versions are only historical DSL
+        // snapshots, where the real risk is rolling back what embedded sites
+        // and external callers are serving.
+        content={{
+          node: t(
+            isPipeline
+              ? 'flow.version.deleteConfirmContent'
+              : 'flow.version.deleteAgentConfirmContent',
+          ),
+        }}
       />
 
       <AlertDialog

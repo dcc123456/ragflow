@@ -54,25 +54,24 @@ export const confluenceConstant = (t: TFunction) => [
       // { label: t('setting.dataSourceOptionPage'), value: 'page' },
     ],
   },
-  // {
-  //   name: 'config.page_id',
-  //   label: t('setting.dataSourceFieldPageId'),
-  //   type: FormFieldType.Text,
-  //   customValidate: (val: string, formValues: any) => {
-  //     const index_mode = formValues?.config?.index_mode;
-  //     console.log('index_mode', index_mode, val);
-  //     if (!val && index_mode === 'page') {
-  //       return t('setting.dataSourceValidationFieldRequired', {
-  //         label: t('setting.dataSourceFieldPageId'),
-  //       });
-  //     }
-  //     return true;
-  //   },
-  //   shouldRender: (formValues: any) => {
-  //     const index_mode = formValues?.config?.index_mode;
-  //     return index_mode === 'page';
-  //   },
-  // },
+  {
+    name: 'config.page_id',
+    label: t('setting.dataSourceFieldPageId'),
+    type: FormFieldType.Text,
+    customValidate: (val: string, formValues: any) => {
+      const index_mode = formValues?.config?.index_mode;
+      if (!val && index_mode === 'page') {
+        return t('setting.dataSourceValidationFieldRequired', {
+          label: t('setting.dataSourceFieldPageId'),
+        });
+      }
+      return true;
+    },
+    shouldRender: (formValues: any) => {
+      const index_mode = formValues?.config?.index_mode;
+      return index_mode === 'page';
+    },
+  },
   {
     name: 'config.space',
     label: t('setting.dataSourceFieldSpaceKey'),
