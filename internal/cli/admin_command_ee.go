@@ -165,15 +165,15 @@ func (p *Parser) parseAdminListIngestionTasks() (*Command, error) {
 }
 
 func (p *Parser) parseAdminShowIngestionLog() (*Command, error) {
-	return nil, errors.New("ingestion logs are only available in the enterprise edition")
+	return p.parseAdminIngestionLog()
 }
 
 func (c *CLI) AdminShowIngestionLogCommand(commandCount int, cmd *Command) (ResponseIf, error) {
-	return nil, errors.New("ingestion logs are only available in the enterprise edition")
+	return c.showAdminIngestionLog(commandCount, cmd, false)
 }
 
 func (c *CLI) AdminShowIngestionMessagesCommand(commandCount int, cmd *Command) (ResponseIf, error) {
-	return nil, errors.New("ingestion logs are only available in the enterprise edition")
+	return c.showAdminIngestionLog(commandCount, cmd, true)
 }
 
 func (c *CLI) AdminListUserIngestionTasksCommand(commandCount int, cmd *Command) (ResponseIf, error) {

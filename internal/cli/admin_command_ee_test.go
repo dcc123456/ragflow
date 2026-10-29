@@ -20,8 +20,11 @@ package cli
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -205,3 +208,142 @@ func TestParseAdminListUserAgentsRequiresEE(_ *testing.T) {}
 func TestAdminListUserAgentsRequiresEE(_ *testing.T) {}
 
 func TestParseAPIListAgents(_ *testing.T) {}
+
+func TestAdminIngestionLogCommands(t *testing.T) {
+	const detail = `{"id":"run-1","name":"example.txt","chunk_count":0,"nickname":null}`
+	longMessage := "Parser Started " + strings.Repeat("detail ", 80) + "last diagnostic line"
+	messages := `{"run_count":1,"items":[{"id":9007199254740993,"ts":null,"event_type":0,"component":"Parser","phase":0,"message":"` + longMessage + `"}],"oldest_id":9007199254740993,"newest_id":9007199254740993,"has_more_before":true,"has_more_after":false,"terminal":false}`
+	const empty = `{"run_count":1,"items":[],"oldest_id":0,"newest_id":0,"has_more_before":true,"has_more_after":false,"terminal":true}`
+	for _, tt := range []struct {
+		name, suffix, query, data string
+		format                    OutputFormat
+	}{
+		{"detail", "", "", detail, OutputFormatJSON},
+		{"messages", " MESSAGES", "", messages, OutputFormatJSON},
+		{"older", " messages WITH LiMiT 2 BEFORE_ID 9007199254740993", "before_id=9007199254740993&limit=2", messages, OutputFormatPlain},
+		{"newer", " MESSAGES WITH after_id 9007199254740993", "after_id=9007199254740993", empty, OutputFormatJSON},
+		{"table", " MESSAGES WITH limit 500", "limit=500", messages, OutputFormatTable},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			const logID = "run /+&?=日志"
+			cmd, err := NewParser("SHOW INGESTION LOG '" + logID + "'" + tt.suffix + ";").Parse(AdminMode)
+			if err != nil {
+				t.Fatal(err)
+			}
+			path := "/api/v1/admin/ingestion/logs/" + url.PathEscape(logID)
+			if tt.suffix != "" {
+				path += "/messages"
+			}
+			var requests atomic.Int32
+			client := newTestHTTPClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requests.Add(1)
+				body, err := io.ReadAll(r.Body)
+				if err != nil || len(body) != 0 || r.Method != http.MethodGet || r.URL.EscapedPath() != path || r.URL.RawQuery != tt.query {
+					t.Errorf("request = %s %s, body = %q, error = %v", r.Method, r.URL, body, err)
+				}
+				if r.Header.Get("Authorization") != "admin-token" {
+					t.Error("admin login token was not forwarded")
+				}
+				_, _ = io.WriteString(w, `{"code":0,"message":"success","data":`+tt.data+`}`)
+			}))
+			token := "admin-token"
+			client.LoginToken = &token
+			c := &CLI{Config: &CommandLineConfig{CLIMode: AdminMode, OutputFormat: tt.format}, AdminServerClient: client}
+			response, err := c.ExecuteCommand(1, cmd)
+			if err != nil || response == nil || requests.Load() != 1 {
+				t.Fatalf("response = %v, error = %v, requests = %d", response, err, requests.Load())
+			}
+			output := captureAdminIngestionLogOutput(t, response)
+			if tt.format == OutputFormatJSON {
+				decode := func(input string) any {
+					var value any
+					decoder := json.NewDecoder(strings.NewReader(input))
+					decoder.UseNumber()
+					if err := decoder.Decode(&value); err != nil {
+						t.Fatalf("invalid JSON output %q: %v", input, err)
+					}
+					return value
+				}
+				if !reflect.DeepEqual(decode(output), decode(tt.data)) {
+					t.Fatalf("output = %s, want data object %s", output, tt.data)
+				}
+			} else if !strings.Contains(output, longMessage) || !strings.Contains(output, "has_more_before") || !strings.Contains(output, "9007199254740993") {
+				t.Fatalf("output must include messages and pagination metadata: %s", output)
+			}
+		})
+	}
+}
+
+func TestParseAdminIngestionLogRejectsInvalidOptions(t *testing.T) {
+	for _, input := range []string{
+		"SHOW INGESTION LOG '';", "SHOW INGESTION LOG '   ';", "SHOW INGESTION TASK 'id';",
+		"SHOW INGESTION LOG 'id' WITH limit 1;", "SHOW INGESTION LOG 'id'; unexpected",
+		"SHOW INGESTION LOG 'id' MESSAGES WITH;", "SHOW INGESTION LOG 'id' MESSAGES WITH after_id;",
+		"SHOW INGESTION LOG 'id' MESSAGES WITH unknown 1;", "SHOW INGESTION LOG 'id' MESSAGES WITH limit 1 LIMIT 2;",
+		"SHOW INGESTION LOG 'id' MESSAGES WITH before_id 1 BEFORE_ID 2;",
+	} {
+		t.Run(input, func(t *testing.T) {
+			if cmd, err := NewParser(input).Parse(AdminMode); cmd != nil || err == nil {
+				t.Fatalf("Parse() = (%v, %v), want invalid command", cmd, err)
+			}
+		})
+	}
+}
+
+func TestAdminIngestionLogErrors(t *testing.T) {
+	for _, tt := range []struct {
+		status                        int
+		options, query, body, message string
+	}{
+		{200, "", "", `{"code":102,"message":"log not found"}`, "log not found"},
+		{200, "", "", `{"code":500,"message":"database unavailable"}`, "database unavailable"},
+		{403, "", "", `{"code":403,"message":"Permission denied"}`, "HTTP 403"},
+		{200, "", "", `{"code":0,"data":`, "invalid JSON"},
+		{200, "", "", `{"code":0,"data":{}} {}`, "invalid JSON after response object"},
+		{200, " MESSAGES WITH limit 0", "limit=0", `{"code":101,"message":"limit must be a positive integer"}`, "limit must be a positive integer"},
+		{200, " MESSAGES WITH limit 501", "limit=501", `{"code":101,"message":"limit must be between 1 and 500"}`, "limit must be between 1 and 500"},
+		{200, " MESSAGES WITH before_id 1 after_id 2", "after_id=2&before_id=1", `{"code":101,"message":"after_id and before_id are mutually exclusive"}`, "after_id and before_id are mutually exclusive"},
+		{200, " MESSAGES WITH after_id 1.5", "after_id=1.5", `{"code":101,"message":"after_id must be a positive integer"}`, "after_id must be a positive integer"},
+	} {
+		t.Run(tt.message, func(t *testing.T) {
+			client := newTestHTTPClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.RawQuery != tt.query {
+					t.Errorf("query = %q, want %q", r.URL.RawQuery, tt.query)
+				}
+				w.WriteHeader(tt.status)
+				_, _ = io.WriteString(w, tt.body)
+			}))
+			token := "admin-token"
+			client.LoginToken = &token
+			c := &CLI{Config: &CommandLineConfig{CLIMode: AdminMode}, AdminServerClient: client}
+			cmd, err := NewParser("SHOW INGESTION LOG 'id'" + tt.options + ";").Parse(AdminMode)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if response, err := c.ExecuteCommand(1, cmd); response != nil || err == nil || !strings.Contains(err.Error(), tt.message) {
+				t.Fatalf("response = %v, error = %v, want %s", response, err, tt.message)
+			}
+		})
+	}
+}
+
+func captureAdminIngestionLogOutput(t *testing.T, response ResponseIf) string {
+	t.Helper()
+	outputFile, err := os.CreateTemp(t.TempDir(), "ingestion-log-output-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer outputFile.Close()
+	stdout := os.Stdout
+	os.Stdout = outputFile
+	defer func() { os.Stdout = stdout }()
+	response.PrintOut()
+	if _, err := outputFile.Seek(0, io.SeekStart); err != nil {
+		t.Fatal(err)
+	}
+	output, err := io.ReadAll(outputFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(output)
+}
