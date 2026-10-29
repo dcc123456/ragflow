@@ -1,4 +1,4 @@
-//go:build cgo && integration
+//go:build cgo && integration && ee
 
 //
 //  Copyright 2026 The InfiniFlow Authors. All Rights Reserved.

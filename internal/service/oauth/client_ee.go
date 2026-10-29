@@ -28,6 +28,8 @@
 // JWKS (see oidc_ee.go) and merges its claims underneath the /userinfo
 // response. Only asymmetric algorithms advertised by the provider are
 // accepted, and the `sub` of both responses must agree.
+//go:build ee
+
 package oauth
 
 import (

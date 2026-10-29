@@ -14,12 +14,11 @@
 //  limitations under the License.
 //
 
+//go:build ee
+
 package config
 
 import "github.com/spf13/viper"
-
-type BillingConfig struct {
-}
 
 func (c *Config) ParseBillingConfig(v *viper.Viper) error {
 	return nil

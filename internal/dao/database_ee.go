@@ -14,6 +14,8 @@
 // limitations under the License.
 //
 
+//go:build ee
+
 package dao
 
 import (
@@ -43,3 +45,9 @@ func permissionDataModelsEE() []interface{} {
 func initializeSystemSettingsEE(ctx context.Context, db *gorm.DB) error {
 	return ensureDefaultTenantInviteEnabled(ctx, db)
 }
+
+// billingDataModelsEE returns no billing tables in the community edition.
+func billingDataModelsEE() []interface{} { return nil }
+
+// migrateBillingSchemaEE is a no-op in the community edition.
+func migrateBillingSchemaEE(ctx context.Context, db *gorm.DB) error { return nil }

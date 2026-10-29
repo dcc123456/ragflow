@@ -1,4 +1,4 @@
-//go:build cgo
+//go:build cgo && ee
 
 // Command generate_overlay_ee runs the EE 2-class TSR Go port (RunTSREE) on the
 // parity fixture, matches its output against the EE Python golden using the SAME

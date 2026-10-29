@@ -14,10 +14,20 @@
 // limitations under the License.
 //
 
+//go:build ee
+
 package service
 
-import "testing"
+import (
+	"testing"
 
-func grantServiceTestResource(_ *testing.T, _ string, _ string, _ string, _ string, _ int32) {}
+	"ragflow/internal/entity"
+)
 
 func restrictServiceTestFeatureRole(_ *testing.T, _ string, _ string, _ int32) {}
+
+// permissionChangeLogTestModels adds the permission audit log written by the
+// enterprise tenant flows.
+func permissionChangeLogTestModels() []interface{} {
+	return []interface{}{&entity.PermissionChangeLog{}}
+}

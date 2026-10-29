@@ -14,6 +14,8 @@
 //  limitations under the License.
 //
 
+//go:build ee
+
 package clickhouse
 
 import (
@@ -208,14 +210,14 @@ func (d *Driver) flushModelUsage(batch []*common.ModelUsage) {
 
 	batchInsert, err := d.conn.PrepareBatch(d.ctx, `
         INSERT INTO model_usage_fact (
-            start_at, 
+            start_at,
             event_date,
             event_hour,
             user_id,
             user_email,
             tenant_id,
             tenant_email,
-            group_id, 
+            group_id,
             group_name,
             app_id,
             app_name,
@@ -291,14 +293,14 @@ func (d *Driver) flushOperationLog(batch []*common.OperationLog) {
 
 	batchInsert, err := d.conn.PrepareBatch(d.ctx, `
         INSERT INTO operation_audit_log (
-            event_time, 
+            event_time,
             user_id,
             ip_address,
             operation,
             api_path,
             http_method,
             resource_type,
-            resource_id, 
+            resource_id,
             resource_name,
             request_params,
             error_code,
@@ -498,7 +500,7 @@ type OperationLogStats struct {
 
 func (d *Driver) OperationLogStats(userID string, startTime, endTime time.Time, limit, offset int64) ([]OperationLogStats, error) {
 	query := `
-    SELECT 
+    SELECT
         event_id,
         event_time,
         user_id,

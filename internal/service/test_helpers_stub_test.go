@@ -14,6 +14,14 @@
 // limitations under the License.
 //
 
-package dao
+//go:build !ee
 
-func tenantDAOTestExtraModels() []interface{} { return nil }
+package service
+
+import "testing"
+
+func restrictServiceTestFeatureRole(_ *testing.T, _ string, _ string, _ int32) {}
+
+// permissionChangeLogTestModels adds no tables: the community edition has no
+// permission audit log.
+func permissionChangeLogTestModels() []interface{} { return nil }

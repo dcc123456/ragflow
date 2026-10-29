@@ -1,4 +1,4 @@
-//go:build cgo
+//go:build cgo && ee
 
 // EE DeepDoc runtime activation for the native analyzer package.
 //
