@@ -1010,6 +1010,7 @@ export const useFetchAgentLog = (searchParams: IAgentLogsRequest) => {
     queryFn: async () => {
       const { data } = await fetchAgentLogsByCanvasId(id as string, {
         ...searchParams,
+        include_reference: true,
       });
 
       return { total: data?.total ?? 0, sessions: data?.data ?? [] };
@@ -1021,8 +1022,12 @@ export const useFetchAgentLog = (searchParams: IAgentLogsRequest) => {
 
 export const AgentSessionKeys = {
   all: [AgentApiAction.FetchSessionsByCanvasId] as const,
-  list: (canvasId?: string, tenantId?: string) =>
-    [...AgentSessionKeys.all, canvasId, tenantId] as const,
+  list: (
+    canvasId?: string,
+    tenantId?: string,
+    operatorPermission?: Permission,
+  ) =>
+    [...AgentSessionKeys.all, canvasId, tenantId, operatorPermission] as const,
 };
 
 export const useFetchSessionsByCanvasId = () => {
@@ -1031,25 +1036,19 @@ export const useFetchSessionsByCanvasId = () => {
   const { data: agentDetail } = useFetchAgent();
   const operatorPermission = agentDetail?.operator_permission;
 
-  const { data, isFetching: loading } = useQuery<IAgentLogsResponse>({
-    queryKey: [
-      AgentApiAction.FetchSessionsByCanvasId,
+  return useSessionList<IAgentLogResponse>({
+    queryKey: AgentSessionKeys.list(
       canvasId,
+      tenantInfo.tenant_id,
       operatorPermission,
-    ],
-    initialData: { total: 0, sessions: [] } as IAgentLogsResponse,
-    gcTime: 0,
+    ),
     enabled:
       !!canvasId && !isEmpty(tenantInfo) && operatorPermission !== undefined,
-    queryFn: async () => {
-      if (!canvasId) {
-        return { total: 0, sessions: [] };
-      }
-
+    fetchPage: async (params) => {
       const shouldListAllSessions = operatorPermission !== Permission.Read;
-      const { data } = await fetchAgentLogsByCanvasId(canvasId, {
-        page: 1,
-        page_size: 100,
+      const { data } = await fetchAgentLogsByCanvasId(canvasId!, {
+        ...params,
+        include_history: false,
         ...(shouldListAllSessions ? {} : { exp_user_id: tenantInfo.tenant_id }),
       });
 
@@ -1462,7 +1461,10 @@ export function useFetchSessionManually() {
         return null;
       }
 
-      const { data } = await fetchAgentLogsById(canvasId, sessionId);
+      const { data } = await fetchAgentLogsById(canvasId, sessionId, {
+        include_reference: true,
+        include_prompt: true,
+      });
 
       return data?.data;
     },

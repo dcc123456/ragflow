@@ -2177,6 +2177,11 @@ Example: Virtual Hosted Style`,
       mineruApiserver: 'MinerU API Server',
       mineruApiserverMessage: 'Please input the MinerU API Server URL!',
       mineruApiserverPlaceholder: 'e.g. http://host.docker.internal:9987',
+      mineruApiToken: 'MinerU API token',
+      mineruApiTokenPlaceholder:
+        'Token from mineru.net API management (optional)',
+      mineruApiTokenTip:
+        'When set, RAGFlow uses the official precise API (/api/v4, including vlm). Leave empty to use the no-login agent API. Not required for a self-hosted MinerU server.',
       mineruOutputDir: 'MinerU Output Directory',
       mineruOutputDirMessage: 'Please input the MinerU output directory!',
       mineruOutputDirPlaceholder: '/tmp/mineru',
@@ -2460,6 +2465,7 @@ Example: Virtual Hosted Style`,
       batchAddModels: 'Add all models',
       batchRemoveModels: 'Remove all models',
       batchVerifyModels: 'Verify all models',
+      moreActions: 'More actions',
       editCustomModelTitle: 'Edit model',
       modelMaxTokens: 'Max context length',
       modelFeatures: 'Model features',
@@ -2790,7 +2796,7 @@ Best for: Documents with flowing, contextually connected content — such as boo
       comma: 'Comma',
       semicolon: 'Semicolon',
       period: 'Period',
-      lineBreak: 'Line break',
+      linebreak: 'Line break',
       tab: 'Tab',
       space: 'Space',
       delimiters: 'Delimiters',
@@ -3449,8 +3455,12 @@ This delimiter is used to split the input text into several text pieces echo of 
         alias: 'Alias',
         pinnedTooltip:
           'This dataset is pinned to a specific version. New versions published on the agent will not affect it.',
+        addAlias: 'Add alias',
+        editAlias: 'Edit alias',
+        editAliasDescription:
+          'Give this version a memorable alias so you can find it quickly later.',
         outdated:
-          'The pinned version is not the latest. Click to learn more; we will not upgrade it automatically.',
+          'The configured pipeline version is not the latest and will not be updated automatically.',
         delete: 'Delete version',
         deleteConfirmTitle: 'Delete this version?',
         deleteConfirmContent:
