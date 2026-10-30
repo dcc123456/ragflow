@@ -14,7 +14,7 @@ import { useFetchFileList } from '@/hooks/use-file-request';
 import { Upload } from 'lucide-react';
 import { Dispatch, SetStateAction, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FilesInstanceType } from '.';
+import { FilesInstanceType } from '@/ee/pages/files/constant';
 import EnterpriseFeature from '../admin/components/enterprise-feature';
 import { CreateFolderDialog } from './create-folder-dialog';
 import { FilesTable } from './files-table';
@@ -32,10 +32,6 @@ import { useHandleUploadFile } from './use-upload-file';
 import { useGoToPreviousPageOnEmpty } from '@/hooks/logic-hooks';
 import { ListDeletionKey } from '@/constants/list-deletion';
 import { useHandleSyncFile } from './use-sync-file';
-export enum FileTabs {
-  FILE = 'file',
-  EVALUATION = 'evaluation',
-}
 export const FilesManager = {
   Root: ({
     setFileInstance,

@@ -12,6 +12,49 @@ RAGFlow frontend is a React/TypeScript application built with Vite:
 - **Data Fetching**: TanStack Query (React Query)
 - **i18n**: react-i18next
 
+## Enterprise Extension Seam (Mandatory)
+
+RAGFlow upstream evolves weekly and is merged in regularly. Every edit to a **shared file** (anything under `src/` that upstream also carries) becomes a merge conflict at the next merge-oss. Therefore:
+
+### Rule 1 — Shared files stay byte-identical to upstream
+
+**Never add enterprise-only behavior, translation keys, endpoints, components, or routes directly to a shared file.** After any change under `src/` outside `src/ee/`, verify: `git diff` against the corresponding upstream blob must not show enterprise-only content. Upstreamable bug fixes are the only legitimate shared-file edits.
+
+### Rule 2 — Enterprise code lives in `src/ee/`, mirroring the shared path
+
+Each extension point is a **same-path overlay file**: upstream ships it under `web/src/ee/` as an empty no-op, and this repository fills it with real content. Shared code imports it by the natural specifier (resolving through the generic `@/*` alias to each tree's own file):
+
+| Shared import | Upstream (empty no-op) | Enterprise content |
+|---|---|---|
+| `@/ee/locales/en-private` | `web/src/ee/locales/en-private.ts` = `{}` | `web/src/ee/locales/en-private.ts` (487 keys) |
+| `@/ee/locales/zh-private` | same-path empty object | Chinese enterprise translations |
+| `@/ee/locales/zh-traditional-private` | same-path empty object | Traditional Chinese enterprise translations |
+| `@/ee/utils/api-private` | same-path empty object | enterprise-only endpoints + path overrides |
+
+Both files are merged via `lodash/merge` in the shared file (`src/locales/config.ts`, `src/utils/api.ts`); overlay keys override same-named base keys, new keys are additive.
+
+Routing is the one exception: upstream exposes no same-path hook for `src/routes.tsx`, so enterprise routes are declared in `src/private-routes.tsx` and merged at runtime by `src/merge-routes.tsx` (see Rule 3).
+
+### Rule 3 — Where new enterprise content goes
+
+- **New enterprise-only API endpoint** → add the key to `src/ee/utils/api-private.ts` (function values use the `const webAPI = '/v1'; const restAPIv1 = '/api/v1';` consts already declared in that file). Do **not** add it to `src/utils/api.ts`.
+- **New enterprise-only translation key** → add it to the matching `src/ee/locales/<lang>-private.ts` (deep-merge: nest it under the same section path as `en.ts`/`zh.ts` would use). Do **not** add it to `src/locales/en.ts` or `src/locales/zh.ts`.
+- **Enterprise-only component, hook, service** → place the whole implementation under `src/ee/<same-path>/` and, when a shared file must reach it, extend the same-path overlay pattern: add an empty no-op file under `web/src/ee/` **upstream** (or propose it), then fill it here. Never fork the shared file.
+- **Enterprise content that must be inserted into a shared component** (nav entries, header badges, extra toolbar buttons) → do not fork the component. Give the shared file **one inert extension point** importing a same-path `src/ee/` overlay, then fill the overlay:
+  - render slot → overlay exports a component that `return null` upstream (e.g. `@/ee/layouts/components/header-enterprise` → `EnterpriseHeaderUpgradeBadge` / `EnterpriseHeaderTicketsLink` / `EnterpriseHeaderPlanBadge`);
+  - list extension → overlay exports a hook returning `{ items, hiddenPaths }` with `{ items: [], hiddenPaths: [] }` upstream (e.g. `@/ee/pages/admin/layouts/navigation-private` → `useEnterpriseAdminNav`).
+  The overlay owns all enterprise hooks/queries/navigation so the shared file needs no enterprise state; keep overlay identities stable (`useMemo`) because the shared file lists them in `useMemo` deps.
+- **Enterprise-only helper inside a shared hook** (e.g. `useNavigatePage`) → leave the shared hook byte-identical and put the helper in its own hook under `src/ee/hooks/`, updating enterprise call sites. Do not add the helper to the shared hook "for convenience".
+- **Enterprise-only route** → declare the entry in `src/private-routes.tsx`: add a `PrivateRoutes` enum member for any path enterprise code navigates to, then add the route tree entry. `src/merge-routes.tsx` merges this tree over the router upstream already built, so the entry must reach its target with `matchIndex` (n-th sibling with the same path, 1-based) and/or `replace` (upstream paths to substitute) instead of editing `src/routes.tsx`. Path constants come from `PrivateRoutes`, never from upstream `Routes`. Never edit `src/routes.tsx`: it must stay byte-identical to upstream.
+
+### Rule 4 — No per-file build aliases
+
+Do **not** add per-file entries to `vite.config.ts` / `jest.config.ts` / `tsconfig.json` to swap overlay implementations. The generic `@/*` mapping already resolves `@/ee/...` to each tree's own `src/ee/` file — that is the whole point. If an `@/ee/...` import fails to resolve, the fix is the file's location or name, not new build config.
+
+### Rule 5 — No compatibility shims
+
+When upstream changes something an overlay covers, update the overlay to match; do not keep both old and new keys, dead branches, or "move later" notes inside `src/ee/`. Delete overlay keys that upstream no longer uses.
+
 ## Common Commands
 
 ```bash
@@ -62,6 +105,8 @@ Respect explicit boundaries from the user. If the user says **"only fix the sele
 ### Internationalization (i18n)
 
 For translation tasks, add keys **only to the explicitly requested language files** (commonly `src/locales/zh.ts` and `src/locales/en.ts`). Do not auto-propagate changes to all language files unless the user explicitly asks.
+
+**Enterprise-only keys are the exception**: they go to the matching `src/ee/locales/<lang>-private.ts` overlay (see *Enterprise Extension Seam* above), never to `src/locales/en.ts` / `zh.ts` — keys in the shared locale files break the byte-identical-to-upstream guarantee and conflict on every merge-oss.
 
 - **Style for `en.ts`**: Sentence case — first word capitalized, rest lowercase (e.g., `referenceAnswer: 'Reference answer'`). Proper nouns remain as-is.
 

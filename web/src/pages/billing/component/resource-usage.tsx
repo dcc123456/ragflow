@@ -1,6 +1,6 @@
 import message from '@/components/ui/message';
 import { useFetchTenantInfo } from '@/hooks/use-user-setting-request';
-import { formatNumber } from '@/pages/admin/model-usage-statistics/utils';
+import { formatNumber } from '@/ee/pages/admin/model-usage-statistics/utils';
 import { useFetchAddonPlans } from '@/pages/price/hook/use-addon-plans';
 import {
   BillingDirectCheckoutResultEvent,

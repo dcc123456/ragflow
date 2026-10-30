@@ -1,5 +1,5 @@
 import message from '@/components/ui/message';
-import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
+import { useEvaluationNavigate } from '@/ee/hooks/use-evaluation-navigate';
 import { useRowSelection } from '@/hooks/logic-hooks/use-row-selection';
 import {
   useDeleteEvaluationCollection,
@@ -10,7 +10,7 @@ import { useState } from 'react';
 export const useEvaluationOperation = () => {
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [selectedItem, setSelectedItem] = useState<any>(null);
-  const { navigateToFileManagerEvaluationDetail } = useNavigatePage();
+  const { navigateToFileManagerEvaluationDetail } = useEvaluationNavigate();
   const { deleteEvaluationCollection } = useDeleteEvaluationCollection();
   const { updateEvaluationCollection } = useUpdateEvaluationCollection();
   const handleEdit = (item: any) => {

@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EvaluationType } from '@/constants/evaluation';
-import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
+import { useEvaluationNavigate } from '@/ee/hooks/use-evaluation-navigate';
 import {
   useFetchSessionList,
   useFetchSessionManually,
@@ -41,7 +41,7 @@ export default function Chat() {
   const { removeChatBox, addChatBox, chatBoxIds, hasSingleChatBox } =
     useAddChatBox(isDebugMode);
 
-  const { navigateToEvaluation } = useNavigatePage();
+  const { navigateToEvaluation } = useEvaluationNavigate();
 
   const { conversationId, isNew } = useGetChatSearchParams();
 

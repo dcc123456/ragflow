@@ -16,7 +16,7 @@ import { Input } from '@/components/ui/input';
 
 import { useTranslate } from '@/hooks/common-hooks';
 
-import { useSSOVariables } from '../../hooks/useSSOVariables';
+import { useSSOVariables } from '@/pages/admin/hooks/useSSOVariables';
 import SSOProviderCloudIdpCard from './Card';
 import IconGithub from './icons/github';
 

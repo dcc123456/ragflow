@@ -16,7 +16,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { SSO_CLOUD_IDP_PROVIDERS } from './cloud-idp';
 import SSOProviderLDAPList from './ldap-list';
 
-import { useSSOVariables } from '../hooks/useSSOVariables';
+import { useSSOVariables } from '@/pages/admin/hooks/useSSOVariables';
 
 function AdminSSOProviders() {
   const { t } = useTranslation();

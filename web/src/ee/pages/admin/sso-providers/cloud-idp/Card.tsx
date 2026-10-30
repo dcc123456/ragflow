@@ -18,7 +18,7 @@ import { cloneElement, useId } from 'react';
 import {
   useMutateIdpProvider,
   useSSOVariables,
-} from '../../hooks/useSSOVariables';
+} from '@/pages/admin/hooks/useSSOVariables';
 
 type CardProps = {
   id: AdminService.SystemVariables.SSO.IDP.ProviderId;
