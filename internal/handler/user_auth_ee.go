@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"ragflow/internal/common"
 	"ragflow/internal/engine/kvrocks"
 	"ragflow/internal/entity"
@@ -29,6 +30,7 @@ import (
 	"ragflow/internal/service"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 // isOAuthLoginNoRoute reports the OAuth login URL with an empty channel.
@@ -141,6 +143,7 @@ func (h *UserHandler) OAuthChannelCallback(c *gin.Context) {
 
 	result, _, err := h.userService.OAuthCallback(c.Request.Context(), channel, queryCode, queryState, cookieState, kvrocks.Get())
 	if err != nil {
+		common.Error("oauth callback failed", err, zap.String("channel", channel))
 		c.Redirect(http.StatusFound, frontendBase+"?error="+callbackError(channel, err))
 		return
 	}
@@ -159,7 +162,12 @@ func (h *UserHandler) OAuthChannelCallback(c *gin.Context) {
 	//setOAuthAuthCookie(c, authToken)
 	c.Header("Authorization", authToken)
 	c.Header("Access-Control-Expose-Headers", "Authorization")
-	c.Redirect(http.StatusFound, frontendBase+"?auth="+result.User.ID)
+	// The SPA stores this value verbatim and replays it as the Authorization
+	// header, so it has to be the signed access token. Handing back the user
+	// ID instead produces an unparsable credential: the token format check
+	// rejects it, every authenticated call answers 401 and the frontend
+	// clears its storage and bounces to the login page.
+	c.Redirect(http.StatusFound, frontendBase+"?auth="+url.QueryEscape(authToken))
 }
 
 func issueUserAccessToken(user *entity.User, secretKey string) (string, error) {

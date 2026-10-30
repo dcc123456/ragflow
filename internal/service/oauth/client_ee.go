@@ -34,6 +34,8 @@ package oauth
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -41,6 +43,9 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"go.uber.org/zap"
+	"ragflow/internal/common"
 )
 
 // Config is the channel configuration consumed by NewClient. It mirrors the
@@ -59,6 +64,10 @@ type Config struct {
 	RedirectURI string
 	Scope       string
 	Issuer      string
+
+	// Channel is the configured provider name. It is only used to identify
+	// the provider in logs.
+	Channel string
 
 	// TrustEmailVerified lets an institutionally controlled provider
 	// authenticate a user even when it does not assert `email_verified`.
@@ -198,6 +207,23 @@ func (c *oauthClient) ExchangeCodeForToken(ctx context.Context, code string) (*T
 	}
 	form.Set("grant_type", "authorization_code")
 
+	// Log the credentials actually sent, without writing the secret itself:
+	// a fingerprint is enough to compare against the value in the database,
+	// and `secret_padded` catches the usual cause of a mismatch, a value the
+	// admin form saved with trailing whitespace.
+	sum := sha256.Sum256([]byte(c.cfg.ClientSecret))
+	common.Info("oauth token request",
+		zap.String("channel", c.cfg.Channel),
+		zap.String("type", c.cfg.Type),
+		zap.String("token_url", c.cfg.TokenURL),
+		zap.String("client_id", c.cfg.ClientID),
+		zap.String("client_secret_sha256", hex.EncodeToString(sum[:])[:16]),
+		zap.Int("client_secret_len", len(c.cfg.ClientSecret)),
+		zap.Bool("client_secret_padded", c.cfg.ClientSecret != strings.TrimSpace(c.cfg.ClientSecret)),
+		zap.String("redirect_uri", c.cfg.RedirectURI),
+		zap.Int("code_len", len(code)),
+	)
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.cfg.TokenURL, strings.NewReader(form.Encode()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to exchange authorization code for token: %w", err)
@@ -233,9 +259,38 @@ func (c *oauthClient) ExchangeCodeForToken(ctx context.Context, code string) (*T
 		}
 	}
 	if token.AccessToken == "" {
-		return nil, fmt.Errorf("failed to exchange authorization code for token: empty access_token")
+		// Providers answer a rejected exchange with HTTP 200 and an `error`
+		// body, so the reason has to be lifted out of the response instead
+		// of being inferred from the status.
+		return nil, fmt.Errorf("failed to exchange authorization code for token: %s", tokenEndpointError(body))
 	}
 	return token, nil
+}
+
+// tokenEndpointError renders the reason a token endpoint gave for not
+// returning an access token. Both encodings appear in the wild: JSON from
+// most providers, application/x-www-form-urlencoded when a provider ignores
+// the Accept header.
+func tokenEndpointError(body []byte) string {
+	payload := struct {
+		Error            string `json:"error"`
+		ErrorDescription string `json:"error_description"`
+	}{}
+	if jerr := json.Unmarshal(body, &payload); jerr == nil && payload.Error != "" {
+		if payload.ErrorDescription != "" {
+			return payload.Error + ": " + payload.ErrorDescription
+		}
+		return payload.Error
+	}
+	if values, perr := url.ParseQuery(string(body)); perr == nil {
+		if e := values.Get("error"); e != "" {
+			if d := values.Get("error_description"); d != "" {
+				return e + ": " + d
+			}
+			return e
+		}
+	}
+	return "empty access_token"
 }
 
 // FetchUserInfo fetches user information using the access token.

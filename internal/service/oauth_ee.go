@@ -98,7 +98,7 @@ func (s *UserService) OAuthLoginInitiate(ctx context.Context, channel string, kv
 	if !ok {
 		return nil, common.CodeDataError, fmt.Errorf("%w: %s", ErrOAuthInvalidChannel, channel)
 	}
-	client, err := oauth.NewClient(toOAuthClientConfig(cfg))
+	client, err := oauth.NewClient(toOAuthClientConfig(channel, cfg))
 	if err != nil {
 		return nil, common.CodeServerError, err
 	}
@@ -174,7 +174,7 @@ func (s *UserService) OAuthCallback(ctx context.Context, channel, code, callback
 		return nil, common.CodeDataError, ErrOAuthMissingCode
 	}
 
-	client, err := oauth.NewClient(toOAuthClientConfig(cfg))
+	client, err := oauth.NewClient(toOAuthClientConfig(channel, cfg))
 	if err != nil {
 		return nil, common.CodeServerError, err
 	}
@@ -340,8 +340,9 @@ func (s *UserService) registerOAuthUser(ctx context.Context, channel string, inf
 
 // toOAuthClientConfig narrows config.OAuthChannel (which carries display-only
 // fields like Icon) into the oauth.Config the client package consumes.
-func toOAuthClientConfig(cfg config.OAuthChannel) oauth.Config {
+func toOAuthClientConfig(channel string, cfg config.OAuthChannel) oauth.Config {
 	return oauth.Config{
+		Channel:            channel,
 		Type:               cfg.Type,
 		ClientID:           cfg.ClientID,
 		ClientSecret:       cfg.ClientSecret,
