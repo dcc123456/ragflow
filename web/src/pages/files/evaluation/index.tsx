@@ -14,7 +14,7 @@ import {
 import { Upload } from 'lucide-react';
 import { Dispatch, SetStateAction, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FilesInstanceType } from '..';
+import { FilesInstanceType } from '@/ee/pages/files/constant';
 import { EditNameDialog } from './edit-name-dialog';
 import { EvaluationTable } from './evaluation-table';
 import { useBulkOperateEvaluation } from './use-bulk-operate-evaluation';

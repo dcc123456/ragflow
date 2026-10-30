@@ -16,18 +16,18 @@ import { Input } from '@/components/ui/input';
 
 import { useTranslate } from '@/hooks/common-hooks';
 
-import { useSSOVariables } from '../../hooks/useSSOVariables';
+import { useSSOVariables } from '@/pages/admin/hooks/useSSOVariables';
 import SSOProviderCloudIdpCard from './Card';
-import IconGoogle from './icons/google';
+import IconFeishu from './icons/feishu';
 
-const SSOProviderGoogle = {
-  key: 'google',
-  Icon: IconGoogle,
-  Form: SSOProviderGoogleForm,
-  Card: SSOProviderGoogleCard,
+const SSOProviderFeishu = {
+  key: 'feishu',
+  Icon: IconFeishu,
+  Form: SSOProviderFeishuForm,
+  Card: SSOProviderFeishuCard,
 } as const;
 
-function SSOProviderGoogleForm({
+function SSOProviderFeishuForm({
   id,
   defaultValues,
   onSubmit = noop,
@@ -36,9 +36,9 @@ function SSOProviderGoogleForm({
   defaultValues?: DefaultValues<SchemaType> | (() => Promise<SchemaType>);
   onSubmit?: (data: SchemaType) => void;
 }) {
-  const { t } = useTranslate('admin.ssoProviderTabs.cloud_idp.google');
+  const { t } = useTranslate('admin.ssoProviderTabs.cloud_idp.feishu');
   const form = useForm<SchemaType>({
-    resolver: zodResolver(SSOProviderGoogleForm.schema),
+    resolver: zodResolver(SSOProviderFeishuForm.schema),
     defaultValues,
   });
 
@@ -53,10 +53,10 @@ function SSOProviderGoogleForm({
       >
         <FormField
           control={form.control}
-          name="client_id"
+          name="app_id"
           render={({ field }) => (
             <FormItem>
-              <FormLabel required>{t('fields.clientId')}</FormLabel>
+              <FormLabel required>{t('fields.appId')}</FormLabel>
               <FormControl>
                 <Input {...field} className="h-10" />
               </FormControl>
@@ -66,10 +66,10 @@ function SSOProviderGoogleForm({
 
         <FormField
           control={form.control}
-          name="client_secret"
+          name="app_secret"
           render={({ field }) => (
             <FormItem>
-              <FormLabel required>{t('fields.clientSecret')}</FormLabel>
+              <FormLabel required>{t('fields.appSecret')}</FormLabel>
               <FormControl>
                 <PasswordInput
                   {...field}
@@ -84,15 +84,36 @@ function SSOProviderGoogleForm({
 
         <FormField
           control={form.control}
-          name="redirect_uri"
+          name="app_access_token_url"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>{t('fields.redirectUri')}</FormLabel>
+              <FormLabel>{t('fields.appAccessTokenUrl')}</FormLabel>
               <FormControl>
                 <Input
                   {...field}
                   className="h-10"
-                  placeholder={t('placeholder.redirectUri')}
+                  placeholder={
+                    SSOProviderFeishuForm.defaultValues.app_access_token_url
+                  }
+                />
+              </FormControl>
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="user_access_token_url"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>{t('fields.userAccessTokenUrl')}</FormLabel>
+              <FormControl>
+                <Input
+                  {...field}
+                  className="h-10"
+                  placeholder={
+                    SSOProviderFeishuForm.defaultValues.user_access_token_url
+                  }
                 />
               </FormControl>
             </FormItem>
@@ -103,34 +124,43 @@ function SSOProviderGoogleForm({
   );
 }
 
-SSOProviderGoogleForm.schema = z.object({
-  client_id: z.string().min(1),
-  client_secret: z.string().min(1),
-  redirect_uri: z.string(),
+SSOProviderFeishuForm.defaultValues = {
+  app_access_token_url:
+    'https://open.feishu.cn/open-apis/auth/v3/app_access_token/internal',
+  user_access_token_url:
+    'https://open.feishu.cn/open-apis/authen/v1/oidc/access_token',
+};
+
+SSOProviderFeishuForm.schema = z.object({
+  app_id: z.string().min(1),
+  app_secret: z.string().min(1),
+  app_access_token_url: z.string(),
+  user_access_token_url: z.string(),
 });
 
-type SchemaType = z.infer<typeof SSOProviderGoogleForm.schema>;
+type SchemaType = z.infer<typeof SSOProviderFeishuForm.schema>;
 
-function SSOProviderGoogleCard({ disabled = false }: { disabled?: boolean }) {
-  const { t } = useTranslate('admin.ssoProviderTabs.cloud_idp.google');
+function SSOProviderFeishuCard({ disabled = false }: { disabled?: boolean }) {
+  const { t } = useTranslate('admin.ssoProviderTabs.cloud_idp.feishu');
+
   const {
     variables: {
-      sso: { google },
+      sso: { feishu },
     },
   } = useSSOVariables();
 
   return (
     <SSOProviderCloudIdpCard
-      id="google"
+      id="feishu"
       disabled={disabled}
       title={t('title')}
       dialogTitle={t('dialogTitle')}
-      iconComponent={SSOProviderGoogle.Icon}
+      iconComponent={SSOProviderFeishu.Icon}
       form={
-        <SSOProviderGoogleForm defaultValues={mapValues(google, 'value')} />
+        <SSOProviderFeishuForm defaultValues={mapValues(feishu, 'value')} />
       }
     />
   );
 }
 
-export default SSOProviderGoogle;
+export default SSOProviderFeishu;

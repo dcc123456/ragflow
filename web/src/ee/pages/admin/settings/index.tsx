@@ -28,7 +28,7 @@ import SensitiveWordFilterFormGroup from './form-group/sensitive-word-filter';
 import SMTPSettingsForm from './form-group/smtp';
 import WhitelistSettingsFormGroup from './form-group/whitelist';
 
-import useAdminVariables from '../hooks/useAdminVariables';
+import useAdminVariables from '@/pages/admin/hooks/useAdminVariables';
 import { License } from './license';
 
 const schema = z.object({

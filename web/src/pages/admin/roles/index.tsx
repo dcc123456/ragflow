@@ -33,7 +33,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 import Empty from '@/components/empty/empty';
 import { useSetModalState } from '@/hooks/common-hooks';
-import { Routes } from '@/routes';
+import { PrivateRoutes } from '@/private-routes';
 
 import {
   Form,
@@ -218,7 +218,7 @@ function RoleCard({ role }: { role: AdminService.ListRoleItemWithPermission }) {
 
                   <div className="ml-auto flex items-center gap-4">
                     <Link
-                      to={Routes.AdminRoleConfigModelProviders.replace(
+                      to={PrivateRoutes.AdminRoleConfigModelProviders.replace(
                         ':roleName',
                         role.role_name,
                       )}

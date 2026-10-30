@@ -24,7 +24,7 @@ import {
   useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FilesInstanceType } from '.';
+import { FilesInstanceType } from '@/ee/pages/files/constant';
 import EnterpriseFeature from '../admin/components/enterprise-feature';
 import { CreateFolderDialog } from './create-folder-dialog';
 import { FilesTable } from './files-table';
@@ -43,10 +43,6 @@ import { useGoToPreviousPageOnEmpty } from '@/hooks/logic-hooks';
 import { ListDeletionKey } from '@/constants/list-deletion';
 import { useHandleSyncFile } from './use-sync-file';
 import { isFolderType } from './util';
-export enum FileTabs {
-  FILE = 'file',
-  EVALUATION = 'evaluation',
-}
 export const FilesManager = {
   Root: ({
     setFileInstance,

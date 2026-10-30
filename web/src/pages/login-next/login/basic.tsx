@@ -30,7 +30,7 @@ import { isLicenseError, rsaPsw } from '@/utils';
 import RememberMeCheckbox from '../components/RememberMeCheckbox';
 
 import { useAuth } from '@/hooks/auth-hooks';
-import { SSO_CLOUD_IDP_PROVIDERS } from '@/pages/admin/sso-providers/cloud-idp';
+import { SSO_CLOUD_IDP_PROVIDERS } from '@/ee/pages/admin/sso-providers/cloud-idp';
 
 const SSO_PROVIDER_ICON_MAP = keyBy(SSO_CLOUD_IDP_PROVIDERS, 'key');
 

@@ -26,8 +26,7 @@ import {
   LucideLanguages,
 } from 'lucide-react';
 import React, { useMemo } from 'react';
-import { useTranslation } from 'react-i18next';
-import { Link, useLocation, useNavigate } from 'react-router';
+import { Link, useLocation } from 'react-router';
 import { BellButton } from './bell-button';
 import { DesktopNavbar, MobileNavbar } from './global-navbar';
 import { MobileMenuFooter } from './mobile-menu-footer';
@@ -35,18 +34,12 @@ import ThemeButton from './theme-button';
 import { useHeaderNavLayout } from './use-header-nav-layout';
 
 import { supportedLanguages } from '@/locales/config';
-import { PriceName } from '@/pages/price/constant';
-import { useFetchCurrentPlan } from '@/pages/price/hook/use-price-hooks';
-import { PrivateRoutes } from '@/private-routes';
-import { isBillingEnabled } from '@/services/billingStatus';
 
 export function Header({
   className,
   ...props
 }: React.HTMLAttributes<HTMLElement>) {
-  const { t } = useTranslation();
   const { pathname } = useLocation();
-  const navigate = useNavigate();
   const changeLanguage = useChangeLanguage();
 
   const {
@@ -55,22 +48,11 @@ export function Header({
 
   const { data: tenantData } = useListTenant();
   const hasNotification = useMemo(
-    () =>
-      tenantData &&
-      tenantData.length > 0 &&
-      tenantData.some((x) => x.role === TenantRole.Invite),
+    () => tenantData?.some((x) => x.role === TenantRole.Invite),
     [tenantData],
   );
 
   const currentLanguage = supportedLanguages.find((x) => x.code === language);
-  const { data: currentPlan } = useFetchCurrentPlan();
-  // const { openModal } = useUpgradeModal();
-
-  const handleClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    // openModal();
-    navigate(PrivateRoutes.Price);
-  };
 
   const {
     headerRef,
@@ -105,14 +87,6 @@ export function Header({
             >
               <img src={'/logo.svg'} alt="RAGFlow logo" className="size-10" />
             </Link>
-            {isBillingEnabled() && (
-              <div
-                className="bg-gradient-to-r from-[#00BEB4] to-[#43FFA4] rounded-full px-2 py-1 text-sm  font-normal text-black cursor-pointer"
-                onClick={handleClick}
-              >
-                {t('price.upgrade')}
-              </div>
-            )}
             <EnterpriseHeaderUpgradeBadge />
           </div>
         </div>
@@ -237,49 +211,6 @@ export function Header({
           ref={expandedRightMeasureRef}
           className="inline-flex shrink-0 items-center justify-end gap-4 text-text-badge"
         >
-          {isBillingEnabled() && (
-            <RAGFlowTooltip tooltip={t('header.tickets')}>
-              <Link
-                className="p-2 text-text-secondary hover:text-text-primary focus-visible:text-text-primary"
-                to={Routes.Tickets}
-              >
-                <IconFontFill
-                  name={`kefu`}
-                  className="text-text-primary"
-                ></IconFontFill>
-              </Link>
-              {/* <Tickets className="size-5" /> */}
-            </RAGFlowTooltip>
-          )}
-
-          {hasNotification && <BellButton />}
-
-          <Link
-            to={Routes.UserSetting}
-            className="relative ms-3 flex items-start "
-            data-testid="settings-entrypoint"
-          >
-            <RAGFlowAvatar
-              name={nickname}
-              avatar={avatar}
-              isPerson
-              className="size-8"
-            />
-            {(currentPlan?.plan_name === PriceName.Starter ||
-              currentPlan?.plan_name === PriceName.Pro) && (
-              <div
-                className={cn(
-                  '-mt-1 z-20 bg-gradient-to-r from-[#00BEB4] to-[#43FFA4] rounded-full px-1 py-0.5 text-xs font-normal text-black cursor-pointer',
-                  currentPlan?.plan_name === 'Starter'
-                    ? 'scale-90 -ml-1.5 '
-                    : '-ml-1',
-                )}
-                onClick={handleClick}
-              >
-                <span className={cn()}>{currentPlan?.plan_name}</span>
-              </div>
-            )}
-          </Link>
           <a className="inline-flex p-2">
             <IconFontFill name="a-DiscordIconSVGVectorIcon" />
           </a>
