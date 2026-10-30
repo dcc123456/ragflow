@@ -295,6 +295,7 @@ func (d *Driver) flushOperationLog(batch []*common.OperationLog) {
         INSERT INTO operation_audit_log (
             event_time,
             user_id,
+            user_name,
             ip_address,
             operation,
             api_path,
@@ -318,6 +319,7 @@ func (d *Driver) flushOperationLog(batch []*common.OperationLog) {
 		err = batchInsert.Append(
 			record.EventTime,
 			record.UserID,
+			record.UserName,
 			record.IPAddress,
 			record.Operation,
 			record.APIPath,
@@ -326,8 +328,8 @@ func (d *Driver) flushOperationLog(batch []*common.OperationLog) {
 			record.ResourceID,
 			record.ResourceName,
 			record.RequestParams,
-			record.ErrorCode,
-			record.Message,
+			record.Code,
+			record.Error.Error(),
 			record.DurationMS,
 		)
 		if err != nil {
@@ -485,6 +487,7 @@ type OperationLogStats struct {
 	EventID       string    `json:"event_id"`
 	EventTime     time.Time `json:"event_time"`
 	UserID        string    `json:"user_id"`
+	UserName      string    `json:"user_name"`
 	IPAddress     string    `json:"ip_address"`
 	Operation     string    `json:"operation"`
 	APIPath       string    `json:"api_path"`
@@ -504,6 +507,7 @@ func (d *Driver) OperationLogStats(userID string, startTime, endTime time.Time, 
         event_id,
         event_time,
         user_id,
+        user_name,
         ip_address,
         operation,
         api_path,
@@ -536,6 +540,7 @@ func (d *Driver) OperationLogStats(userID string, startTime, endTime time.Time, 
 			&log.EventID,
 			&log.EventTime,
 			&log.UserID,
+			&log.UserName,
 			&log.IPAddress,
 			&log.Operation,
 			&log.APIPath,
@@ -713,6 +718,7 @@ GROUP BY
         event_date Date DEFAULT toDate(event_time) CODEC(ZSTD(1)),
 
         user_id LowCardinality(String) CODEC(ZSTD(1)),
+        user_name LowCardinality(String) CODEC(ZSTD(1)),
         ip_address String CODEC(ZSTD(1)),
 
         operation LowCardinality(String) CODEC(ZSTD(1)),

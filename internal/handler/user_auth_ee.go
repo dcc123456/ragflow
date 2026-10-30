@@ -252,11 +252,3 @@ func clearOAuthStateCookie(c *gin.Context, channel string) {
 func frontendRedirectBase() string {
 	return "/"
 }
-
-// isOAuthLoginNoRoute reports the OAuth login URL with an empty channel. The
-// route is registered as /auth/login/:channel and gin does not bind an empty
-// segment, so the request still falls through to NoRoute and has to
-// reproduce the Python MethodNotAllowed body.
-func isOAuthLoginNoRoute(c *gin.Context) bool {
-	return c.Request.Method == http.MethodGet && c.Request.URL.Path == "/api/v1/auth/login/"
-}
