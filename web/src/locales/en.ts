@@ -9,7 +9,8 @@ export default {
       delete: 'Delete',
       deleteModalTitle: 'Are you sure to delete it ?',
       deleteThem: 'Are you sure to delete them ?',
-      removeModalTitle: 'Are you sure to remove it ?',
+      removeIt: 'Are you sure to remove it ?',
+      removeThem: 'Are you sure to remove them ?',
       ok: 'Ok',
       cancel: 'Cancel',
       yes: 'Yes',
@@ -401,6 +402,9 @@ Example: A 1 KB message with 1024-dim embedding uses ~9 KB. The 5 MB default lim
     },
     knowledgeDetails: {
       continueUpload: 'Continue upload',
+      uploadPipelineDeletedTitle: 'Parsing pipeline unavailable',
+      uploadPipelineDeletedContent:
+        'The pipeline configured for this dataset has been deleted or has no published version, so uploaded files cannot be parsed automatically. Reconfigure a pipeline in the dataset settings, or upload now and configure parsing for each file individually.',
       reselectParser: 'Reselect parse method',
       goAddModel: 'Go add model',
       uploadMissingModelsTitle: 'Some files lack a required model',
@@ -1151,7 +1155,7 @@ This auto-tagging feature enhances retrieval by adding another layer of domain-s
       operation: 'Operation',
       model: 'Model',
       modelTip: 'Large language chat model',
-      tokensSpent: '{{total}} tokens ({{prompt}} in + {{completion}} out)',
+      tokensSpent: '{{total}} tokens ({{prompt}} input, {{completion}} output)',
       turnElapsed: '{{seconds}}s',
       decisionModel: 'Decision model',
       decisionModelTip:

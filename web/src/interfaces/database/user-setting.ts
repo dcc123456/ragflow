@@ -90,6 +90,7 @@ export interface ITenant {
   email: string;
   nickname: string;
   role: string;
+  status: string;
   tenant_id: string;
   update_date: string;
 }
