@@ -43,14 +43,14 @@ export default function Dataset() {
   const datasetEditButtonDisabled = useDatasetEditButtonDisabled();
 
   const { t } = useTranslation();
+  const { knowledgeBase } = useKnowledgeBaseContext();
   const {
     documentUploadVisible,
     hideDocumentUploadModal,
     showDocumentUploadModal,
     onDocumentUploadOk,
     documentUploadLoading,
-  } = useHandleUploadDocument();
-  const { knowledgeBase } = useKnowledgeBaseContext();
+  } = useHandleUploadDocument(knowledgeBase?.pipeline_id);
   const {
     searchString,
     documents,
