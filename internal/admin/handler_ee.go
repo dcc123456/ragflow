@@ -420,7 +420,7 @@ func (h *Handler) ListModels(c *gin.Context) {
 		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
 		return
 	}
-	models, err := apihandler.FetchProviderModels(c.Request.Context(), providerName, c.Query("api_key"), c.Query("base_url"))
+	models, err := apihandler.FetchProviderModels(c.Request.Context(), providerName, c.Query("api_key"), c.Query("base_url"), c.Query("region"))
 	if err != nil {
 		writeAdminModelError(c, err)
 		return
