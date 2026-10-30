@@ -87,7 +87,16 @@ export enum Routes {
   AdminSandboxSettings = `${Admin}/sandbox-settings`,
   AdminWhitelist = `${Admin}/whitelist`,
   AdminRoles = `${Admin}/roles`,
+  AdminRoleConfigModelProviders = `${AdminRoles}/:roleName/model-providers`,
   AdminMonitoring = `${Admin}/monitoring`,
+  AdminModelUsageStatistics = `${Admin}/model-usage-statistics`,
+  AdminSettings = `${Admin}/settings`,
+  AdminSSOProviders = `${Admin}/sso`,
+  AdminModelProviders = `${Admin}/model-providers`,
+  Evaluation = '/evaluation',
+  Tickets = '/support',
+  TicketCreate = '/support/create',
+  TicketDetail = '/support/:id',
 }
 
 const defaultRouteFallback = (
@@ -121,14 +130,37 @@ const withLazyRoute = (
 
 const routeConfigOptions = [
   {
-    path: '/login',
-    Component: () => import('@/pages/login-next'),
+    Component: () => import('@/layouts/auth-layout'),
     layout: false,
-  },
-  {
-    path: '/login-next',
-    Component: () => import('@/pages/login-next'),
-    layout: false,
+    children: [
+      {
+        Component: () => import('@/pages/login-next/flip-effect-container'),
+
+        layout: false,
+        children: [
+          {
+            path: '/login',
+            Component: () => import('@/pages/login-next/login'),
+            layout: false,
+          },
+          {
+            path: '/login-next',
+            Component: () => import('@/pages/login-next/login'),
+            layout: false,
+          },
+          {
+            path: '/register',
+            Component: () => import('@/pages/login-next/register'),
+            layout: false,
+          },
+        ],
+      },
+      {
+        path: '/forget-password',
+        Component: () => import('@/pages/login-next/forget-password'),
+        layout: false,
+      },
+    ],
   },
   {
     path: Routes.ChatShare,
@@ -175,6 +207,28 @@ const routeConfigOptions = [
     Component: () => import('@/pages/next-chats/chat'),
   },
   {
+    path: Routes.Evaluation + '/:id',
+    layout: false,
+    Component: () => import('@/pages/evaluation'),
+    children: [{}],
+    errorElement: <FallbackComponent />,
+  },
+  {
+    path: Routes.Tickets,
+    Component: () => import('@/pages/tickets'),
+  },
+  {
+    path: Routes.TicketCreate,
+    Component: () => import('@/pages/tickets/create'),
+  },
+  {
+    path: Routes.TicketDetail,
+    Component: () => import('@/pages/tickets/detail'),
+  },
+  {
+    // path: Routes.Searches,
+    layout: false,
+    // Component: () => import('@/layouts/next'),
     path: Routes.Root,
     Component: () => import('@/layouts/root-layout'),
     children: [
@@ -387,6 +441,14 @@ const routeConfigOptions = [
         Component: () => import('@/pages/admin/login'),
       },
       {
+        path: `${Routes.AdminUserManagement}/:id`,
+        Component: () => import('@/pages/admin/user-detail'),
+      },
+      {
+        path: Routes.AdminRoleConfigModelProviders,
+        Component: () => import('@/pages/admin/roles/model-providers'),
+      },
+      {
         path: Routes.Admin,
         Component: () => import('@/pages/admin/layouts/authorized-layout'),
         children: [
@@ -423,6 +485,23 @@ const routeConfigOptions = [
                       path: Routes.AdminMonitoring,
                       Component: () => import('@/pages/admin/monitoring'),
                     },
+                    {
+                      path: Routes.AdminModelUsageStatistics,
+                      Component: () =>
+                        import('@/pages/admin/model-usage-statistics'),
+                    },
+                    {
+                      path: Routes.AdminSettings,
+                      Component: () => import('@/pages/admin/settings'),
+                    },
+                    {
+                      path: Routes.AdminSSOProviders,
+                      Component: () => import('@/pages/admin/sso-providers'),
+                    },
+                    {
+                      path: Routes.AdminModelProviders,
+                      Component: () => import('@/pages/admin/model-providers'),
+                    },
                   ]
                 : []),
             ],
@@ -452,4 +531,4 @@ const routers = createBrowserRouter(routeConfig, {
   basename: import.meta.env.VITE_BASE_URL || '/',
 });
 
-export { routers };
+export { routeConfig, routers };

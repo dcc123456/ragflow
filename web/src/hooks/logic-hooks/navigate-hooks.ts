@@ -15,8 +15,11 @@
  */
 
 import { AgentCategory, AgentQuery } from '@/constants/agent';
+import { EvaluationType } from '@/constants/evaluation';
 import { AgentListItemType } from '@/interfaces/database/agent';
 import { NavigateToDataflowResultProps } from '@/pages/dataflow-result/interface';
+import { FileTabs } from '@/pages/files';
+import { PrivateRoutes } from '@/private-routes';
 import { Routes } from '@/routes';
 import { useCallback } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router';
@@ -203,6 +206,26 @@ export const useNavigatePage = () => {
     [navigate],
   );
 
+  const navigateToEvaluation = useCallback(
+    (type: EvaluationType, id: string) => () => {
+      navigate(`${Routes.Evaluation}/${id}?type=${type}`);
+    },
+    [navigate],
+  );
+
+  const navigateToFileManagerEvaluationDetail = useCallback(
+    (id: string) => {
+      navigate(`${Routes.Files}${PrivateRoutes.EvaluationDetail}/${id}`);
+    },
+    [navigate],
+  );
+
+  const navigateToFileManagerEvaluation = useCallback(
+    (type?: FileTabs) => {
+      navigate(`${Routes.Files}?type=${type}`);
+    },
+    [navigate],
+  );
   const navigateToChunkParsedResult = useCallback(
     (id: string, knowledgeId?: string) => () => {
       navigate(
@@ -308,6 +331,9 @@ export const useNavigatePage = () => {
     navigateToDataSourceDetail,
     navigateToMemory,
     navigateToMemoryList,
+    navigateToEvaluation,
+    navigateToFileManagerEvaluation,
+    navigateToFileManagerEvaluationDetail,
     navigateToModelSetting,
   };
 };

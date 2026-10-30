@@ -35,7 +35,7 @@ import {
   useAddLdapServer,
   useMutateLdapServer,
   useSSOVariables,
-} from '@/pages/admin/hooks/useSSOVariables';
+} from '../hooks/useSSOVariables';
 
 export function SSOProviderLDAPForm({
   id,

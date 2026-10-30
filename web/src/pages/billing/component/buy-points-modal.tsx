@@ -2,7 +2,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import message from '@/components/ui/message';
 import { Modal } from '@/components/ui/modal/modal';
-import { formatNumber } from '@/ee/pages/admin/model-usage-statistics/utils';
+import { formatNumber } from '@/pages/admin/model-usage-statistics/utils';
 import { getBillingPointsPrice } from '@/services/price';
 import { Coins, DollarSign, Loader2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';

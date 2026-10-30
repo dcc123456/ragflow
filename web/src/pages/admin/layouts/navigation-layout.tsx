@@ -5,8 +5,10 @@ import { NavLink, Outlet, useNavigate } from 'react-router';
 import { useMutation, useQuery } from '@tanstack/react-query';
 
 import {
+  LucideBox,
   LucideMonitor,
   LucideServerCrash,
+  LucideSettings,
   LucideSquareUserRound,
   LucideUserCog,
   LucideUserStar,
@@ -14,7 +16,6 @@ import {
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { useEnterpriseAdminNav } from '@/ee/pages/admin/layouts/navigation-private';
 import { cn } from '@/lib/utils';
 import { Routes } from '@/routes';
 import { getSystemVersion, logout } from '@/services/admin-service';
@@ -22,6 +23,8 @@ import { getSystemVersion, logout } from '@/services/admin-service';
 import { adminStorage } from '@/utils/authorization-util';
 
 import ThemeSwitch from '../../../components/theme-switch';
+import { LucideCloudKey } from '../components/icons/LucideCloudKey';
+import useAdminVariables from '../hooks/useAdminVariables';
 import { IS_ENTERPRISE } from '../utils';
 import { CurrentUserInfoContext } from './root-layout';
 
@@ -35,7 +38,9 @@ const AdminNavigationLayout = () => {
     queryFn: async () => (await getSystemVersion())?.data?.data?.version,
   });
 
-  const enterpriseNav = useEnterpriseAdminNav();
+  const { variables } = useAdminVariables();
+
+  const isWhitelistEnabled = !!variables?.enable_whitelist?.value;
 
   const navItems = useMemo(
     () => [
@@ -61,6 +66,10 @@ const AdminNavigationLayout = () => {
               name: t('admin.registrationWhitelist'),
               icon: <LucideUserStar className="size-[1em]" />,
             },
+          ]
+        : []),
+      ...(IS_ENTERPRISE
+        ? [
             {
               path: Routes.AdminRoles,
               name: t('admin.roles'),
@@ -71,20 +80,30 @@ const AdminNavigationLayout = () => {
               name: t('admin.monitoring'),
               icon: <LucideMonitor className="size-[1em]" />,
             },
+            // {
+            //   path: Routes.AdminModelUsageStatistics,
+            //   name: t('admin.modelUsage.modelUsageStatistics'),
+            //   icon: <LucideBarChart3 className="size-[1em]" />,
+            // },
+            {
+              path: Routes.AdminSettings,
+              name: t('admin.settings'),
+              icon: <LucideSettings className="size-[1em]" />,
+            },
+            {
+              path: Routes.AdminSSOProviders,
+              name: t('admin.ssoProvider'),
+              icon: <LucideCloudKey className="size-[1em]" />,
+            },
+            {
+              path: Routes.AdminModelProviders,
+              name: t('admin.modelProviders'),
+              icon: <LucideBox className="size-[1em]" />,
+            },
           ]
         : []),
     ],
-    [t],
-  );
-
-  const visibleNavItems = useMemo(
-    () => [
-      ...navItems.filter(
-        ({ path }) => !enterpriseNav.hiddenPaths.includes(path),
-      ),
-      ...enterpriseNav.items,
-    ],
-    [navItems, enterpriseNav.items, enterpriseNav.hiddenPaths],
+    [t, isWhitelistEnabled],
   );
 
   const logoutMutation = useMutation({
@@ -103,7 +122,7 @@ const AdminNavigationLayout = () => {
 
   return (
     <main className="w-screen h-screen flex flex-row px-6 pt-12 pb-6 dark:*:focus-visible:ring-white">
-      <aside className="w-72 mr-6 flex flex-col gap-6">
+      <aside className="w-72 mr-6 flex-none flex flex-col gap-6">
         <div className="flex items-center mb-6">
           <img className="size-8 mr-5" src="/logo.svg" alt="logo" />
           <span className="text-xl font-bold">{t('admin.title')}</span>
@@ -111,7 +130,7 @@ const AdminNavigationLayout = () => {
 
         <nav>
           <ul className="space-y-4">
-            {visibleNavItems.map((it) => (
+            {navItems.map((it) => (
               <li key={it.path}>
                 <NavLink
                   to={it.path}

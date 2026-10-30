@@ -1,4 +1,4 @@
-import { PrivateRoutes } from '@/private-routes';
+import { Routes } from '@/routes';
 import { useCallback } from 'react';
 import { useNavigate } from 'react-router';
 
@@ -6,16 +6,16 @@ export const useEnterpriseNavigate = () => {
   const navigate = useNavigate();
 
   const navigateToTickets = useCallback(() => {
-    navigate(PrivateRoutes.Tickets);
+    navigate(Routes.Tickets);
   }, [navigate]);
 
   const navigateToTicketCreate = useCallback(() => {
-    navigate(PrivateRoutes.TicketCreate);
+    navigate(Routes.TicketCreate);
   }, [navigate]);
 
   const navigateToTicketDetail = useCallback(
     (id: number | string) => () => {
-      navigate(`${PrivateRoutes.Tickets}/${id}`);
+      navigate(`${Routes.Tickets}/${id}`);
     },
     [navigate],
   );

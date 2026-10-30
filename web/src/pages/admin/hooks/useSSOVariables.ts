@@ -11,7 +11,7 @@ import { useCallback, useMemo } from 'react';
 
 import { deleteLdapServer } from '@/services/admin-service';
 
-import { type SchemaType as SSOLDAPSchemaType } from '@/ee/pages/admin/sso-providers/ldap-list';
+import { type SchemaType as SSOLDAPSchemaType } from '../sso-providers/ldap-list';
 import { uuidParts } from '../utils';
 import useAdminVariables from './useAdminVariables';
 
