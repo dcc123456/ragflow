@@ -5,6 +5,7 @@ import {
 import { FileIcon } from '@/components/icon-font';
 import NewDocumentLink from '@/components/new-document-link';
 import { Button } from '@/components/ui/button';
+import { Permission, hasResourcePermission } from '@/constants/team';
 import { UseRowSelectionType } from '@/hooks/logic-hooks/use-row-selection';
 import { useDownloadFile } from '@/hooks/use-file-request';
 import { IFile } from '@/interfaces/database/file-manager';
@@ -20,6 +21,7 @@ import {
   Eye,
   FolderInput,
   FolderPen,
+  KeyRound,
   Link2,
   Trash2,
 } from 'lucide-react';
@@ -36,7 +38,9 @@ type IProps = Pick<CellContext<IFile, unknown>, 'row'> &
   Pick<UseHandleConnectToKnowledgeReturnType, 'showConnectToKnowledgeModal'> &
   Pick<UseRenameCurrentFileReturnType, 'showFileRenameModal'> &
   Pick<UseRowSelectionType, 'setRowSelection'> &
-  UseMoveDocumentShowType;
+  UseMoveDocumentShowType & {
+    showPrivilegeModal(record: IFile): void;
+  };
 
 export function ActionCell({
   row,
@@ -44,6 +48,7 @@ export function ActionCell({
   showFileRenameModal,
   showMoveFileModal,
   setRowSelection,
+  showPrivilegeModal,
 }: IProps) {
   const record = row.original;
   const documentId = record.id;
@@ -55,6 +60,9 @@ export function ActionCell({
   const isSkillsFolder = isFolder && record.name.toLowerCase() === 'skills';
   const extension = getExtension(record.name);
   const isKnowledgeBase = isKnowledgeBaseType(record.source_type);
+  const canManagePermissions =
+    hasResourcePermission(record.operator_permission ?? 0, Permission.Manage) ||
+    hasResourcePermission(record.operator_permission ?? 0, Permission.Owner);
 
   const handleShowConnectToKnowledgeModal = useCallback(() => {
     showConnectToKnowledgeModal(record);
@@ -104,6 +112,17 @@ export function ActionCell({
           onClick={handleShowConnectToKnowledgeModal}
         >
           <Link2 />
+        </Button>
+      )}
+      {!isKnowledgeBase && canManagePermissions && (
+        <Button
+          variant="transparent"
+          className="border-none hover:bg-bg-card text-text-primary"
+          size="icon-sm"
+          aria-label={t('permission.permissionManagement')}
+          onClick={() => showPrivilegeModal(record)}
+        >
+          <KeyRound />
         </Button>
       )}
       {isKnowledgeBase || (

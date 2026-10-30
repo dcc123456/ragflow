@@ -31,6 +31,7 @@ import (
 	"ragflow/internal/entity"
 	modelModule "ragflow/internal/entity/models"
 
+	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
 
@@ -225,12 +226,23 @@ func (m *ModelProviderService) DeleteSystemModelProviders(ctx context.Context, p
 		for _, name := range requested {
 			requestedSet[strings.ToLower(name)] = struct{}{}
 		}
+		found := make(map[string]struct{}, len(requested))
 		providerIDs := make([]string, 0, len(requested))
 		for _, provider := range providers {
 			if _, ok := requestedSet[strings.ToLower(provider.ProviderName)]; ok {
 				providerIDs = append(providerIDs, provider.ID)
 				deleted = append(deleted, provider.ProviderName)
+				found[strings.ToLower(provider.ProviderName)] = struct{}{}
 			}
+		}
+		var missing []string
+		for _, name := range requested {
+			if _, ok := found[strings.ToLower(name)]; !ok {
+				missing = append(missing, name)
+			}
+		}
+		if len(missing) > 0 {
+			return common.NewCodedError(common.CodeNotFound, fmt.Sprintf("System model providers %q are not configured", missing))
 		}
 		if len(providerIDs) == 0 {
 			return nil
@@ -343,40 +355,118 @@ func (m *ModelProviderService) CheckSystemInstanceConnection(ctx context.Context
 	if err != nil {
 		return nil, err
 	}
-	driver, apiConfig, err := configuredModelDriver(catalogProvider, instance.APIKey, stringSetting(extra, "region"), stringSetting(extra, "base_url"))
-	if err != nil {
+	if err := m.checkSystemProviderConnection(ctx, catalogProvider, instance.APIKey, stringSetting(extra, "region"), stringSetting(extra, "base_url"), instance.ID, nil); err != nil {
 		return nil, err
-	}
-	if err := driver.CheckConnection(ctx, apiConfig); err != nil {
-		return nil, fmt.Errorf("model provider connection failed: %w", err)
 	}
 	return map[string]interface{}{"success": true}, nil
 }
 
-func (m *ModelProviderService) CheckSystemProviderConnection(ctx context.Context, providerName, region, apiKey, baseURL string) (map[string]interface{}, error) {
-	catalogProvider, err := findCatalogProvider(providerName)
-	if err != nil {
-		return nil, err
+func (m *ModelProviderService) CheckSystemProviderConnection(ctx context.Context, providerName string, request *CheckConnectionRequest) (map[string]interface{}, error) {
+	if request == nil {
+		return nil, common.NewCodedError(common.CodeBadRequest, "Request is required")
 	}
-	driver, apiConfig, err := configuredModelDriver(catalogProvider, apiKey, region, baseURL)
-	if err != nil {
-		return nil, err
+	apiKey := NormalizeAPIKey(request.APIKey)
+	region := strings.TrimSpace(request.Region)
+	baseURL := strings.TrimSpace(request.BaseURL)
+	instanceID := strings.TrimSpace(request.InstanceID)
+	var catalogProvider *modelModule.Provider
+	if instanceID != "" {
+		var err error
+		_, catalogProvider, _, _, err = m.systemModelInstance(ctx, providerName, instanceID)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		var err error
+		catalogProvider, err = findCatalogProvider(providerName)
+		if err != nil {
+			return nil, err
+		}
 	}
-	if err := driver.CheckConnection(ctx, apiConfig); err != nil {
-		return nil, fmt.Errorf("model provider connection failed: %w", err)
+	if err := m.checkSystemProviderConnection(ctx, catalogProvider, apiKey, region, baseURL, instanceID, request.ModelInfo); err != nil {
+		return nil, err
 	}
 	return map[string]interface{}{"success": true}, nil
 }
 
-func (m *ModelProviderService) AlterSystemProviderInstance(ctx context.Context, providerName, instanceName, newInstanceName, newAPIKey string, region, baseURL *string) (map[string]interface{}, error) {
+func (m *ModelProviderService) checkSystemProviderConnection(ctx context.Context, provider *modelModule.Provider, apiKey, region, baseURL, instanceID string, modelInfo []CheckConnectionModelInfo) error {
+	if provider == nil || provider.ModelDriver == nil {
+		return common.NewCodedError(common.CodeNotFound, "Model provider driver is unavailable")
+	}
+	apiKey = strings.TrimSpace(apiKey)
+	region = strings.TrimSpace(region)
+	baseURL = strings.TrimSpace(baseURL)
+	if region == "" {
+		region = "default"
+	}
+	driver := provider.ModelDriver
+	if strings.EqualFold(provider.Class, "local") {
+		if baseURL == "" {
+			return common.NewCodedError(common.CodeDataError, fmt.Sprintf("base_url is required for local provider %s", provider.Name))
+		}
+		var err error
+		driver, err = newModelDriverForBaseURL(driver, provider.Name, region, baseURL)
+		if err != nil {
+			return fmt.Errorf("failed to initialize provider connection: %w", err)
+		}
+	}
+	apiConfig := &modelModule.APIConfig{ApiKey: &apiKey, Region: &region, BaseURL: &baseURL}
+	verifyResults, verifyErr := verifyProviderModel(ctx, driver, provider.Models, apiConfig, modelInfo)
+	if instanceID != "" && len(verifyResults) > 0 {
+		if err := m.updateSystemModelVerifyResults(ctx, provider.Name, instanceID, verifyResults); err != nil {
+			common.Logger.Error("failed to persist system model verify results", zap.Error(err))
+		}
+	}
+	if verifyErr != nil {
+		return fmt.Errorf("model provider connection failed: %w", verifyErr)
+	}
+	return nil
+}
+
+func (m *ModelProviderService) updateSystemModelVerifyResults(ctx context.Context, providerName, instanceID string, results map[string]string) error {
+	provider, _, instance, _, err := m.systemModelInstance(ctx, providerName, instanceID)
+	if err != nil {
+		return err
+	}
+	for modelName, verifyStatus := range results {
+		var model entity.TenantModel
+		if err := dao.DB.WithContext(ctx).
+			Where("provider_id = ? AND instance_id = ? AND LOWER(model_name) = LOWER(?)", provider.ID, instance.ID, modelName).
+			Take(&model).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				continue
+			}
+			return fmt.Errorf("failed to find system model %q for verification update: %w", modelName, err)
+		}
+		extra, err := decodeModelExtra(model.Extra)
+		if err != nil {
+			return fmt.Errorf("failed to decode system model %q settings: %w", modelName, err)
+		}
+		extra["verify"] = verifyStatus
+		extraJSON, err := json.Marshal(extra)
+		if err != nil {
+			return fmt.Errorf("failed to encode system model %q settings: %w", modelName, err)
+		}
+		if err := dao.DB.WithContext(ctx).Model(&entity.TenantModel{}).
+			Where("id = ? AND provider_id = ? AND instance_id = ?", model.ID, provider.ID, instance.ID).
+			Update("extra", string(extraJSON)).Error; err != nil {
+			return fmt.Errorf("failed to update system model %q verification status: %w", modelName, err)
+		}
+	}
+	return nil
+}
+
+func (m *ModelProviderService) AlterSystemProviderInstance(ctx context.Context, providerName, instanceName string, request *AlterProviderInstanceRequest) (map[string]interface{}, error) {
+	if request == nil || request.ModelInfo == nil {
+		return nil, common.NewCodedError(common.CodeBadRequest, "model_info is required")
+	}
 	provider, _, instance, extra, err := m.systemModelInstance(ctx, providerName, instanceName)
 	if err != nil {
 		return nil, err
 	}
 
-	newInstanceName = strings.TrimSpace(newInstanceName)
-	newAPIKey = strings.TrimSpace(newAPIKey)
-	updates := make(map[string]interface{})
+	newInstanceName := strings.TrimSpace(request.InstanceName)
+	updates := map[string]interface{}{"api_key": NormalizeAPIKey(request.APIKey)}
 	if newInstanceName != "" && newInstanceName != instance.InstanceName {
 		var duplicate entity.TenantModelInstance
 		err := dao.DB.WithContext(ctx).Where("provider_id = ? AND instance_name = ? AND id <> ?", provider.ID, newInstanceName, instance.ID).
@@ -389,54 +479,146 @@ func (m *ModelProviderService) AlterSystemProviderInstance(ctx context.Context, 
 		}
 		updates["instance_name"] = newInstanceName
 	}
-	if newAPIKey != "" {
-		updates["api_key"] = newAPIKey
+	baseURL := strings.TrimSpace(request.BaseURL)
+	region := strings.TrimSpace(request.Region)
+	if baseURL != "" {
+		extra["base_url"] = baseURL
 	}
-	if region != nil || baseURL != nil {
-		if region != nil {
-			extra["region"] = strings.TrimSpace(*region)
-		}
-		if baseURL != nil {
-			extra["base_url"] = strings.TrimSpace(*baseURL)
-		}
-		extraJSON, err := json.Marshal(extra)
-		if err != nil {
-			return nil, fmt.Errorf("failed to encode model instance settings: %w", err)
-		}
-		updates["extra"] = string(extraJSON)
+	if region != "" {
+		extra["region"] = region
 	}
-	if len(updates) > 0 {
-		if err := dao.DB.WithContext(ctx).Model(&entity.TenantModelInstance{}).
-			Where("id = ? AND provider_id = ?", instance.ID, provider.ID).Updates(updates).Error; err != nil {
-			return nil, fmt.Errorf("failed to update model instance: %w", err)
+	extraJSON, err := json.Marshal(extra)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode model instance settings: %w", err)
+	}
+	updates["extra"] = string(extraJSON)
+	if err := dao.DB.WithContext(ctx).Model(&entity.TenantModelInstance{}).
+		Where("id = ? AND provider_id = ?", instance.ID, provider.ID).Updates(updates).Error; err != nil {
+		return nil, fmt.Errorf("failed to update model instance: %w", err)
+	}
+
+	existingModels, err := m.modelDAO.GetModelsByInstanceID(ctx, dao.DB, instance.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list system instance models: %w", err)
+	}
+	existingModelMap := make(map[string]*entity.TenantModel, len(existingModels))
+	submittedModelNames := make(map[string]bool, len(*request.ModelInfo))
+	for _, model := range existingModels {
+		existingModelMap[model.ModelName] = model
+	}
+	for _, model := range *request.ModelInfo {
+		if model.ModelName != "" {
+			submittedModelNames[model.ModelName] = true
 		}
 	}
 
-	return m.ShowSystemProviderInstance(ctx, providerName, firstNonEmpty(newInstanceName, instance.InstanceName))
+	var modelIDsToRemove []string
+	for name, model := range existingModelMap {
+		if !submittedModelNames[name] {
+			modelIDsToRemove = append(modelIDsToRemove, model.ID)
+		}
+	}
+	if len(modelIDsToRemove) > 0 {
+		if err := dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			if err := deleteRoleDefaultModels(tx, modelIDsToRemove); err != nil {
+				return err
+			}
+			if err := tx.Unscoped().Where("provider_id = ? AND instance_id = ? AND id IN ?", provider.ID, instance.ID, modelIDsToRemove).
+				Delete(&entity.TenantModel{}).Error; err != nil {
+				return fmt.Errorf("failed to delete unselected system models: %w", err)
+			}
+			return nil
+		}); err != nil {
+			return nil, err
+		}
+	}
+
+	effectiveInstanceName := firstNonEmpty(newInstanceName, instance.InstanceName)
+	for _, modelInfo := range *request.ModelInfo {
+		if modelInfo.ModelName == "" {
+			continue
+		}
+		if existingModel, exists := existingModelMap[modelInfo.ModelName]; exists {
+			modelUpdates := make(map[string]interface{})
+			if len(modelInfo.ModelTypes) > 0 {
+				modelType := entity.ModelTypeFromStrings(modelInfo.ModelTypes)
+				if int(modelType) != existingModel.ModelType {
+					modelUpdates["model_type"] = int(modelType)
+				}
+			}
+			modelExtra := make(map[string]interface{})
+			if existingModel.Extra != "" {
+				_ = json.Unmarshal([]byte(existingModel.Extra), &modelExtra)
+			}
+			for key, value := range modelInfo.Extra {
+				modelExtra[key] = value
+			}
+			if modelInfo.MaxTokens > 0 {
+				modelExtra["max_tokens"] = modelInfo.MaxTokens
+			}
+			extraBytes, err := json.Marshal(modelExtra)
+			if err != nil {
+				return nil, fmt.Errorf("failed to encode model %q settings: %w", modelInfo.ModelName, err)
+			}
+			modelUpdates["extra"] = string(extraBytes)
+			if err := m.modelDAO.UpdateByID(ctx, dao.DB, existingModel.ID, modelUpdates); err != nil {
+				return nil, fmt.Errorf("failed to update system model %q: %w", modelInfo.ModelName, err)
+			}
+			continue
+		}
+		if err := m.addModelToInstance(ctx, provider, instance, modelInfo); err != nil {
+			return nil, err
+		}
+	}
+
+	return m.ShowSystemProviderInstance(ctx, providerName, effectiveInstanceName)
 }
 
-func (m *ModelProviderService) AddSystemModelInstance(ctx context.Context, providerName, instanceName string) (map[string]interface{}, error) {
+func (m *ModelProviderService) AddSystemModelInstance(ctx context.Context, providerName string, request *CreateProviderInstanceRequest) (map[string]interface{}, error) {
+	if request == nil {
+		return nil, common.NewCodedError(common.CodeBadRequest, "Request is required")
+	}
 	provider, _, err := m.systemModelProvider(ctx, providerName)
 	if err != nil {
 		return nil, err
 	}
-	instanceName = strings.TrimSpace(instanceName)
-	if instanceName == "" {
-		return nil, common.NewCodedError(common.CodeBadRequest, "Instance name is required")
+	instanceName := strings.TrimSpace(request.InstanceName)
+	if err := ValidateProviderInstanceName(instanceName); err != nil {
+		return nil, common.NewCodedError(common.CodeBadRequest, err.Error())
+	}
+	apiKey := NormalizeAPIKey(request.APIKey)
+	baseURL := strings.TrimSpace(request.BaseURL)
+	region := strings.TrimSpace(request.Region)
+	configured := apiKey != "" || baseURL != "" || region != "" || len(request.ModelInfo) > 0
+	extra := "{}"
+	if configured {
+		extraBytes, err := json.Marshal(map[string]string{"region": region, "base_url": baseURL})
+		if err != nil {
+			return nil, fmt.Errorf("failed to encode system instance settings: %w", err)
+		}
+		extra = string(extraBytes)
 	}
 	instance := entity.TenantModelInstance{
 		ID:           common.GenerateToken(),
 		InstanceName: instanceName,
 		ProviderID:   provider.ID,
-		APIKey:       "",
+		APIKey:       apiKey,
 		Status:       "active",
-		Extra:        "{}",
+		Extra:        extra,
 	}
 	if err := m.modelInstanceDAO.Create(ctx, dao.DB, &instance); err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "already exists") {
 			return nil, common.NewCodedError(common.CodeConflict, err.Error())
 		}
 		return nil, fmt.Errorf("failed to add system model instance: %w", err)
+	}
+	if configured {
+		if err := m.addModelsToNewInstance(ctx, provider, &instance, request.ModelInfo); err != nil {
+			if rollbackErr := m.rollbackCreatedInstance(ctx, instance.ID); rollbackErr != nil {
+				common.Logger.Error("failed to roll back system model instance after model creation failure", zap.String("instance_id", instance.ID), zap.Error(rollbackErr))
+			}
+			return nil, err
+		}
 	}
 	return map[string]interface{}{
 		"id":            instance.ID,
@@ -459,11 +641,33 @@ func (m *ModelProviderService) DeleteSystemModelInstances(ctx context.Context, p
 	deleted := make([]string, 0, len(names))
 	err = dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var instances []entity.TenantModelInstance
-		if err := tx.Where("provider_id = ? AND LOWER(instance_name) IN ?", provider.ID, lowerNames(names)).Find(&instances).Error; err != nil {
+		if err := tx.Where("provider_id = ?", provider.ID).Find(&instances).Error; err != nil {
 			return fmt.Errorf("failed to find system model instances: %w", err)
 		}
-		instanceIDs := make([]string, 0, len(instances))
+		instanceByID := make(map[string]entity.TenantModelInstance, len(instances))
+		instanceByName := make(map[string]entity.TenantModelInstance, len(instances))
 		for _, instance := range instances {
+			instanceByID[instance.ID] = instance
+			instanceByName[strings.ToLower(instance.InstanceName)] = instance
+		}
+		instanceIDs := make([]string, 0, len(instances))
+		selected := make(map[string]entity.TenantModelInstance, len(names))
+		var missing []string
+		for _, name := range names {
+			instance, ok := instanceByID[name]
+			if !ok {
+				instance, ok = instanceByName[strings.ToLower(name)]
+			}
+			if !ok {
+				missing = append(missing, name)
+				continue
+			}
+			selected[instance.ID] = instance
+		}
+		if len(missing) > 0 {
+			return common.NewCodedError(common.CodeNotFound, fmt.Sprintf("System model instances %q were not found", missing))
+		}
+		for _, instance := range selected {
 			instanceIDs = append(instanceIDs, instance.ID)
 			deleted = append(deleted, instance.InstanceName)
 		}
@@ -571,8 +775,12 @@ func (m *ModelProviderService) ListSystemInstanceModels(ctx context.Context, pro
 	return result, nil
 }
 
-func (m *ModelProviderService) EnableOrDisableSystemModel(ctx context.Context, providerName, instanceName, modelName, modelID, status string) (map[string]interface{}, error) {
-	if status != "active" && status != "inactive" {
+func (m *ModelProviderService) AlterSystemModel(ctx context.Context, providerName, instanceName, modelName string, request *AlterModelRequest) (map[string]interface{}, error) {
+	if request == nil {
+		return nil, common.NewCodedError(common.CodeBadRequest, "Request is required")
+	}
+	status := strings.TrimSpace(request.Status)
+	if status != "" && status != "active" && status != "inactive" {
 		return nil, common.NewCodedError(common.CodeBadRequest, "Status must be 'active' or 'inactive'")
 	}
 	provider, _, instance, _, err := m.systemModelInstance(ctx, providerName, instanceName)
@@ -580,17 +788,16 @@ func (m *ModelProviderService) EnableOrDisableSystemModel(ctx context.Context, p
 		return nil, err
 	}
 	modelName = strings.TrimSpace(modelName)
-	modelID = strings.TrimSpace(modelID)
+	modelID := strings.TrimSpace(request.ModelID)
 	if modelName == "" && modelID == "" {
 		return nil, common.NewCodedError(common.CodeBadRequest, "Model name or model ID is required")
 	}
 
 	query := dao.DB.WithContext(ctx).Where("provider_id = ? AND instance_id = ?", provider.ID, instance.ID)
-	if modelID != "" {
-		query = query.Where("id = ?", modelID)
-	}
 	if modelName != "" {
 		query = query.Where("LOWER(model_name) = LOWER(?)", modelName)
+	} else {
+		query = query.Where("id = ?", modelID)
 	}
 	var model entity.TenantModel
 	if err := query.Take(&model).Error; err != nil {
@@ -599,104 +806,105 @@ func (m *ModelProviderService) EnableOrDisableSystemModel(ctx context.Context, p
 		}
 		return nil, fmt.Errorf("failed to find system model: %w", err)
 	}
+	if modelID != "" && model.ID != modelID {
+		return nil, common.NewCodedError(common.CodeBadRequest, "Model ID does not match model name")
+	}
+	updates := make(map[string]interface{})
+	if status != "" {
+		updates["status"] = status
+	}
+	if request.ModelType != nil {
+		updates["model_type"] = resolveModelType(request.ModelType)
+	}
+	modelExtra := make(map[string]interface{})
+	if request.Extra != nil {
+		switch value := request.Extra.(type) {
+		case map[string]interface{}:
+			for key, item := range value {
+				modelExtra[key] = item
+			}
+		default:
+			return nil, common.NewCodedError(common.CodeBadRequest, "extra must be an object")
+		}
+	}
+	if request.MaxTokens > 0 {
+		modelExtra["max_tokens"] = request.MaxTokens
+	}
+	if len(modelExtra) > 0 {
+		existingExtra, err := decodeModelExtra(model.Extra)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode system model settings: %w", err)
+		}
+		for key, value := range modelExtra {
+			existingExtra[key] = value
+		}
+		extraJSON, err := json.Marshal(existingExtra)
+		if err != nil {
+			return nil, fmt.Errorf("failed to encode system model settings: %w", err)
+		}
+		updates["extra"] = string(extraJSON)
+	}
+	if len(updates) == 0 {
+		return nil, common.NewCodedError(common.CodeBadRequest, "At least one model field must be updated")
+	}
 	if err := dao.DB.WithContext(ctx).Model(&entity.TenantModel{}).
 		Where("id = ? AND provider_id = ? AND instance_id = ?", model.ID, provider.ID, instance.ID).
-		Update("status", status).Error; err != nil {
-		return nil, fmt.Errorf("failed to update system model status: %w", err)
+		Updates(updates).Error; err != nil {
+		return nil, fmt.Errorf("failed to update system model: %w", err)
+	}
+	if status == "" {
+		status = model.Status
 	}
 	return map[string]interface{}{"model_id": model.ID, "model_name": model.ModelName, "status": status}, nil
 }
 
-func (m *ModelProviderService) AddSystemModels(ctx context.Context, providerName, instanceName string, modelNames []string) (map[string]interface{}, error) {
-	provider, catalogProvider, instance, instanceExtra, err := m.systemModelInstance(ctx, providerName, instanceName)
+func (m *ModelProviderService) AddSystemModel(ctx context.Context, request *AddModelRequest) error {
+	if request == nil {
+		return common.NewCodedError(common.CodeBadRequest, "Request is required")
+	}
+
+	modelName := strings.TrimSpace(request.ModelName)
+	if modelName == "" {
+		return common.NewCodedError(common.CodeBadRequest, "Model name is required")
+	}
+
+	provider, catalogProvider, instance, _, err := m.systemModelInstance(ctx, request.ProviderName, request.InstanceName)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	requested := normalizedNames(modelNames)
-	if len(requested) == 0 {
-		return map[string]interface{}{"model_names": []string{}}, nil
-	}
-	type modelSpec struct {
-		name      string
-		modelType entity.ModelType
-		extra     map[string]interface{}
-	}
-	modelsToAdd := make([]modelSpec, 0, len(requested))
-	var remoteModels []modelModule.ListModelResponse
-	loadedRemoteModels := false
-	for _, requestedName := range requested {
-		catalogModel := dao.GetModelProviderManager().FindModel(catalogProvider, requestedName)
-		if catalogModel != nil {
-			modelType := entity.ModelTypeFromStrings(catalogModel.ModelTypes)
-			if modelType == 0 {
-				return nil, common.NewCodedError(common.CodeBadRequest, fmt.Sprintf("Model %q has no supported model types", catalogModel.Name))
-			}
-			modelsToAdd = append(modelsToAdd, modelSpec{
-				name:      catalogModel.Name,
-				modelType: modelType,
-				extra:     modelExtraFromCatalog(catalogModel),
-			})
-			continue
-		}
-
-		if !loadedRemoteModels {
-			driver, apiConfig, driverErr := configuredModelDriver(catalogProvider, instance.APIKey, stringSetting(instanceExtra, "region"), stringSetting(instanceExtra, "base_url"))
-			if driverErr != nil {
-				return nil, driverErr
-			}
-			remoteModels, err = driver.ListModels(ctx, apiConfig)
-			if err != nil {
-				return nil, fmt.Errorf("model %q is not in provider catalog and supported models could not be listed: %w", requestedName, err)
-			}
-			loadedRemoteModels = true
-		}
-		var remoteModel *modelModule.ListModelResponse
-		for i := range remoteModels {
-			if strings.EqualFold(remoteModels[i].Name, requestedName) {
-				remoteModel = &remoteModels[i]
-				break
-			}
-		}
-		if remoteModel == nil {
-			return nil, common.NewCodedError(common.CodeNotFound, fmt.Sprintf("Model %q is not supported by provider %q", requestedName, provider.ProviderName))
-		}
-		modelType := entity.ModelTypeFromStrings(remoteModel.ModelTypes)
-		if modelType == 0 {
-			return nil, common.NewCodedError(common.CodeBadRequest, fmt.Sprintf("Model %q has no supported model types", remoteModel.Name))
-		}
-		modelsToAdd = append(modelsToAdd, modelSpec{
-			name:      remoteModel.Name,
-			modelType: modelType,
-			extra:     modelExtraFromListModel(remoteModel),
-		})
+	if _, err = m.modelDAO.GetModelByProviderIDAndInstanceIDAndModelName(ctx, dao.DB, provider.ID, instance.ID, modelName); err == nil {
+		return common.NewCodedError(common.CodeConflict, fmt.Sprintf("Model %q already exists for provider %q and instance %q", modelName, request.ProviderName, request.InstanceName))
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return fmt.Errorf("failed to check existing system model %q: %w", modelName, err)
 	}
 
-	added := make([]string, 0, len(modelsToAdd))
-	err = dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		for _, modelSpec := range modelsToAdd {
-			var existing entity.TenantModel
-			err := tx.Where("provider_id = ? AND instance_id = ? AND LOWER(model_name) = LOWER(?)", provider.ID, instance.ID, modelSpec.name).
-				Take(&existing).Error
-			if err == nil {
-				continue
-			}
-			if !errors.Is(err, gorm.ErrRecordNotFound) {
-				return fmt.Errorf("failed to check existing system model %s: %w", modelSpec.name, err)
-			}
-
-			if err := m.createModelRecord(ctx, tx, provider.ID, instance.ID, modelSpec.name, modelSpec.modelType, "active", modelSpec.extra); err != nil {
-				return fmt.Errorf("failed to add system model %s: %w", modelSpec.name, err)
-			}
-			added = append(added, modelSpec.name)
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
+	modelType := entity.ModelType(0)
+	for _, rawType := range request.ModelTypes {
+		modelType |= entity.ModelTypeFromString(strings.TrimSpace(rawType))
 	}
-	sort.Strings(added)
-	return map[string]interface{}{"model_names": added}, nil
+
+	maxTokens := request.MaxTokens
+	if maxTokens <= 0 {
+		maxTokens = 8192
+	}
+	extra := map[string]interface{}{"max_tokens": maxTokens}
+	if catalogModel := dao.GetModelProviderManager().FindModel(catalogProvider, modelName); catalogModel != nil {
+		if catalogModel.Tools != nil && catalogModel.Tools.Support {
+			extra["is_tools"] = true
+		}
+		if catalogModel.Thinking != nil {
+			extra["thinking"] = true
+		}
+	}
+	for key, value := range request.Extra {
+		extra[key] = value
+	}
+
+	if err := m.createModelRecord(ctx, dao.DB, provider.ID, instance.ID, modelName, modelType, "active", extra); err != nil {
+		return fmt.Errorf("failed to add system model %q: %w", modelName, err)
+	}
+	return nil
 }
 
 func (m *ModelProviderService) DeleteSystemModels(ctx context.Context, providerName, instanceName string, modelNames []string) (map[string]interface{}, error) {
@@ -712,8 +920,30 @@ func (m *ModelProviderService) DeleteSystemModels(ctx context.Context, providerN
 	deleted := make([]string, 0, len(names))
 	err = dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var models []entity.TenantModel
-		if err := tx.Where("provider_id = ? AND instance_id = ? AND LOWER(model_name) IN ?", provider.ID, instance.ID, lowerNames(names)).Find(&models).Error; err != nil {
+		if err := tx.Where("provider_id = ? AND instance_id = ?", provider.ID, instance.ID).Find(&models).Error; err != nil {
 			return fmt.Errorf("failed to find system models: %w", err)
+		}
+		modelsByName := make(map[string]entity.TenantModel, len(models))
+		for _, model := range models {
+			modelsByName[strings.ToLower(model.ModelName)] = model
+		}
+		var missing []string
+		for _, name := range names {
+			if _, ok := modelsByName[strings.ToLower(name)]; !ok {
+				missing = append(missing, name)
+			}
+		}
+		if len(missing) > 0 {
+			return common.NewCodedError(common.CodeNotFound, fmt.Sprintf("System models %q were not found", missing))
+		}
+		selected := make(map[string]entity.TenantModel, len(names))
+		for _, name := range names {
+			model := modelsByName[strings.ToLower(name)]
+			selected[model.ID] = model
+		}
+		models = models[:0]
+		for _, model := range selected {
+			models = append(models, model)
 		}
 		ids := modelIDs(models)
 		for _, model := range models {
@@ -883,62 +1113,6 @@ func decodeModelExtra(raw string) (map[string]interface{}, error) {
 func stringSetting(values map[string]interface{}, key string) string {
 	value, _ := values[key].(string)
 	return value
-}
-
-func modelExtraFromCatalog(model *modelModule.Model) map[string]interface{} {
-	extra := make(map[string]interface{})
-	if maxTokens := catalogModelContextLength(model); maxTokens > 0 {
-		extra["max_tokens"] = maxTokens
-	}
-	if model.ContextLength != nil {
-		extra["context_length"] = *model.ContextLength
-	}
-	if model.MaxOutput != nil {
-		extra["max_output"] = *model.MaxOutput
-	}
-	if model.MaxDimension != nil {
-		extra["max_dimension"] = *model.MaxDimension
-	}
-	if model.MaxBatchSize != nil {
-		extra["max_batch_size"] = *model.MaxBatchSize
-	}
-	if len(model.Dimensions) > 0 {
-		extra["dimensions"] = model.Dimensions
-	}
-	if model.BatchSize != nil {
-		extra["batch_size"] = *model.BatchSize
-	}
-	if model.Thinking != nil {
-		extra["thinking"] = model.Thinking.DefaultValue
-	}
-	if model.Tools != nil {
-		extra["is_tools"] = model.Tools.Support
-	}
-	return extra
-}
-
-func modelExtraFromListModel(model *modelModule.ListModelResponse) map[string]interface{} {
-	extra := make(map[string]interface{})
-	if model.ContextLength != nil {
-		extra["max_tokens"] = *model.ContextLength
-		extra["context_length"] = *model.ContextLength
-	}
-	if model.MaxOutput != nil {
-		extra["max_output"] = *model.MaxOutput
-	}
-	if model.MaxDimension != nil {
-		extra["max_dimension"] = *model.MaxDimension
-	}
-	if model.MaxBatchSize != nil {
-		extra["max_batch_size"] = *model.MaxBatchSize
-	}
-	if len(model.Dimensions) > 0 {
-		extra["dimensions"] = model.Dimensions
-	}
-	if model.Thinking != nil {
-		extra["thinking"] = model.Thinking.DefaultValue
-	}
-	return extra
 }
 
 func catalogModelContextLength(model *modelModule.Model) int {

@@ -37,6 +37,7 @@ func TestMigrateTenantDefaultRolesEE(t *testing.T) {
 		&entity.GroupInfo{},
 		&entity.GroupMember{},
 		&entity.Permission{},
+		&entity.PermissionChangeLog{},
 	); err != nil {
 		t.Fatalf("auto-migrate Tenant role tables: %v", err)
 	}
@@ -65,6 +66,30 @@ func TestMigrateTenantDefaultRolesEE(t *testing.T) {
 	customRole := entity.Role{RoleName: "Custom", TenantID: &customTenantID}
 	if err := db.Create(&customRole).Error; err != nil {
 		t.Fatalf("create custom Tenant role: %v", err)
+	}
+	viewerRole := entity.Role{RoleName: "Viewer", TenantID: stringPointer("tenant-2")}
+	if err := db.Create(&viewerRole).Error; err != nil {
+		t.Fatalf("create Viewer Tenant role: %v", err)
+	}
+	if err := db.Create(&[]entity.RoleResource{
+		{RoleID: customRole.ID, ResourceType: entity.RoleResourceTypeGroup, Action: entity.RoleActionEnable | entity.RoleActionWrite | legacyTenantGroupCreateAction},
+		{RoleID: viewerRole.ID, ResourceType: entity.RoleResourceTypeGroup, Action: entity.RoleActionEnable | entity.RoleActionRead},
+	}).Error; err != nil {
+		t.Fatalf("create legacy Tenant team role permissions: %v", err)
+	}
+	legacyGroupResourceID := "legacy-group-1"
+	if err := db.Create(&entity.Permission{
+		ID: "legacy-team-grant", MemberID: stringPointer("normal-1"), TenantID: "tenant-1",
+		ResourceType: "team", ResourceID: &legacyGroupResourceID, Permission: entity.GroupPermissionAddMember, Status: &status,
+	}).Error; err != nil {
+		t.Fatalf("create legacy team grant: %v", err)
+	}
+	if err := db.Create(&entity.PermissionChangeLog{
+		ID: "legacy-team-audit", TenantID: "tenant-1", OperatorID: "owner-link",
+		TargetType: "team", TargetID: legacyGroupResourceID, ResourceType: "team", ResourceID: legacyGroupResourceID,
+		ActionType: "update", EventType: "team.updated", ScopeType: "tenant", Status: &status,
+	}).Error; err != nil {
+		t.Fatalf("create legacy team audit: %v", err)
 	}
 	if err := db.Create(&[]entity.UserTenant{
 		{ID: "owner-1", LLMID: "", EmbdID: "", ASRID: "", Img2TxtID: "", RerankID: "", UserID: "user-owner-1", TenantID: "tenant-1", Role: "owner", Status: &status},
@@ -126,6 +151,34 @@ func TestMigrateTenantDefaultRolesEE(t *testing.T) {
 	}
 	if defaultRoleIDs["tenant-2"] != existingTenantRole.ID {
 		t.Fatalf("Tenant 2 default role ID = %d, want existing member role %d", defaultRoleIDs["tenant-2"], existingTenantRole.ID)
+	}
+	var migratedGroupPermission entity.RoleResource
+	if err := db.Where("role_id = ? AND resource_type = ?", customRole.ID, entity.RoleResourceTypeGroup).Take(&migratedGroupPermission).Error; err != nil {
+		t.Fatalf("load migrated group permission: %v", err)
+	}
+	if migratedGroupPermission.Action != entity.RoleActionEnable|entity.RoleActionWrite {
+		t.Fatalf("migrated group action = %d, want enable/write action mask", migratedGroupPermission.Action)
+	}
+	var readOnlyGroupPermission entity.RoleResource
+	if err := db.Where("role_id = ? AND resource_type = ?", viewerRole.ID, entity.RoleResourceTypeGroup).Take(&readOnlyGroupPermission).Error; err != nil {
+		t.Fatalf("load migrated read-only group permission: %v", err)
+	}
+	if readOnlyGroupPermission.Action != entity.RoleActionEnable|entity.RoleActionRead {
+		t.Fatalf("migrated read-only group action = %d, want enable/read action mask", readOnlyGroupPermission.Action)
+	}
+	var migratedGroupGrant entity.Permission
+	if err := db.Where("id = ?", "legacy-team-grant").Take(&migratedGroupGrant).Error; err != nil {
+		t.Fatalf("load renamed group grant: %v", err)
+	}
+	if migratedGroupGrant.ResourceType != "group" {
+		t.Fatalf("migrated grant resource_type = %q, want group", migratedGroupGrant.ResourceType)
+	}
+	var migratedGroupAudit entity.PermissionChangeLog
+	if err := db.Where("id = ?", "legacy-team-audit").Take(&migratedGroupAudit).Error; err != nil {
+		t.Fatalf("load renamed group audit: %v", err)
+	}
+	if migratedGroupAudit.TargetType != "group" || migratedGroupAudit.ResourceType != "group" || migratedGroupAudit.EventType != "group.updated" {
+		t.Fatalf("migrated audit target/resource/event types = %q/%q/%q, want group/group/group.updated", migratedGroupAudit.TargetType, migratedGroupAudit.ResourceType, migratedGroupAudit.EventType)
 	}
 
 	wantMembershipRoles := map[string]string{

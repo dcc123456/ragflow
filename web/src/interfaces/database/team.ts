@@ -49,26 +49,6 @@ export interface IPermission {
   avatar?: string;
 }
 
-export interface IShareDialog {
-  failed: Failed[];
-  failed_departments: Failed[];
-  failed_groups: Failed[];
-  successful: string[];
-}
-
-export interface Failed {
-  kbs: Kb[];
-  llm_factory: string;
-  id: string;
-  name: string;
-}
-
-interface Kb {
-  id: string;
-  name: string;
-  type: string;
-}
-
 export type ISafeDelete = Record<string, Record<string, Resource[]>>;
 
 interface Resource {

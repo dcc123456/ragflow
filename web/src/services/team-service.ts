@@ -11,13 +11,9 @@ import request, { drop } from '@/utils/request';
 
 const {
   createDepartment,
-  createDepartmentMember,
   createGroup,
-  createGroupMember,
-  deleteGroupMember,
   moveDepartment,
   updatePermission,
-  updateDialogPermission,
   listPermission,
   listPermissionByTarget,
 } = api;
@@ -25,10 +21,6 @@ const {
 const methods = {
   createDepartment: {
     url: createDepartment,
-    method: 'post',
-  },
-  createDepartmentMember: {
-    url: createDepartmentMember,
     method: 'post',
   },
   moveDepartment: {
@@ -39,20 +31,8 @@ const methods = {
     url: createGroup,
     method: 'post',
   },
-  createGroupMember: {
-    url: createGroupMember,
-    method: 'post',
-  },
-  deleteGroupMember: {
-    url: deleteGroupMember,
-    method: 'delete',
-  },
   updatePermission: {
     url: updatePermission,
-    method: 'put',
-  },
-  updateDialogPermission: {
-    url: updateDialogPermission,
     method: 'put',
   },
   listPermission: {
@@ -65,7 +45,15 @@ const methods = {
   },
 } as const;
 
-const teamService = registerServer<keyof typeof methods>(methods, request);
+const teamService = {
+  ...registerServer<keyof typeof methods>(methods, request),
+  createDepartmentMember: (tenantId: string, body: unknown) =>
+    request.post(api.createDepartmentMember(tenantId), { data: body }),
+  createGroupMember: (tenantId: string, body: unknown) =>
+    request.post(api.createGroupMember(tenantId), { data: body }),
+  deleteGroupMember: (tenantId: string, body: unknown) =>
+    drop(api.deleteGroupMember(tenantId), body),
+};
 
 export default teamService;
 

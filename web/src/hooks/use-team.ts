@@ -14,7 +14,6 @@ import {
   IMoveDepartmentRequestBody,
   ITransferGroupOwnerRequestBody,
   IUpdateDepartmentRequestBody,
-  IUpdateDialogPermission,
   IUpdateGroupRequestBody,
   IUpdatePermission,
 } from '@/interfaces/request/team';
@@ -56,7 +55,6 @@ export const enum TeamApiAction {
   UpdatePermission = 'updatePermission',
   ListPermission = 'listPermission',
   ListPermissionByTarget = 'listPermissionByTarget',
-  UpdateDialogPermission = 'updateDialogPermission',
   ConfirmDeletePermission = 'confirmDeletePermission',
 }
 
@@ -478,32 +476,4 @@ export const useFetchPermissionByTarget = (
   });
 
   return { data, loading, refetch };
-};
-
-export const useUpdateDialogPermission = () => {
-  const { t } = useTranslation();
-  const queryClient = useQueryClient();
-
-  const {
-    data,
-    isPending: loading,
-    mutateAsync,
-  } = useMutation({
-    mutationKey: [TeamApiAction.UpdateDialogPermission],
-    mutationFn: async (params: IUpdateDialogPermission) => {
-      const { data } = await teamService.updateDialogPermission(params);
-
-      if (data.code === 0) {
-        if (isEmpty(data?.data?.failed)) {
-          message.success(t('message.operated'));
-        }
-        queryClient.invalidateQueries({
-          queryKey: [TeamApiAction.ListPermission],
-        });
-      }
-      return data;
-    },
-  });
-
-  return { data, loading, updateDialogPermission: mutateAsync };
 };

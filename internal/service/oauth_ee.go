@@ -287,16 +287,16 @@ func (s *UserService) registerOAuthUser(ctx context.Context, channel string, inf
 	userTenantID := common.GenerateToken()
 	userTenant := &entity.UserTenant{
 		ID:        userTenantID,
-		LLMID:     cfg.GetDefaultChatModel().Name,
-		EmbdID:    cfg.GetDefaultEmbeddingModel().Name,
-		ASRID:     cfg.GetDefaultASRModel().Name,
-		Img2TxtID: cfg.GetDefaultVisionModel().Name,
-		RerankID:  cfg.GetDefaultRerankModel().Name,
 		UserID:    userID,
 		TenantID:  userID,
 		Role:      "owner",
 		InvitedBy: userID,
 		Status:    &status,
+		LLMID:     cfg.GetDefaultChatModel().Name,
+		EmbdID:    cfg.GetDefaultEmbeddingModel().Name,
+		ASRID:     cfg.GetDefaultASRModel().Name,
+		Img2TxtID: cfg.GetDefaultVisionModel().Name,
+		RerankID:  cfg.GetDefaultRerankModel().Name,
 	}
 	fileID := common.GenerateToken()
 	rootFile := &entity.File{

@@ -40,9 +40,10 @@ var roleResourceTypes = map[string]int64{
 	"agent":          entity.RoleResourceTypeAgent,
 	"search":         entity.RoleResourceTypeSearch,
 	"file":           entity.RoleResourceTypeFile,
-	"team":           entity.RoleResourceTypeTeam,
+	"group":          entity.RoleResourceTypeGroup,
 	"memory":         entity.RoleResourceTypeMemory,
 	"model_provider": entity.RoleResourceTypeModelProvider,
+	"mcp":            entity.RoleResourceTypeMCP,
 }
 
 var roleResourceNamesByType = map[int64]string{
@@ -51,9 +52,10 @@ var roleResourceNamesByType = map[int64]string{
 	entity.RoleResourceTypeAgent:         "agent",
 	entity.RoleResourceTypeSearch:        "search",
 	entity.RoleResourceTypeFile:          "file",
-	entity.RoleResourceTypeTeam:          "team",
+	entity.RoleResourceTypeGroup:         "group",
 	entity.RoleResourceTypeMemory:        "memory",
 	entity.RoleResourceTypeModelProvider: "model_provider",
+	entity.RoleResourceTypeMCP:           "mcp",
 }
 
 var roleResourceNames = []string{
@@ -62,9 +64,10 @@ var roleResourceNames = []string{
 	"agent",
 	"search",
 	"file",
-	"team",
+	"group",
 	"memory",
 	"model_provider",
+	"mcp",
 }
 
 var roleActionMasks = map[string]int32{

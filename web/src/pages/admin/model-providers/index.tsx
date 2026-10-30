@@ -15,18 +15,14 @@
  */
 
 import Spotlight from '@/components/spotlight';
-import message from '@/components/ui/message';
 import { useTranslate } from '@/hooks/common-hooks';
 import {
-  LlmKeys,
-  useAddProviderInstance,
   useFetchAddedProviders,
   useFetchAvailableProviders,
   useFetchProviderInstances,
-  useUpdateProviderInstance,
 } from '@/hooks/use-llm-request';
 import { IProviderInstance } from '@/interfaces/database/llm';
-import { ProviderInstanceCardRef } from '@/pages/user-setting/setting-model/instance-card/interface';
+import { InstanceSavePayload } from '@/pages/user-setting/setting-model/instance-card/interface';
 import { ProviderInstanceCard } from '@/pages/user-setting/setting-model/instance-card/provider-instance-card';
 import { ProviderHeaderBar } from '@/pages/user-setting/setting-model/layout/provider-header-bar';
 import { Sidebar } from '@/pages/user-setting/setting-model/layout/sidebar';
@@ -34,7 +30,6 @@ import { Sidebar } from '@/pages/user-setting/setting-model/layout/sidebar';
 // hooks onto the admin gateway. Import for side effects; must stay above the
 // components whose queries it rewrites.
 import '@/services/admin-llm-scope';
-import { useQueryClient } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import { FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -42,8 +37,8 @@ import { FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
  * Admin-side model-provider management.
  *
  * The UI is the tenant settings page's, reused as-is: the same `Sidebar`,
- * `ProviderHeaderBar` and `ProviderInstanceCard` components and the same
- * batch-save flow. Two things differ, and both are handled *without* editing
+ * `ProviderHeaderBar` and `ProviderInstanceCard` components. Two things
+ * differ, and both are handled *without* editing
  * the open-source components, so future syncs from upstream stay clean:
  *
  *  1. No "Default models" entry. The admin gateway manages providers across
@@ -69,13 +64,11 @@ const AdminModelProviders: FC = () => {
   const [selection, setSelection] = useState<string>('');
   // Stack of draft-instance identifiers, rendered as `ProviderInstanceCard`
   // entries below the persisted instances. Each draft can be cancelled
-  // independently; saving is driven by the top Save button.
+  // independently; each card owns its save action.
   const [draftIds, setDraftIds] = useState<string[]>([]);
 
-  const [saving, setSaving] = useState(false);
-
-  // Tracks the instance name that was just persisted by the top Save
-  // button. The corresponding saved card mounts expanded so the user
+  // Tracks the instance name that was just persisted from a draft card.
+  // The corresponding saved card mounts expanded so the user
   // can immediately see (and edit) what was just saved. Reset on every
   // selection change so it does not bleed across providers.
   const [newlySavedInstanceName, setNewlySavedInstanceName] = useState<
@@ -87,23 +80,6 @@ const AdminModelProviders: FC = () => {
   // Tracks whether the user explicitly cancelled the auto-shown draft
   // for the current selection. Reset on every selection change.
   const cancelledRef = useRef(false);
-
-  // Imperative refs to every visible card, keyed by the card's React key
-  // (instance name for saved cards, draft id for drafts). Used by the
-  // top Save button to validate + collect payloads in a single batch.
-  const cardRefs = useRef<Map<string, ProviderInstanceCardRef | null>>(
-    new Map(),
-  );
-  const setCardRef = useCallback(
-    (id: string) => (ref: ProviderInstanceCardRef | null) => {
-      if (ref) {
-        cardRefs.current.set(id, ref);
-      } else {
-        cardRefs.current.delete(id);
-      }
-    },
-    [],
-  );
 
   const { data: addedProviders } = useFetchAddedProviders();
   const { data: availableProviders } = useFetchAvailableProviders();
@@ -121,7 +97,6 @@ const AdminModelProviders: FC = () => {
   }, [selection, addedProviders]);
   const { data: instances, loading: instancesLoading } =
     useFetchProviderInstances(providerQueryName);
-  const queryClient = useQueryClient();
 
   // Append a new draft id to the visible list.
   const addDraft = useCallback(() => {
@@ -160,7 +135,6 @@ const AdminModelProviders: FC = () => {
   useEffect(() => {
     cancelledRef.current = false;
     setDraftIds([]);
-    cardRefs.current.clear();
     setNewlySavedInstanceName(null);
   }, [selection]);
 
@@ -183,111 +157,6 @@ const AdminModelProviders: FC = () => {
     }
   }, [selection, instances, instancesLoading, draftIds, addDraft]);
 
-  const { addProviderInstance } = useAddProviderInstance();
-  const { updateProviderInstance } = useUpdateProviderInstance();
-
-  // Batch save handler, wired to the top Save button: collect every card
-  // ref, ask each for its payload (non-dirty saved cards return null and
-  // are skipped), reject duplicate instance names up front, validate the
-  // rest, then dispatch one API call per dirty card. Drafts go through
-  // `addProviderInstance`, saved cards through `updateProviderInstance`.
-  const handleSaveAll = useCallback(async () => {
-    // Keep each card's registry key alongside its ref: for drafts the
-    // key is the draft id, so a successfully-saved draft can be removed
-    // from `draftIds` individually even when a later card in the batch
-    // fails (the early return must not strand already-persisted drafts).
-    const refs = Array.from(cardRefs.current.entries()).flatMap(([key, ref]) =>
-      ref ? [{ key, ref }] : [],
-    );
-    if (refs.length === 0) return;
-
-    const dirty = refs
-      .map(({ key, ref }) => ({ key, ref, payload: ref.getSavePayload() }))
-      .filter((e) => e.payload !== null);
-    if (dirty.length === 0) return;
-
-    // Reject duplicate instance names before any API call: a draft may
-    // not reuse the name of a persisted instance, nor of another draft
-    // in the same batch. Without this the backend would either error or
-    // silently create a second instance sharing the name.
-    const takenNames = new Set(instances.map((i) => i.instance_name));
-    for (const { payload } of dirty) {
-      if (!payload) continue;
-      const name = payload.instanceName.trim();
-      if (payload.isDraft && takenNames.has(name)) {
-        message.error(tSetting('instanceNameExists'));
-        return;
-      }
-      takenNames.add(name);
-    }
-
-    const validations = await Promise.all(
-      dirty.map(async (e) => ({ ...e, valid: await e.ref.validate() })),
-    );
-    if (validations.some((v) => !v.valid)) {
-      return;
-    }
-
-    setSaving(true);
-    // Pin the auto-show guard so a draft isn't re-spawned while the
-    // providerInstances refetch is in flight (during that window both
-    // `instances` and `draftIds` are empty and would otherwise re-trigger
-    // `addDraft()`).
-    cancelledRef.current = true;
-    try {
-      // Sequential so a backend error stops the batch and the user can
-      // retry the remaining cards after fixing the issue. Each
-      // successfully persisted draft is removed immediately so it never
-      // lingers beside its now-saved card when a later card fails.
-      for (const { key, ref, payload } of validations) {
-        if (!payload) continue;
-        if (payload.apiKind === 'add') {
-          const ret = await addProviderInstance(payload.payload as any);
-          if (ret?.code !== 0) {
-            return;
-          }
-          if (payload.isDraft) {
-            setDraftIds((prev) => prev.filter((id) => id !== key));
-            // Remember the just-saved name so the persisted card mounts
-            // expanded once it surfaces via the invalidated instances
-            // query.
-            setNewlySavedInstanceName(payload.instanceName);
-          }
-        } else {
-          const ret = await updateProviderInstance(payload.payload as any);
-          if (ret?.code !== 0) {
-            return;
-          }
-          // Saved card: update its dirty baseline so the next save
-          // short-circuits.
-          ref.markSaved();
-        }
-      }
-      // Refresh the persisted instance list (covers updates; adds are
-      // already invalidated by the add mutation) so saved cards show.
-      queryClient.invalidateQueries({
-        queryKey: LlmKeys.providerInstances(selection),
-      });
-    } finally {
-      setSaving(false);
-    }
-  }, [
-    addProviderInstance,
-    updateProviderInstance,
-    queryClient,
-    selection,
-    instances,
-    tSetting,
-  ]);
-
-  // Whether the Save button should be enabled. We avoid an O(n) ref
-  // scan on every render by treating "has any draft OR any saved
-  // instance" as a conservative proxy - if there is nothing on screen
-  // there is nothing to save, and if there is something the user can
-  // always attempt a save (dirty saved cards short-circuit inside
-  // `getSavePayload`). The button is disabled while a save is in flight.
-  const canSave = !saving && (draftIds.length > 0 || instances.length > 0);
-
   // User clicked Cancel on a specific draft - remove it from the list
   // and stop the auto-show effect from re-opening it for the current
   // empty-instance selection.
@@ -295,6 +164,15 @@ const AdminModelProviders: FC = () => {
     (id: string) => {
       cancelledRef.current = true;
       removeDraft(id);
+    },
+    [removeDraft],
+  );
+
+  const handleDraftSaved = useCallback(
+    (draftId: string) => (payload: InstanceSavePayload) => {
+      cancelledRef.current = true;
+      removeDraft(draftId);
+      setNewlySavedInstanceName(payload.instanceName);
     },
     [removeDraft],
   );
@@ -317,13 +195,9 @@ const AdminModelProviders: FC = () => {
           <div className="flex-1 overflow-auto scrollbar-auto" />
         ) : (
           <>
-            {/* Sticky top: provider name + doc-link arrow + batch Save */}
-            <ProviderHeaderBar
-              providerName={selection}
-              onSave={handleSaveAll}
-              saving={saving}
-              canSave={canSave}
-            />
+            {/* Sticky top: provider name + doc-link arrow. Saving lives
+                in each instance card's header. */}
+            <ProviderHeaderBar providerName={selection} />
 
             {/* Scrollable middle: instance cards + optional draft cards */}
             <div className="flex-1 overflow-auto scrollbar-auto p-4 flex flex-col gap-4">
@@ -335,7 +209,6 @@ const AdminModelProviders: FC = () => {
               {instances.map((instance, index) => (
                 <ProviderInstanceCard
                   key={instance.instance_name}
-                  ref={setCardRef(instance.instance_name)}
                   providerName={selection}
                   instance={instance}
                   defaultOpen={
@@ -347,11 +220,11 @@ const AdminModelProviders: FC = () => {
               {draftIds.map((id) => (
                 <ProviderInstanceCard
                   key={id}
-                  ref={setCardRef(id)}
                   providerName={selection}
                   instance={draftInstance}
                   isDraft
                   onDelete={() => handleDraftCancel(id)}
+                  onSaved={handleDraftSaved(id)}
                 />
               ))}
               <div className="z-10 border-border-button py-4">

@@ -80,7 +80,7 @@ export function PrivilegeManagementDialog({
         <section className="flex justify-between items-center">
           <div className="flex gap-2 items-center">
             {isDocumentResourceType ? (
-              <span>{initialValues.documents.length} files</span>
+              <span>{initialValues.documents?.length ?? 0} files</span>
             ) : (
               <div className="flex items-center gap-4">
                 {initialValues.resourceType === PermissionResourceType.LLM ? (

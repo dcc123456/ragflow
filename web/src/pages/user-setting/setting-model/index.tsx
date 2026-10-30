@@ -15,14 +15,24 @@
  */
 
 import Spotlight from '@/components/spotlight';
+import { PrivilegeManagementDialog } from '@/components/privilege-management/privilege-management-dialog';
+import { IPrivilegeManagementInitialValues } from '@/components/privilege-management/interface';
+import { Button } from '@/components/ui/button';
+import {
+  Permission,
+  PermissionResourceType,
+  hasResourcePermission,
+} from '@/constants/team';
 import { useTranslate } from '@/hooks/common-hooks';
 import {
   useFetchAddedProviders,
   useFetchProviderInstances,
 } from '@/hooks/use-llm-request';
+import { useFetchTenantInfo } from '@/hooks/use-user-setting-request';
 import { IProviderInstance } from '@/interfaces/database/llm';
-import { Plus } from 'lucide-react';
+import { KeyRound, Plus } from 'lucide-react';
 import { FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { InstanceSavePayload } from './instance-card/interface';
 import { ProviderInstanceCard } from './instance-card/provider-instance-card';
 import { ProviderHeaderBar } from './layout/provider-header-bar';
@@ -53,7 +63,11 @@ import SystemSetting from './layout/system-setting';
  */
 const SettingModelV2: FC = () => {
   const { t: tSetting } = useTranslate('setting');
+  const { t } = useTranslation();
   const [selection, setSelection] = useState<SidebarSelection>('default');
+  const [permissionTarget, setPermissionTarget] =
+    useState<IPrivilegeManagementInitialValues | null>(null);
+  const { data: tenantInfo } = useFetchTenantInfo();
   // Stack of draft-instance identifiers, rendered as `ProviderInstanceCard`
   // entries below the persisted instances. Each draft is saved or
   // cancelled from its own card.
@@ -82,6 +96,20 @@ const SettingModelV2: FC = () => {
   }, [selection, addedProviders]);
   const { data: instances, loading: instancesLoading } =
     useFetchProviderInstances(providerQueryName);
+
+  const showInstancePermissions = useCallback(
+    (instance: IProviderInstance) => () => {
+      const tenantId = tenantInfo?.tenant_id;
+      if (!tenantId || !instance.id) return;
+      setPermissionTarget({
+        id: instance.id,
+        tenant_id: tenantId,
+        name: instance.instance_name,
+        resourceType: PermissionResourceType.ModelInstance,
+      });
+    },
+    [tenantInfo?.tenant_id],
+  );
 
   // Append a new draft id to the visible list.
   const addDraft = useCallback(() => {
@@ -178,15 +206,37 @@ const SettingModelV2: FC = () => {
                 </div>
               )}
               {instances.map((instance, index) => (
-                <ProviderInstanceCard
-                  key={instance.instance_name}
-                  providerName={selection as string}
-                  instance={instance}
-                  defaultOpen={
-                    index === 0 ||
-                    instance.instance_name === newlySavedInstanceName
-                  }
-                />
+                <div key={instance.instance_name} className="relative">
+                  {tenantInfo?.tenant_id &&
+                    instance.id &&
+                    (hasResourcePermission(
+                      instance.operator_permission ?? 0,
+                      Permission.Manage,
+                    ) ||
+                      hasResourcePermission(
+                        instance.operator_permission ?? 0,
+                        Permission.Owner,
+                      )) && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        className="absolute right-3 top-3 z-20"
+                        aria-label={t('permission.permissionManagement')}
+                        onClick={showInstancePermissions(instance)}
+                      >
+                        <KeyRound />
+                      </Button>
+                    )}
+                  <ProviderInstanceCard
+                    providerName={selection as string}
+                    instance={instance}
+                    defaultOpen={
+                      index === 0 ||
+                      instance.instance_name === newlySavedInstanceName
+                    }
+                  />
+                </div>
               ))}
               {draftIds.map((id) => (
                 <ProviderInstanceCard
@@ -213,6 +263,12 @@ const SettingModelV2: FC = () => {
           </>
         )}
       </section>
+      {permissionTarget && (
+        <PrivilegeManagementDialog
+          hideModal={() => setPermissionTarget(null)}
+          initialValues={permissionTarget}
+        />
+      )}
     </div>
   );
 };

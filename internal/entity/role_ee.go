@@ -24,9 +24,10 @@ const (
 	RoleResourceTypeAgent
 	RoleResourceTypeSearch
 	RoleResourceTypeFile
-	RoleResourceTypeTeam
+	RoleResourceTypeGroup
 	RoleResourceTypeMemory
 	RoleResourceTypeModelProvider
+	RoleResourceTypeMCP
 )
 
 const (

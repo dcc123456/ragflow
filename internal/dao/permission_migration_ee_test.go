@@ -41,6 +41,9 @@ func TestMigratePermissionsRunsEnterpriseDataWhenSharedMarkerIsCurrent(t *testin
 		&entity.GroupInfo{},
 		&entity.GroupMember{},
 		&entity.Permission{},
+		&entity.PermissionChangeLog{},
+		&entity.Knowledgebase{},
+		&entity.Document{},
 	); err != nil {
 		t.Fatalf("auto-migrate permission tables: %v", err)
 	}
@@ -56,8 +59,22 @@ func TestMigratePermissionsRunsEnterpriseDataWhenSharedMarkerIsCurrent(t *testin
 	}).Error; err != nil {
 		t.Fatalf("create Tenant memberships: %v", err)
 	}
+	if err := db.Create(&entity.Knowledgebase{
+		ID: "dataset-1", TenantID: tenant.ID, Name: "Dataset", CreatedBy: "owner-user",
+		EmbdID: "embedding", Permission: "me", Status: &status,
+	}).Error; err != nil {
+		t.Fatalf("create dataset: %v", err)
+	}
+	if err := db.Create(&entity.Document{
+		ID: "document-1", KbID: "dataset-1", CreatedBy: "owner-user", ParserConfig: entity.JSONMap{}, Status: &status,
+	}).Error; err != nil {
+		t.Fatalf("create document: %v", err)
+	}
 	if err := setDatabaseMigrationVersion(t.Context(), db, permissionMigrationTargetVersion); err != nil {
 		t.Fatalf("set already-current shared migration version: %v", err)
+	}
+	if err := setDatabaseMigrationVersionForMarker(t.Context(), db, permissionMigrationEEMarker, "v1.0.0-rc3.dev3"); err != nil {
+		t.Fatalf("set previous enterprise permission migration version: %v", err)
 	}
 
 	if err := migratePermissions(t.Context(), db); err != nil {
@@ -83,6 +100,139 @@ func TestMigratePermissionsRunsEnterpriseDataWhenSharedMarkerIsCurrent(t *testin
 	}
 	if version != permissionMigrationEETarget {
 		t.Fatalf("enterprise migration marker = %q, want %q", version, permissionMigrationEETarget)
+	}
+	var documentOwner entity.Permission
+	if err := db.Where("tenant_id = ? AND resource_type = ? AND resource_id = ? AND status = ?",
+		tenant.ID, "document", "document-1", string(entity.StatusValid)).Take(&documentOwner).Error; err != nil {
+		t.Fatalf("load backfilled document owner grant: %v", err)
+	}
+	if documentOwner.MemberID == nil || *documentOwner.MemberID != "owner-link" || documentOwner.Permission != entity.ResourcePermissionOwner {
+		t.Fatalf("backfilled document owner grant = %+v, want owner-link with OWNER permission", documentOwner)
+	}
+}
+
+func TestMigratePermissionDataEERepairsUserRoleIDNullabilityAtCurrentVersion(t *testing.T) {
+	db := openGroupMigrationDB(t)
+	if err := db.AutoMigrate(&entity.SystemSettings{}); err != nil {
+		t.Fatalf("create system settings table: %v", err)
+	}
+	if err := db.Exec(`CREATE TABLE user (id varchar(32) PRIMARY KEY, role_id integer NOT NULL)`).Error; err != nil {
+		t.Fatalf("create legacy user table: %v", err)
+	}
+	if err := db.Exec("INSERT INTO user (id, role_id) VALUES (?, ?)", "user-1", 12).Error; err != nil {
+		t.Fatalf("create legacy user: %v", err)
+	}
+	if err := setDatabaseMigrationVersionForMarker(t.Context(), db, permissionMigrationEEMarker, permissionMigrationEETarget); err != nil {
+		t.Fatalf("set current enterprise permission migration version: %v", err)
+	}
+
+	for range 2 {
+		if err := migratePermissionDataEE(t.Context(), db); err != nil {
+			t.Fatalf("migrate enterprise permission data: %v", err)
+		}
+	}
+
+	columns, err := db.Migrator().ColumnTypes(&entity.User{})
+	if err != nil {
+		t.Fatalf("inspect user columns: %v", err)
+	}
+	for _, column := range columns {
+		if column.Name() != "role_id" {
+			continue
+		}
+		if nullable, known := column.Nullable(); !known || !nullable {
+			t.Fatalf("user.role_id nullable = %v, known = %v; want nullable", nullable, known)
+		}
+		var user struct {
+			ID     string `gorm:"column:id"`
+			RoleID int32  `gorm:"column:role_id"`
+		}
+		if err := db.Table("user").Select("id", "role_id").Where("id = ?", "user-1").Take(&user).Error; err != nil {
+			t.Fatalf("read migrated user: %v", err)
+		}
+		if user.RoleID != 12 {
+			t.Fatalf("user.role_id = %d after migration, want existing value 12", user.RoleID)
+		}
+		if err := db.Exec("UPDATE user SET role_id = NULL WHERE id = ?", user.ID).Error; err != nil {
+			t.Fatalf("set user.role_id to NULL after migration: %v", err)
+		}
+		return
+	}
+	t.Fatal("user.role_id column is missing")
+}
+
+func TestMigrateDefaultTenantRoleMCPFeatureEEIsIdempotent(t *testing.T) {
+	db := openGroupMigrationDB(t)
+	if err := db.AutoMigrate(&entity.Tenant{}, &entity.Role{}, &entity.RoleResource{}); err != nil {
+		t.Fatalf("auto-migrate default role MCP tables: %v", err)
+	}
+	type roleFixture struct {
+		tenantID       string
+		mcpAction      *int32
+		baseline       bool
+		baselineAction int32
+	}
+	readAction := int32(entity.RoleActionRead)
+	fixtures := []roleFixture{
+		{tenantID: "tenant-full", baseline: true},
+		{tenantID: "tenant-custom", baselineAction: entity.RoleActionEnable | entity.RoleActionRead},
+		{tenantID: "tenant-explicit", baseline: true, mcpAction: &readAction},
+	}
+	roles := make([]entity.Role, 0, len(fixtures))
+	for _, fixture := range fixtures {
+		role := entity.Role{RoleName: defaultTenantMemberRoleName, TenantID: stringPointer(fixture.tenantID)}
+		if err := db.Create(&role).Error; err != nil {
+			t.Fatalf("create default member role for %s: %v", fixture.tenantID, err)
+		}
+		roles = append(roles, role)
+		tenant := entity.Tenant{
+			ID: fixture.tenantID, ParserIDs: "",
+			RoleID: &role.ID,
+		}
+		if err := db.Create(&tenant).Error; err != nil {
+			t.Fatalf("create tenant %s: %v", fixture.tenantID, err)
+		}
+		var resources []entity.RoleResource
+		if fixture.baseline {
+			for _, permission := range defaultTenantRoleResourceActions {
+				if permission.resourceType != entity.RoleResourceTypeMCP {
+					resources = append(resources, entity.RoleResource{RoleID: role.ID, ResourceType: permission.resourceType, Action: permission.action})
+				}
+			}
+		} else {
+			resources = append(resources, entity.RoleResource{RoleID: role.ID, ResourceType: entity.RoleResourceTypeDataset, Action: fixture.baselineAction})
+		}
+		if fixture.mcpAction != nil {
+			resources = append(resources, entity.RoleResource{RoleID: role.ID, ResourceType: entity.RoleResourceTypeMCP, Action: *fixture.mcpAction})
+		}
+		if err := db.Create(&resources).Error; err != nil {
+			t.Fatalf("create role permissions for %s: %v", fixture.tenantID, err)
+		}
+	}
+
+	for range 2 {
+		if err := migrateDefaultTenantRoleMCPFeatureEE(t.Context(), db); err != nil {
+			t.Fatalf("migrate default role MCP feature: %v", err)
+		}
+	}
+	for i, fixture := range fixtures {
+		var mcpPermissions []entity.RoleResource
+		if err := db.Where("role_id = ? AND resource_type = ?", roles[i].ID, entity.RoleResourceTypeMCP).Find(&mcpPermissions).Error; err != nil {
+			t.Fatalf("load MCP permission for %s: %v", fixture.tenantID, err)
+		}
+		want := int32(0)
+		if fixture.baseline {
+			want = entity.RoleActionAll
+		}
+		if fixture.mcpAction != nil {
+			want = *fixture.mcpAction
+		}
+		if want == 0 && len(mcpPermissions) != 0 {
+			t.Fatalf("custom role %s received MCP permissions: %+v", fixture.tenantID, mcpPermissions)
+		}
+		if want != 0 && (len(mcpPermissions) != 1 || mcpPermissions[0].Action != want) {
+			t.Fatalf("role %s MCP permissions = %+v, want one action %d", fixture.tenantID, mcpPermissions, want)
+		}
 	}
 }
 
@@ -247,8 +397,24 @@ func openGroupMigrationDB(t *testing.T) *gorm.DB {
 }
 
 func createLegacyDepartmentTables(t *testing.T, db *gorm.DB) {
+	createLegacyDepartmentTablesWithGroupRole(t, db, true)
+}
+
+func createLegacyDepartmentTablesWithoutGroupRole(t *testing.T, db *gorm.DB) {
+	createLegacyDepartmentTablesWithGroupRole(t, db, false)
+}
+
+func createLegacyDepartmentTablesWithGroupRole(t *testing.T, db *gorm.DB, groupMemberHasRole bool) {
 	t.Helper()
 	autoMigrateGroupTables(t, db)
+	if err := db.AutoMigrate(&entity.UserTenant{}, &entity.PermissionChangeLog{}); err != nil {
+		t.Fatalf("auto-migrate membership and audit tables: %v", err)
+	}
+	if groupMemberHasRole {
+		if err := db.Exec(`ALTER TABLE group_member ADD COLUMN "role" varchar(32) NOT NULL DEFAULT 'member'`).Error; err != nil {
+			t.Fatalf("add legacy group_member.role: %v", err)
+		}
+	}
 	for _, statement := range []string{
 		`CREATE TABLE department (id varchar(32) PRIMARY KEY,
 			create_time bigint, create_date datetime, update_time bigint, update_date datetime,
@@ -270,6 +436,45 @@ func createLegacyDepartmentTables(t *testing.T, db *gorm.DB) {
 	}
 }
 
+func TestMigrateDepartmentsRolesWhenGroupMemberHasNoRoleColumn(t *testing.T) {
+	db := openGroupMigrationDB(t)
+	createLegacyDepartmentTablesWithoutGroupRole(t, db)
+	for _, statement := range []string{
+		`INSERT INTO user_tenant (id, user_id, tenant_id, role, status)
+			VALUES ('member-link', 'member-user', 'tenant-1', '2', '1')`,
+		`INSERT INTO department (id, name, description, path, formatted_path, parent_id, owner_id, tenant_id, status)
+			VALUES ('department-1', 'Department', '', '/department-1/', '/Department/', 'department-1', 'owner-link', 'tenant-1', '1')`,
+		`INSERT INTO department_member (id, member_id, department_id, role, status)
+			VALUES ('department-member-1', 'member-link', 'department-1', 'admin', '1')`,
+	} {
+		if err := db.Exec(statement).Error; err != nil {
+			t.Fatalf("insert legacy data: %v", err)
+		}
+	}
+	if err := migrateGroupsAfterAutoMigrate(t, db); err != nil {
+		t.Fatalf("migrate legacy department member permissions: %v", err)
+	}
+	var grant entity.Permission
+	if err := db.Where("tenant_id = ? AND resource_type = ? AND resource_id = ? AND member_id = ? AND status = ?",
+		"tenant-1", "group", "department-1", "member-link", string(entity.StatusValid)).Take(&grant).Error; err != nil {
+		t.Fatalf("load migrated department member permission: %v", err)
+	}
+	want := entity.GroupPermissionAddSubgroup | entity.GroupPermissionDeleteSubgroup |
+		entity.GroupPermissionAddMember | entity.GroupPermissionRemoveMember | entity.GroupPermissionConfigureMemberPermissions
+	if grant.Permission != want {
+		t.Fatalf("migrated department member permission = %d, want %d", grant.Permission, want)
+	}
+	columns, err := db.Migrator().ColumnTypes(&entity.GroupMember{})
+	if err != nil {
+		t.Fatalf("list group_member columns: %v", err)
+	}
+	for _, column := range columns {
+		if column.Name() == "role" {
+			t.Fatal("new group_member table unexpectedly has a role column")
+		}
+	}
+}
+
 func autoMigrateGroupTables(t *testing.T, db *gorm.DB) {
 	t.Helper()
 	if err := db.AutoMigrate(&entity.GroupInfo{}, &entity.GroupMember{}, &entity.Permission{}); err != nil {
@@ -288,6 +493,14 @@ func TestMigrateGroups(t *testing.T) {
 	for _, statement := range []string{
 		`INSERT INTO group_info (id, name, owner_id, tenant_id, status)
 			VALUES ('existing', 'Existing', 'owner-1', 'tenant-1', '1')`,
+		`INSERT INTO user_tenant (id, user_id, tenant_id, role, status)
+			VALUES ('user-tenant-1', 'member-1', 'tenant-1', '2', '1')`,
+		`INSERT INTO user_tenant (id, user_id, tenant_id, role, status)
+			VALUES ('owner-1', 'owner-user', 'tenant-1', 'owner', '1')`,
+		`INSERT INTO group_member (id, member_id, group_id, role, status)
+			VALUES ('existing-admin', 'user-tenant-1', 'existing', 'admin', '1')`,
+		`INSERT INTO group_member (id, member_id, group_id, role, status)
+			VALUES ('existing-owner', 'owner-1', 'existing', 'owner', '1')`,
 		`INSERT INTO department (id, name, description, path, formatted_path, parent_id, owner_id, tenant_id, status)
 			VALUES ('root', 'Root', 'kept', '/root/', '/Root/', 'root', 'owner-1', 'tenant-1', '1')`,
 		`INSERT INTO department (id, name, path, formatted_path, parent_id, owner_id, tenant_id, status)
@@ -327,8 +540,53 @@ func TestMigrateGroups(t *testing.T) {
 	if err := db.Take(&member, "id = ?", "member-1").Error; err != nil {
 		t.Fatalf("read migrated member: %v", err)
 	}
-	if member.GroupID != "child" || member.MemberID != "user-tenant-1" || member.Role != "admin" {
+	if member.GroupID != "child" || member.MemberID != "user-tenant-1" || member.Status == nil || *member.Status != entity.GroupMemberStatusJoined {
 		t.Fatalf("member data changed: %+v", member)
+	}
+	columns, err := db.Migrator().ColumnTypes(&entity.GroupMember{})
+	if err != nil {
+		t.Fatalf("list migrated group_member columns: %v", err)
+	}
+	for _, column := range columns {
+		if column.Name() == "role" {
+			var definition string
+			_ = db.Raw("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'group_member'").Scan(&definition).Error
+			t.Fatalf("group_member.role remains after migration: %s", definition)
+		}
+	}
+	var groupPermission entity.Permission
+	if err := db.Where("tenant_id = ? AND resource_type = ? AND resource_id = ? AND member_id = ? AND status = ?",
+		"tenant-1", "group", "child", "user-tenant-1", string(entity.StatusValid)).Take(&groupPermission).Error; err != nil {
+		t.Fatalf("load migrated admin permissions: %v", err)
+	}
+	wantGroupPermission := entity.GroupPermissionAddSubgroup | entity.GroupPermissionDeleteSubgroup |
+		entity.GroupPermissionAddMember | entity.GroupPermissionRemoveMember | entity.GroupPermissionConfigureMemberPermissions
+	if groupPermission.Permission != wantGroupPermission {
+		t.Fatalf("migrated group permission = %d, want %d", groupPermission.Permission, wantGroupPermission)
+	}
+	var existingAdminPermission entity.Permission
+	if err := db.Where("tenant_id = ? AND resource_type = ? AND resource_id = ? AND member_id = ? AND status = ?",
+		"tenant-1", "group", "existing", "user-tenant-1", string(entity.StatusValid)).Take(&existingAdminPermission).Error; err != nil {
+		t.Fatalf("load migrated existing group admin permissions: %v", err)
+	}
+	if existingAdminPermission.Permission != wantGroupPermission {
+		t.Fatalf("migrated existing group admin permission = %d, want %d", existingAdminPermission.Permission, wantGroupPermission)
+	}
+	var ownerPermissionCount int64
+	if err := db.Model(&entity.Permission{}).
+		Where("tenant_id = ? AND resource_type = ? AND resource_id = ? AND member_id = ? AND status = ?",
+			"tenant-1", "group", "existing", "owner-1", string(entity.StatusValid)).Count(&ownerPermissionCount).Error; err != nil {
+		t.Fatalf("count explicit group owner grants: %v", err)
+	}
+	if ownerPermissionCount != 0 {
+		t.Fatalf("explicit group owner grants = %d, want owner derived from group_info.owner_id", ownerPermissionCount)
+	}
+	var migrationAudit entity.PermissionChangeLog
+	if err := db.Where("event_type = ? AND resource_id = ?", "group.member.permissions.migrated", "child").Take(&migrationAudit).Error; err != nil {
+		t.Fatalf("load migrated group permission audit: %v", err)
+	}
+	if migrationAudit.ScopeType != "system" || migrationAudit.OldPermission != 0 || migrationAudit.NewPermission != wantGroupPermission {
+		t.Fatalf("migrated group permission audit = %+v", migrationAudit)
 	}
 	var grant struct{ GroupID *string }
 	if err := db.Table("permission").Select("group_id").Where("id = ?", "grant-1").Take(&grant).Error; err != nil {
@@ -337,14 +595,29 @@ func TestMigrateGroups(t *testing.T) {
 	if grant.GroupID == nil || *grant.GroupID != "child" {
 		t.Fatalf("grant group_id = %v, want child", grant.GroupID)
 	}
-	if db.Migrator().HasTable("department") || db.Migrator().HasTable("department_member") ||
-		db.Migrator().HasColumn(&entity.Permission{}, "department_id") {
+	hasLegacyDepartmentPermission, err := migrationHasColumn(db.Migrator(), &legacyPermissionDepartmentSchema{}, "department_id")
+	if err != nil {
+		t.Fatalf("inspect migrated permission columns: %v", err)
+	}
+	if db.Migrator().HasTable("department") || db.Migrator().HasTable("department_member") || hasLegacyDepartmentPermission {
 		t.Fatalf("old department schema remains: department=%v department_member=%v permission.department_id=%v",
 			db.Migrator().HasTable("department"), db.Migrator().HasTable("department_member"),
-			db.Migrator().HasColumn(&entity.Permission{}, "department_id"))
+			hasLegacyDepartmentPermission)
 	}
 	if err := migrateGroupsAfterAutoMigrate(t, db); err != nil {
 		t.Fatalf("repeat group migration: %v", err)
+	}
+	if err := db.Model(&entity.Permission{}).Where("resource_type = ? AND permission = ? AND status = ?", "group", wantGroupPermission, string(entity.StatusValid)).Count(&ownerPermissionCount).Error; err != nil {
+		t.Fatalf("count migrated group permission grants after rerun: %v", err)
+	}
+	if ownerPermissionCount != 2 {
+		t.Fatalf("migrated group permission grants after rerun = %d, want 2", ownerPermissionCount)
+	}
+	if err := db.Model(&entity.PermissionChangeLog{}).Where("event_type = ?", "group.member.permissions.migrated").Count(&ownerPermissionCount).Error; err != nil {
+		t.Fatalf("count migrated group permission logs after rerun: %v", err)
+	}
+	if ownerPermissionCount != 2 {
+		t.Fatalf("migrated group permission audit rows after rerun = %d, want 2", ownerPermissionCount)
 	}
 }
 
@@ -541,5 +814,93 @@ func TestLegacyPermissionMask(t *testing.T) {
 	}
 	if _, err := legacyPermissionMask(8); err == nil {
 		t.Fatal("legacyPermissionMask accepted an out-of-range value")
+	}
+}
+
+func TestMigrateResourceOwnersBackfillsGrantAndAuditOnce(t *testing.T) {
+	db := openGroupMigrationDB(t)
+	if err := db.AutoMigrate(&entity.UserTenant{}, &entity.Knowledgebase{}, &entity.Permission{}, &entity.PermissionChangeLog{}); err != nil {
+		t.Fatalf("auto-migrate resource ownership tables: %v", err)
+	}
+	status := string(entity.StatusValid)
+	if err := db.Create(&entity.UserTenant{ID: "owner-link", UserID: "owner-user", TenantID: "tenant-1", Role: "owner", Status: &status}).Error; err != nil {
+		t.Fatalf("create tenant owner membership: %v", err)
+	}
+	if err := db.Create(&entity.Knowledgebase{
+		ID: "dataset-1", TenantID: "tenant-1", CreatedBy: "owner-user", Name: "Dataset",
+		EmbdID: "embedding", Permission: "me", Status: &status,
+	}).Error; err != nil {
+		t.Fatalf("create dataset: %v", err)
+	}
+	if err := migrateResourceOwnersEE(t.Context(), db); err != nil {
+		t.Fatalf("migrate resource owner grants: %v", err)
+	}
+	var grant entity.Permission
+	if err := db.Where("tenant_id = ? AND resource_type = ? AND resource_id = ?", "tenant-1", "kb", "dataset-1").Take(&grant).Error; err != nil {
+		t.Fatalf("load migrated dataset owner grant: %v", err)
+	}
+	if grant.MemberID == nil || *grant.MemberID != "owner-link" || grant.Permission != entity.ResourcePermissionOwner {
+		t.Fatalf("migrated dataset owner grant = %+v, want owner-link with OWNER permission", grant)
+	}
+	var changeLog entity.PermissionChangeLog
+	if err := db.Where("event_type = ? AND resource_id = ?", "resource.owner.migrated", "dataset-1").Take(&changeLog).Error; err != nil {
+		t.Fatalf("load migrated owner audit: %v", err)
+	}
+	if changeLog.ScopeType != "system" || changeLog.ActorUserID != nil || changeLog.OperatorID != "" || changeLog.TargetID != "owner-link" || changeLog.NewPermission != entity.ResourcePermissionOwner {
+		t.Fatalf("migrated owner audit = %+v, want system migration scope and owner grant", changeLog)
+	}
+	if err := migrateResourceOwnersEE(t.Context(), db); err != nil {
+		t.Fatalf("repeat resource owner migration: %v", err)
+	}
+	var grantCount, logCount int64
+	if err := db.Model(&entity.Permission{}).Where("tenant_id = ? AND resource_type = ? AND resource_id = ?", "tenant-1", "kb", "dataset-1").Count(&grantCount).Error; err != nil {
+		t.Fatalf("count dataset owner grants: %v", err)
+	}
+	if err := db.Model(&entity.PermissionChangeLog{}).Where("event_type = ? AND resource_id = ?", "resource.owner.migrated", "dataset-1").Count(&logCount).Error; err != nil {
+		t.Fatalf("count migrated owner audit records: %v", err)
+	}
+	if grantCount != 1 || logCount != 1 {
+		t.Fatalf("repeat owner migration produced %d grants and %d logs, want 1 each", grantCount, logCount)
+	}
+}
+
+func TestMigrateResourceOwnersBatchesModelInstances(t *testing.T) {
+	db := openGroupMigrationDB(t)
+	if err := db.AutoMigrate(
+		&entity.UserTenant{}, &entity.Permission{}, &entity.PermissionChangeLog{},
+		&entity.TenantModelProvider{}, &entity.TenantModelInstance{},
+	); err != nil {
+		t.Fatalf("auto-migrate resource ownership tables: %v", err)
+	}
+	status := string(entity.StatusValid)
+	if err := db.Create(&entity.UserTenant{ID: "owner-link", UserID: "owner-user", TenantID: "tenant-1", Role: "owner", Status: &status}).Error; err != nil {
+		t.Fatalf("create tenant owner membership: %v", err)
+	}
+	if err := db.Create(&entity.TenantModelProvider{
+		ID: "provider-1", UserID: "owner-user", TenantID: "tenant-1", ProviderName: "provider",
+	}).Error; err != nil {
+		t.Fatalf("create model provider: %v", err)
+	}
+	const instanceCount = 501
+	instances := make([]entity.TenantModelInstance, 0, instanceCount)
+	for i := 0; i < instanceCount; i++ {
+		instances = append(instances, entity.TenantModelInstance{
+			ID: fmt.Sprintf("instance-%03d", i), ProviderID: "provider-1",
+			InstanceName: fmt.Sprintf("model-%03d", i), APIKey: "key",
+		})
+	}
+	if err := db.CreateInBatches(instances, 100).Error; err != nil {
+		t.Fatalf("create model instances: %v", err)
+	}
+
+	if err := migrateResourceOwnersEE(t.Context(), db); err != nil {
+		t.Fatalf("migrate model instance owners: %v", err)
+	}
+	var grantCount int64
+	if err := db.Model(&entity.Permission{}).Where("resource_type = ?", modelInstanceResourceType).Count(&grantCount).Error; err != nil {
+		t.Fatalf("count model instance owner grants: %v", err)
+	}
+	if grantCount != instanceCount {
+		t.Fatalf("migrated %d model instance owner grants, want %d", grantCount, instanceCount)
 	}
 }

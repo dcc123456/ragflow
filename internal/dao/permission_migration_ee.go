@@ -20,8 +20,11 @@ package dao
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	"ragflow/internal/common"
@@ -33,12 +36,13 @@ import (
 )
 
 const (
-	legacyModelProviderResourceType   = "llm"
-	modelInstanceResourceType         = "model_instance"
-	permissionMigrationEEMarker       = "mysql_migration.enterprise.permission.version"
-	permissionMigrationEETarget       = "v1.0.0-rc3.dev3"
-	legacyTenantInviteMigrationMarker = "mysql_migration.enterprise.tenant.invite_enabled.version"
-	legacyTenantInviteMigrationTarget = "v1.0.0-rc3.dev3"
+	legacyModelProviderResourceType         = "llm"
+	modelInstanceResourceType               = "model_instance"
+	permissionMigrationEEMarker             = "mysql_migration.enterprise.permission.version"
+	permissionMigrationEETarget             = permissionMigrationTargetVersion
+	legacyTenantInviteMigrationMarker       = "mysql_migration.enterprise.tenant.invite_enabled.version"
+	legacyTenantInviteMigrationTarget       = "v1.0.0-rc3.dev3"
+	legacyTenantGroupCreateAction     int32 = 1 << 4
 )
 
 type legacyTenantRole struct {
@@ -51,6 +55,9 @@ func migratePermissionDataEE(ctx context.Context, db *gorm.DB) error {
 	if err := migrateLegacyTenantInviteEnabledEE(ctx, db); err != nil {
 		return err
 	}
+	if err := migrateUserRoleIDNullableEE(ctx, db); err != nil {
+		return fmt.Errorf("make user.role_id nullable: %w", err)
+	}
 	version, err := getDatabaseMigrationVersion(ctx, db, permissionMigrationEEMarker)
 	if err != nil {
 		return fmt.Errorf("read enterprise permission migration version: %w", err)
@@ -61,16 +68,274 @@ func migratePermissionDataEE(ctx context.Context, db *gorm.DB) error {
 	if err := migrateGroups(ctx, db); err != nil {
 		return err
 	}
+	if err := migrateGroupResourceNamesEE(ctx, db); err != nil {
+		return err
+	}
 	if err := migrateLegacyTenantRolesToUsersEE(ctx, db); err != nil {
 		return err
 	}
 	if err := migrateTenantDefaultRolesEE(ctx, db); err != nil {
 		return err
 	}
+	if err := migrateDefaultTenantRoleMCPFeatureEE(ctx, db); err != nil {
+		return err
+	}
+	if err := migrateResourceOwnersEE(ctx, db); err != nil {
+		return err
+	}
 	if err := setDatabaseMigrationVersionForMarker(ctx, db, permissionMigrationEEMarker, permissionMigrationEETarget); err != nil {
 		return fmt.Errorf("mark enterprise permission migration version: %w", err)
 	}
 	return nil
+}
+
+// migrateDefaultTenantRoleMCPFeatureEE gives the existing default member roles
+// the newly supported MCP feature without overwriting an explicit MCP setting.
+func migrateDefaultTenantRoleMCPFeatureEE(ctx context.Context, db *gorm.DB) error {
+	scoped := db.WithContext(ctx)
+	for _, model := range []interface{}{&entity.Tenant{}, &entity.Role{}, &entity.RoleResource{}} {
+		if !scoped.Migrator().HasTable(model) {
+			return nil
+		}
+	}
+	return scoped.Transaction(func(tx *gorm.DB) error {
+		var defaultRoleIDs []int32
+		if err := tx.Model(&entity.Tenant{}).Where("role_id IS NOT NULL").Pluck("role_id", &defaultRoleIDs).Error; err != nil {
+			return fmt.Errorf("list Tenant default role IDs for MCP feature migration: %w", err)
+		}
+		if len(defaultRoleIDs) == 0 {
+			return nil
+		}
+		var roles []entity.Role
+		if err := tx.Where("id IN ? AND role_name = ? AND tenant_id IS NOT NULL", defaultRoleIDs, defaultTenantMemberRoleName).
+			Order("id ASC").Find(&roles).Error; err != nil {
+			return fmt.Errorf("list default Tenant member roles for MCP feature migration: %w", err)
+		}
+		expectedActions := make(map[int64]int32, len(defaultTenantRoleResourceActions)-1)
+		for _, action := range defaultTenantRoleResourceActions {
+			if action.resourceType != entity.RoleResourceTypeMCP {
+				expectedActions[action.resourceType] = action.action
+			}
+		}
+		for _, role := range roles {
+			var existing []entity.RoleResource
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("role_id = ?", role.ID).Find(&existing).Error; err != nil {
+				return fmt.Errorf("load permissions for default Tenant role %d: %w", role.ID, err)
+			}
+			actualActions := make(map[int64]int32, len(existing))
+			hasMCPAction := false
+			for _, permission := range existing {
+				actualActions[permission.ResourceType] = permission.Action
+				if permission.ResourceType == entity.RoleResourceTypeMCP {
+					hasMCPAction = true
+				}
+			}
+			if hasMCPAction || len(existing) != len(expectedActions) {
+				continue
+			}
+			isDefaultRole := true
+			for resourceType, action := range expectedActions {
+				if actualActions[resourceType] != action {
+					isDefaultRole = false
+					break
+				}
+			}
+			if !isDefaultRole {
+				continue
+			}
+			if err := tx.Create(&entity.RoleResource{
+				RoleID: role.ID, ResourceType: entity.RoleResourceTypeMCP, Action: entity.RoleActionAll,
+			}).Error; err != nil {
+				return fmt.Errorf("add MCP permissions to default Tenant role %d: %w", role.ID, err)
+			}
+		}
+		return nil
+	})
+}
+
+type resourceOwnerCandidate struct {
+	ID          string `gorm:"column:id"`
+	TenantID    string `gorm:"column:tenant_id"`
+	OwnerUserID string `gorm:"column:owner_user_id"`
+}
+
+func migrateResourceOwnersEE(ctx context.Context, db *gorm.DB) error {
+	scoped := db.WithContext(ctx)
+	if !scoped.Migrator().HasTable(&entity.Permission{}) || !scoped.Migrator().HasTable(&entity.UserTenant{}) {
+		return nil
+	}
+	return scoped.Transaction(func(tx *gorm.DB) error {
+		var memberships []entity.UserTenant
+		if err := tx.Select("id", "user_id", "tenant_id", "role").
+			Where("status = ?", string(entity.StatusValid)).Order("tenant_id ASC").Order("user_id ASC").Find(&memberships).Error; err != nil {
+			return fmt.Errorf("load active Tenant memberships for resource ownership migration: %w", err)
+		}
+		membershipIDs := make(map[string]map[string]string)
+		ownersByTenant := make(map[string]string)
+		for _, membership := range memberships {
+			members := membershipIDs[membership.TenantID]
+			if members == nil {
+				members = make(map[string]string)
+				membershipIDs[membership.TenantID] = members
+			}
+			members[membership.UserID] = membership.ID
+			if membership.Role == "owner" {
+				if currentOwner := ownersByTenant[membership.TenantID]; currentOwner != "" && currentOwner != membership.UserID {
+					return fmt.Errorf("Tenant %s has multiple active owners during resource ownership migration", membership.TenantID)
+				}
+				ownersByTenant[membership.TenantID] = membership.UserID
+			}
+		}
+
+		var existingGrants []entity.Permission
+		if err := tx.Select("tenant_id", "resource_type", "resource_id").
+			Where("status = ? AND (permission & ?) <> 0 AND resource_id IS NOT NULL AND resource_id <> ''",
+				string(entity.StatusValid), entity.ResourcePermissionOwner).Find(&existingGrants).Error; err != nil {
+			return fmt.Errorf("load existing resource owners: %w", err)
+		}
+		existingOwners := make(map[string]struct{}, len(existingGrants))
+		for _, grant := range existingGrants {
+			if grant.ResourceID != nil {
+				existingOwners[resourceOwnerKey(grant.TenantID, grant.ResourceType, *grant.ResourceID)] = struct{}{}
+			}
+		}
+
+		queries := []struct {
+			table        string
+			selectFields string
+			where        string
+			args         []interface{}
+			resourceType string
+		}{
+			{"knowledgebase AS resource_rows", "resource_rows.id, resource_rows.tenant_id, resource_rows.created_by AS owner_user_id", "resource_rows.status = ?", []interface{}{string(entity.StatusValid)}, "kb"},
+			{"dialog AS resource_rows", "resource_rows.id, resource_rows.tenant_id, '' AS owner_user_id", "resource_rows.status = ?", []interface{}{string(entity.StatusValid)}, "dialog"},
+			{"search AS resource_rows", "resource_rows.id, resource_rows.tenant_id, resource_rows.created_by AS owner_user_id", "resource_rows.status = ?", []interface{}{string(entity.StatusValid)}, "search"},
+			{"user_canvas AS resource_rows", "resource_rows.id, COALESCE(NULLIF(resource_rows.tenant_id, ''), resource_rows.user_id) AS tenant_id, resource_rows.user_id AS owner_user_id", "1 = 1", nil, "canvas"},
+			{"memory AS resource_rows", "resource_rows.id, resource_rows.tenant_id, resource_rows.tenant_id AS owner_user_id", "1 = 1", nil, "memory"},
+			{"file AS resource_rows", "resource_rows.id, resource_rows.tenant_id, resource_rows.created_by AS owner_user_id", "resource_rows.parent_id IS NOT NULL AND resource_rows.parent_id <> '' AND resource_rows.parent_id <> resource_rows.id", nil, "file"},
+			{"mcp_server AS resource_rows", "resource_rows.id, resource_rows.tenant_id, '' AS owner_user_id", "1 = 1", nil, "mcp"},
+			{"connector AS resource_rows", "resource_rows.id, resource_rows.tenant_id, '' AS owner_user_id", "1 = 1", nil, "connector"},
+			{"skill_spaces AS resource_rows", "resource_rows.id, resource_rows.tenant_id, '' AS owner_user_id", "resource_rows.status = ?", []interface{}{string(entity.StatusValid)}, "file"},
+			{"chat_channel AS resource_rows", "resource_rows.id, resource_rows.tenant_id, '' AS owner_user_id", "1 = 1", nil, "dialog"},
+			{"tenant_model_instance AS resource_rows JOIN tenant_model_provider ON tenant_model_provider.id = resource_rows.provider_id", "resource_rows.id, tenant_model_provider.tenant_id AS tenant_id, tenant_model_provider.user_id AS owner_user_id", "resource_rows.status = ? AND tenant_model_provider.tenant_id <> ''", []interface{}{"active"}, "model_instance"},
+		}
+		for _, query := range queries {
+			if !migrationTableExists(tx, query.table) {
+				continue
+			}
+			statement := tx.Table(query.table).Select(query.selectFields)
+			if query.where != "" {
+				statement = statement.Where(query.where, query.args...)
+			}
+			if err := backfillResourceOwnerGrants(tx, statement, query.resourceType, membershipIDs, ownersByTenant, existingOwners); err != nil {
+				return fmt.Errorf("backfill %s resource owners: %w", query.resourceType, err)
+			}
+		}
+		if migrationTableExists(tx, "document") && migrationTableExists(tx, "knowledgebase") {
+			documents := tx.Table("document AS resource_rows JOIN knowledgebase AS dataset_rows ON dataset_rows.id = resource_rows.kb_id").
+				Select("resource_rows.id, dataset_rows.tenant_id, resource_rows.created_by AS owner_user_id").
+				Where("resource_rows.status = ? AND dataset_rows.status = ?", string(entity.StatusValid), string(entity.StatusValid))
+			if err := backfillResourceOwnerGrants(tx, documents, "document", membershipIDs, ownersByTenant, existingOwners); err != nil {
+				return fmt.Errorf("backfill document resource owners: %w", err)
+			}
+		}
+		return nil
+	})
+}
+
+func migrationTableExists(db *gorm.DB, table string) bool {
+	return db.Migrator().HasTable(strings.Fields(table)[0])
+}
+
+func backfillResourceOwnerGrants(tx, query *gorm.DB, resourceType string, membershipIDs map[string]map[string]string, ownersByTenant map[string]string, existingOwners map[string]struct{}) error {
+	var pending []entity.Permission
+	var pendingLogs []entity.PermissionChangeLog
+	flush := func() error {
+		if len(pending) == 0 {
+			return nil
+		}
+		if err := tx.CreateInBatches(pending, 500).Error; err != nil {
+			return err
+		}
+		if len(pendingLogs) > 0 {
+			if err := tx.CreateInBatches(pendingLogs, 500).Error; err != nil {
+				return err
+			}
+		}
+		pending = pending[:0]
+		pendingLogs = pendingLogs[:0]
+		return nil
+	}
+	status := string(entity.StatusValid)
+	const batchSize = 500
+	lastID := ""
+	for {
+		batch := make([]resourceOwnerCandidate, 0, batchSize)
+		batchQuery := query.Session(&gorm.Session{Initialized: true}).Order("resource_rows.id ASC").Limit(batchSize)
+		if lastID != "" {
+			batchQuery = batchQuery.Where("resource_rows.id > ?", lastID)
+		}
+		if err := batchQuery.Find(&batch).Error; err != nil {
+			return err
+		}
+		if len(batch) == 0 {
+			break
+		}
+		for _, candidate := range batch {
+			if candidate.ID == "" || candidate.TenantID == "" {
+				continue
+			}
+			key := resourceOwnerKey(candidate.TenantID, resourceType, candidate.ID)
+			if _, exists := existingOwners[key]; exists {
+				continue
+			}
+			ownerUserID := candidate.OwnerUserID
+			memberID := membershipIDs[candidate.TenantID][ownerUserID]
+			if memberID == "" {
+				ownerUserID = ownersByTenant[candidate.TenantID]
+				memberID = membershipIDs[candidate.TenantID][ownerUserID]
+			}
+			if memberID == "" {
+				return fmt.Errorf("resource %s/%s has no active member to own it", resourceType, candidate.ID)
+			}
+			resourceID := candidate.ID
+			pending = append(pending, entity.Permission{
+				ID: common.GenerateUUID(), MemberID: &memberID, TenantID: candidate.TenantID,
+				ResourceType: resourceType, ResourceID: &resourceID,
+				Permission: entity.ResourcePermissionOwner, Status: &status,
+			})
+			beforeData := `{"permission":0}`
+			afterBytes, err := json.Marshal(map[string]interface{}{
+				"permission":    entity.ResourcePermissionOwner,
+				"owner_user_id": ownerUserID,
+				"migration":     "legacy_resource_ownership",
+			})
+			if err != nil {
+				return fmt.Errorf("encode migrated resource owner audit: %w", err)
+			}
+			afterData := string(afterBytes)
+			pendingLogs = append(pendingLogs, entity.PermissionChangeLog{
+				ID: common.GenerateUUID(), TenantID: candidate.TenantID,
+				TargetType: "member", TargetID: memberID, ResourceType: resourceType, ResourceID: candidate.ID,
+				OldPermission: 0, NewPermission: entity.ResourcePermissionOwner,
+				ActionType: "migrate", EventType: "resource.owner.migrated", ScopeType: "system",
+				BeforeData: &beforeData, AfterData: &afterData, Status: &status,
+			})
+			existingOwners[key] = struct{}{}
+		}
+		lastID = batch[len(batch)-1].ID
+		if err := flush(); err != nil {
+			return err
+		}
+		if len(batch) < batchSize {
+			break
+		}
+	}
+	return flush()
+}
+
+func resourceOwnerKey(tenantID, resourceType, resourceID string) string {
+	return tenantID + "\x00" + resourceType + "\x00" + resourceID
 }
 
 func migrateLegacyTenantInviteEnabledEE(ctx context.Context, db *gorm.DB) error {
@@ -103,6 +368,94 @@ func migrateLegacyTenantInviteEnabledEE(ctx context.Context, db *gorm.DB) error 
 		}
 		return nil
 	})
+
+}
+
+// migrateUserRoleIDNullableEE removes the legacy NOT NULL constraint. New
+// users do not need a system role assignment, and this schema repair must run
+// even when the enterprise permission data migration is already up to date.
+func migrateUserRoleIDNullableEE(ctx context.Context, db *gorm.DB) error {
+	scoped := db.WithContext(ctx)
+	migrator := scoped.Migrator()
+	if !migrator.HasTable(&entity.User{}) {
+		return nil
+	}
+	if !migrator.HasColumn(&entity.User{}, "RoleID") {
+		return fmt.Errorf("user.role_id column is missing")
+	}
+
+	columns, err := migrator.ColumnTypes(&entity.User{})
+	if err != nil {
+		return fmt.Errorf("inspect user columns: %w", err)
+	}
+	for _, column := range columns {
+		if column.Name() != "role_id" {
+			continue
+		}
+		nullable, known := column.Nullable()
+		if !known {
+			return fmt.Errorf("user.role_id nullability is unknown")
+		}
+		if nullable {
+			return nil
+		}
+		if err := migrator.AlterColumn(&entity.User{}, "RoleID"); err != nil {
+			return fmt.Errorf("alter user.role_id: %w", err)
+		}
+		return nil
+	}
+	return fmt.Errorf("user.role_id column type is missing")
+}
+
+// migrateGroupResourceNamesEE renames legacy group-and-department resources
+// and maps the temporary Tenant group-create bit to the shared write action.
+func migrateGroupResourceNamesEE(ctx context.Context, db *gorm.DB) error {
+	scoped := db.WithContext(ctx)
+	if scoped.Migrator().HasTable(&entity.Permission{}) && scoped.Migrator().HasColumn(&entity.Permission{}, "resource_type") {
+		if err := scoped.Model(&entity.Permission{}).Where("resource_type = ?", "team").Update("resource_type", "group").Error; err != nil {
+			return fmt.Errorf("rename team permission resources to group: %w", err)
+		}
+	}
+	if scoped.Migrator().HasTable(&entity.PermissionChangeLog{}) {
+		for _, column := range []string{"resource_type", "target_type"} {
+			if !scoped.Migrator().HasColumn(&entity.PermissionChangeLog{}, column) {
+				continue
+			}
+			if err := scoped.Model(&entity.PermissionChangeLog{}).Where(column+" = ?", "team").Update(column, "group").Error; err != nil {
+				return fmt.Errorf("rename team audit %s to group: %w", column, err)
+			}
+		}
+		if scoped.Migrator().HasColumn(&entity.PermissionChangeLog{}, "event_type") {
+			if err := scoped.Model(&entity.PermissionChangeLog{}).
+				Where("event_type LIKE ?", "team.%").
+				Update("event_type", gorm.Expr("REPLACE(event_type, ?, ?)", "team.", "group.")).Error; err != nil {
+				return fmt.Errorf("rename team audit event types to group: %w", err)
+			}
+		}
+	}
+	if !scoped.Migrator().HasTable(&entity.RoleResource{}) || !scoped.Migrator().HasTable(&entity.Role{}) {
+		return nil
+	}
+	type roleResourceAction struct {
+		ID     int32 `gorm:"column:id"`
+		Action int32 `gorm:"column:action"`
+	}
+	var rows []roleResourceAction
+	if err := scoped.Table("role_resource").
+		Select("role_resource.id, role_resource.action").
+		Joins("JOIN role ON role.id = role_resource.role_id").
+		Where("role.tenant_id IS NOT NULL AND role_resource.resource_type = ?", entity.RoleResourceTypeGroup).
+		Where("(role_resource.action & ?) <> 0", legacyTenantGroupCreateAction).
+		Order("role_resource.id ASC").Find(&rows).Error; err != nil {
+		return fmt.Errorf("list Tenant group role permissions: %w", err)
+	}
+	for _, row := range rows {
+		newAction := row.Action&^legacyTenantGroupCreateAction | entity.RoleActionWrite
+		if err := scoped.Model(&entity.RoleResource{}).Where("id = ?", row.ID).Update("action", newAction).Error; err != nil {
+			return fmt.Errorf("migrate Tenant group role permission %d: %w", row.ID, err)
+		}
+	}
+	return nil
 }
 
 // migrateTenantDefaultRolesEE creates a full-feature member role for each
@@ -129,22 +482,40 @@ func migrateTenantDefaultRolesEE(ctx context.Context, db *gorm.DB) error {
 			return fmt.Errorf("list Tenants for default role migration: %w", err)
 		}
 		for _, tenant := range tenants {
-			role, created, err := findOrCreateDefaultTenantMemberRole(tx, tenant.ID)
+			memberRole, created, err := findOrCreateDefaultTenantMemberRole(tx, tenant.ID)
 			if err != nil {
 				return err
 			}
 			if created {
-				if err := replaceDefaultTenantRolePermissions(tx, role.ID); err != nil {
-					return fmt.Errorf("set full permissions for Tenant %s member role %d: %w", tenant.ID, role.ID, err)
+				if err := replaceDefaultTenantRolePermissions(tx, memberRole.ID); err != nil {
+					return fmt.Errorf("set full permissions for Tenant %s member role %d: %w", tenant.ID, memberRole.ID, err)
 				}
 			}
 			if err := migrateLegacyTenantAdminPermissions(tx, tenant.ID); err != nil {
 				return err
 			}
-			if err := tx.Model(&entity.Tenant{}).Where("id = ?", tenant.ID).Update("role_id", role.ID).Error; err != nil {
-				return fmt.Errorf("set Tenant %s default role: %w", tenant.ID, err)
+
+			// Only initialize an unset or invalid default role. A later permission
+			// migration must not replace a role selected by the Tenant owner.
+			defaultRoleID := memberRole.ID
+			needsDefaultRole := tenant.RoleID == nil
+			if tenant.RoleID != nil {
+				var existingRole entity.Role
+				roleErr := tx.Where("id = ? AND tenant_id = ?", *tenant.RoleID, tenant.ID).Take(&existingRole).Error
+				if roleErr == nil {
+					defaultRoleID = existingRole.ID
+				} else if !errors.Is(roleErr, gorm.ErrRecordNotFound) {
+					return fmt.Errorf("load Tenant %s default role %d: %w", tenant.ID, *tenant.RoleID, roleErr)
+				} else {
+					needsDefaultRole = true
+				}
 			}
-			roleID := fmt.Sprint(role.ID)
+			if needsDefaultRole {
+				if err := tx.Model(&entity.Tenant{}).Where("id = ?", tenant.ID).Update("role_id", defaultRoleID).Error; err != nil {
+					return fmt.Errorf("set Tenant %s default role: %w", tenant.ID, err)
+				}
+			}
+			roleID := fmt.Sprint(memberRole.ID)
 			if err := tx.Model(&entity.UserTenant{}).
 				Where("tenant_id = ? AND role IN ?", tenant.ID, []string{"normal", "admin"}).
 				Update("role", roleID).Error; err != nil {
@@ -243,7 +614,7 @@ func migrateLegacyTenantRolesToUsersEE(ctx context.Context, db *gorm.DB) error {
 				return fmt.Errorf("tenant %s references missing role %d: %w", legacy.TenantID, legacy.RoleID, err)
 			}
 			if role.TenantID != nil {
-				if *role.TenantID == legacy.TenantID && role.RoleName == defaultTenantMemberRoleName {
+				if *role.TenantID == legacy.TenantID {
 					continue
 				}
 				return fmt.Errorf("tenant %s references non-system role %d", legacy.TenantID, legacy.RoleID)
@@ -556,6 +927,17 @@ func migrateDepartments(ctx context.Context, db *gorm.DB) error {
 	migrator := db.WithContext(ctx).Migrator()
 	hasDepartments := migrator.HasTable("department")
 	hasMembers := migrator.HasTable("department_member")
+	hasGroupMemberRole, err := migrationHasColumn(migrator, &legacyGroupMemberSchema{}, "role")
+	if err != nil {
+		return fmt.Errorf("inspect group_member.role: %w", err)
+	}
+	hasDepartmentMemberRole := false
+	if hasMembers {
+		hasDepartmentMemberRole, err = migrationHasColumn(migrator, &legacyDepartmentMemberSchema{}, "role")
+		if err != nil {
+			return fmt.Errorf("inspect department_member.role: %w", err)
+		}
+	}
 	if hasMembers && !hasDepartments {
 		var count int64
 		if err := db.WithContext(ctx).Table("department_member").Count(&count).Error; err != nil {
@@ -565,7 +947,13 @@ func migrateDepartments(ctx context.Context, db *gorm.DB) error {
 			return fmt.Errorf("department_member has %d rows without department table", count)
 		}
 	}
-	hasDepartmentPermission := migrator.HasTable("permission") && migrator.HasColumn(&entity.Permission{}, "department_id")
+	hasDepartmentPermission := false
+	if migrator.HasTable("permission") {
+		hasDepartmentPermission, err = migrationHasColumn(migrator, &legacyPermissionDepartmentSchema{}, "department_id")
+		if err != nil {
+			return fmt.Errorf("inspect permission.department_id: %w", err)
+		}
+	}
 	if err := db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if hasDepartments {
 			if err := checkDepartmentGroups(ctx, tx); err != nil {
@@ -583,14 +971,10 @@ func migrateDepartments(ctx context.Context, db *gorm.DB) error {
 			}
 		}
 		if hasMembers {
-			if err := checkDepartmentMembers(ctx, tx); err != nil {
+			if err := checkDepartmentMembers(ctx, tx, hasGroupMemberRole); err != nil {
 				return err
 			}
-			if err := tx.WithContext(ctx).Exec(`INSERT INTO group_member
-				(id, create_time, create_date, update_time, update_date, member_id, group_id, role, status)
-				SELECT d.id, d.create_time, d.create_date, d.update_time, d.update_date,
-				 d.member_id, d.department_id, d.role, d.status
-				FROM department_member d WHERE NOT EXISTS (SELECT 1 FROM group_member g WHERE g.id = d.id)`).Error; err != nil {
+			if err := copyDepartmentMembersToGroups(ctx, tx, hasGroupMemberRole, hasDepartmentMemberRole); err != nil {
 				return fmt.Errorf("copy department members to group members: %w", err)
 			}
 		}
@@ -603,13 +987,21 @@ func migrateDepartments(ctx context.Context, db *gorm.DB) error {
 				return fmt.Errorf("move department grants to groups: %w", err)
 			}
 		}
+		if err := migrateLegacyGroupMemberPermissions(ctx, tx, hasGroupMemberRole, hasMembers && !hasGroupMemberRole && hasDepartmentMemberRole); err != nil {
+			return err
+		}
 		return nil
 	}); err != nil {
 		return err
 	}
+	if hasGroupMemberRole {
+		if err := dropLegacyGroupMemberRoleColumn(db.WithContext(ctx)); err != nil {
+			return err
+		}
+	}
 	if hasDepartmentPermission {
-		if err := migrator.DropColumn(&entity.Permission{}, "department_id"); err != nil {
-			return fmt.Errorf("drop permission.department_id: %w", err)
+		if err := dropLegacyColumn(db.WithContext(ctx), &legacyPermissionDepartmentSchema{}, "permission", "department_id"); err != nil {
+			return err
 		}
 	}
 	if hasMembers {
@@ -620,6 +1012,249 @@ func migrateDepartments(ctx context.Context, db *gorm.DB) error {
 	if hasDepartments {
 		if err := migrator.DropTable("department"); err != nil {
 			return fmt.Errorf("drop department: %w", err)
+		}
+	}
+	return nil
+}
+
+type legacyGroupMemberSchema struct {
+	Role string `gorm:"column:role"`
+}
+
+func (legacyGroupMemberSchema) TableName() string { return "group_member" }
+
+type legacyDepartmentMemberSchema struct {
+	Role string `gorm:"column:role"`
+}
+
+func (legacyDepartmentMemberSchema) TableName() string { return "department_member" }
+
+type legacyPermissionDepartmentSchema struct {
+	DepartmentID string `gorm:"column:department_id"`
+}
+
+func (legacyPermissionDepartmentSchema) TableName() string { return "permission" }
+
+func migrationHasColumn(migrator gorm.Migrator, model interface{}, name string) (bool, error) {
+	columns, err := migrator.ColumnTypes(model)
+	if err != nil {
+		return false, err
+	}
+	for _, column := range columns {
+		if strings.EqualFold(column.Name(), name) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func dropLegacyGroupMemberRoleColumn(db *gorm.DB) error {
+	return dropLegacyColumn(db, &legacyGroupMemberSchema{}, "group_member", "role")
+}
+
+func dropLegacyColumn(db *gorm.DB, model interface{}, table, column string) error {
+	migrator := db.Migrator()
+	if !migrator.HasTable(model) {
+		return nil
+	}
+	hasColumn, err := migrationHasColumn(migrator, model, column)
+	if err != nil || !hasColumn {
+		return err
+	}
+	dropErr := migrator.DropColumn(model, column)
+	hasColumn, err = migrationHasColumn(migrator, model, column)
+	if err != nil || !hasColumn {
+		return err
+	}
+	indexes, err := migrator.GetIndexes(model)
+	if err != nil {
+		return fmt.Errorf("list indexes for %s.%s: %w", table, column, err)
+	}
+	for _, index := range indexes {
+		for _, indexColumn := range index.Columns() {
+			if strings.EqualFold(indexColumn, column) {
+				if err := migrator.DropIndex(model, index.Name()); err != nil {
+					return fmt.Errorf("drop index %s on %s.%s: %w", index.Name(), table, column, err)
+				}
+				break
+			}
+		}
+	}
+	if err := db.Exec("ALTER TABLE " + table + " DROP COLUMN " + column).Error; err != nil {
+		if dropErr != nil {
+			return fmt.Errorf("drop %s.%s (GORM drop failed: %v): %w", table, column, dropErr, err)
+		}
+		return fmt.Errorf("drop %s.%s: %w", table, column, err)
+	}
+	hasColumn, err = migrationHasColumn(migrator, model, column)
+	if err != nil {
+		return err
+	}
+	if hasColumn {
+		return fmt.Errorf("%s.%s remains after migration", table, column)
+	}
+	return nil
+}
+
+func copyDepartmentMembersToGroups(ctx context.Context, tx *gorm.DB, groupHasRole, departmentHasRole bool) error {
+	columns := "id, create_time, create_date, update_time, update_date, member_id, group_id, status"
+	selectColumns := "d.id, d.create_time, d.create_date, d.update_time, d.update_date, d.member_id, d.department_id, d.status"
+	if groupHasRole {
+		columns = "id, create_time, create_date, update_time, update_date, member_id, group_id, role, status"
+		role := "'member'"
+		if departmentHasRole {
+			role = "d.role"
+		}
+		selectColumns = "d.id, d.create_time, d.create_date, d.update_time, d.update_date, d.member_id, d.department_id, " + role + ", d.status"
+	}
+	statement := fmt.Sprintf(`INSERT INTO group_member (%s)
+		SELECT %s FROM department_member d
+		WHERE NOT EXISTS (SELECT 1 FROM group_member g WHERE g.id = d.id)`, columns, selectColumns)
+	return tx.WithContext(ctx).Exec(statement).Error
+}
+
+type legacyGroupPermissionRow struct {
+	TenantID string `gorm:"column:tenant_id"`
+	GroupID  string `gorm:"column:group_id"`
+	OwnerID  string `gorm:"column:owner_id"`
+	MemberID string `gorm:"column:member_id"`
+	Role     string `gorm:"column:role"`
+}
+
+type legacyGroupPermissionKey struct {
+	tenantID string
+	groupID  string
+	memberID string
+}
+
+type legacyGroupPermissionGrant struct {
+	mask  int32
+	roles []string
+}
+
+func migrateLegacyGroupMemberPermissions(ctx context.Context, tx *gorm.DB, groupHasRole, useDepartmentRoles bool) error {
+	if !groupHasRole && !useDepartmentRoles {
+		return nil
+	}
+	table, groupColumn := "group_member AS gm", "gm.group_id"
+	if !groupHasRole {
+		table, groupColumn = "department_member AS gm", "gm.department_id"
+	}
+	var rows []legacyGroupPermissionRow
+	query := tx.WithContext(ctx).Table(table).
+		Select("group_info.tenant_id, "+groupColumn+" AS group_id, group_info.owner_id, gm.member_id, gm.role").
+		Joins("JOIN group_info ON group_info.id = "+groupColumn).
+		Joins("JOIN user_tenant ON user_tenant.id = gm.member_id AND user_tenant.tenant_id = group_info.tenant_id").
+		Where("gm.status = ? AND user_tenant.status = ? AND group_info.status = ?",
+			entity.GroupMemberStatusJoined, string(entity.StatusValid), string(entity.StatusValid)).
+		Where("gm.role IS NOT NULL AND gm.role <> ''")
+	if err := query.Order("group_info.tenant_id ASC").Order("group_id ASC").Order("gm.member_id ASC").Find(&rows).Error; err != nil {
+		return fmt.Errorf("load legacy group member roles: %w", err)
+	}
+	grants := make(map[legacyGroupPermissionKey]*legacyGroupPermissionGrant)
+	for _, row := range rows {
+		key := legacyGroupPermissionKey{tenantID: row.TenantID, groupID: row.GroupID, memberID: row.MemberID}
+		role := strings.ToLower(strings.TrimSpace(row.Role))
+		var mask int32
+		switch role {
+		case "owner":
+			if row.MemberID != row.OwnerID {
+				return fmt.Errorf("group %s has an owner member %s that differs from group_info.owner_id %s", row.GroupID, row.MemberID, row.OwnerID)
+			}
+			continue
+		case "admin":
+			mask = entity.GroupPermissionAddSubgroup | entity.GroupPermissionDeleteSubgroup |
+				entity.GroupPermissionAddMember | entity.GroupPermissionRemoveMember |
+				entity.GroupPermissionConfigureMemberPermissions
+		case "member":
+			continue
+		default:
+			return fmt.Errorf("group %s member %s has unsupported legacy role %q", row.GroupID, row.MemberID, row.Role)
+		}
+		grant := grants[key]
+		if grant == nil {
+			grant = &legacyGroupPermissionGrant{}
+			grants[key] = grant
+		}
+		grant.mask |= mask
+		grant.roles = append(grant.roles, role)
+	}
+	if len(grants) == 0 {
+		return nil
+	}
+	keys := make([]legacyGroupPermissionKey, 0, len(grants))
+	for key := range grants {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if keys[i].tenantID != keys[j].tenantID {
+			return keys[i].tenantID < keys[j].tenantID
+		}
+		if keys[i].groupID != keys[j].groupID {
+			return keys[i].groupID < keys[j].groupID
+		}
+		return keys[i].memberID < keys[j].memberID
+	})
+	for _, key := range keys {
+		grant := grants[key]
+		var existing []entity.Permission
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("tenant_id = ? AND resource_type = ? AND resource_id = ? AND member_id = ? AND (group_id IS NULL OR group_id = '') AND status = ?",
+				key.tenantID, "group", key.groupID, key.memberID, string(entity.StatusValid)).
+			Order("id ASC").Find(&existing).Error; err != nil {
+			return fmt.Errorf("load existing group permissions for group %s member %s: %w", key.groupID, key.memberID, err)
+		}
+		var oldMask int32
+		for _, row := range existing {
+			oldMask |= row.Permission
+		}
+		newMask := oldMask | grant.mask
+		if oldMask == newMask && len(existing) <= 1 {
+			continue
+		}
+		resourceID := key.groupID
+		status := string(entity.StatusValid)
+		if len(existing) == 0 {
+			if err := tx.Create(&entity.Permission{
+				ID: common.GenerateUUID(), MemberID: &key.memberID, TenantID: key.tenantID,
+				ResourceType: "group", ResourceID: &resourceID, Permission: newMask, Status: &status,
+			}).Error; err != nil {
+				return fmt.Errorf("create migrated group permissions for group %s member %s: %w", key.groupID, key.memberID, err)
+			}
+		} else {
+			if err := tx.Model(&entity.Permission{}).Where("id = ?", existing[0].ID).
+				Updates(map[string]interface{}{"permission": newMask, "status": status}).Error; err != nil {
+				return fmt.Errorf("update migrated group permissions for group %s member %s: %w", key.groupID, key.memberID, err)
+			}
+			if len(existing) > 1 {
+				duplicateIDs := make([]string, 0, len(existing)-1)
+				for _, row := range existing[1:] {
+					duplicateIDs = append(duplicateIDs, row.ID)
+				}
+				if err := tx.Model(&entity.Permission{}).Where("id IN ?", duplicateIDs).Update("status", string(entity.StatusInvalid)).Error; err != nil {
+					return fmt.Errorf("remove duplicate migrated group permissions for group %s member %s: %w", key.groupID, key.memberID, err)
+				}
+			}
+		}
+		beforeData, err := json.Marshal(map[string]interface{}{"permission": oldMask, "legacy_roles": grant.roles})
+		if err != nil {
+			return fmt.Errorf("encode previous migrated group permissions: %w", err)
+		}
+		afterData, err := json.Marshal(map[string]interface{}{"permission": newMask, "migration": "legacy_group_member_roles"})
+		if err != nil {
+			return fmt.Errorf("encode migrated group permissions: %w", err)
+		}
+		if tx.Migrator().HasTable(&entity.PermissionChangeLog{}) {
+			beforeValue, afterValue := string(beforeData), string(afterData)
+			if err := tx.Create(&entity.PermissionChangeLog{
+				ID: common.GenerateUUID(), TenantID: key.tenantID, TargetType: "member", TargetID: key.memberID,
+				ResourceType: "group", ResourceID: key.groupID,
+				OldPermission: oldMask, NewPermission: newMask, ActionType: "migrate",
+				EventType: "group.member.permissions.migrated", ScopeType: "system",
+				BeforeData: &beforeValue, AfterData: &afterValue, Status: &status,
+			}).Error; err != nil {
+				return fmt.Errorf("audit migrated group permissions for group %s member %s: %w", key.groupID, key.memberID, err)
+			}
 		}
 	}
 	return nil
@@ -648,16 +1283,22 @@ func checkDepartmentGroups(ctx context.Context, db *gorm.DB) error {
 	return nil
 }
 
-func checkDepartmentMembers(ctx context.Context, db *gorm.DB) error {
+func checkDepartmentMembers(ctx context.Context, db *gorm.DB, groupMemberHasRole bool) error {
+	conflictingMembersQuery := `SELECT COUNT(*) FROM department_member d JOIN group_member g ON g.id = d.id WHERE
+		g.group_id <> d.department_id OR g.member_id <> d.member_id OR
+		COALESCE(g.status, '') <> COALESCE(d.status, '')`
+	if groupMemberHasRole {
+		conflictingMembersQuery = `SELECT COUNT(*) FROM department_member d JOIN group_member g ON g.id = d.id WHERE
+			g.group_id <> d.department_id OR g.member_id <> d.member_id OR g.role <> d.role OR
+			COALESCE(g.status, '') <> COALESCE(d.status, '')`
+	}
 	checks := []struct {
 		query string
 		label string
 	}{
 		{`SELECT COUNT(*) FROM department_member d LEFT JOIN group_info g ON g.id = d.department_id
 			WHERE g.id IS NULL`, "department members without migrated groups"},
-		{`SELECT COUNT(*) FROM department_member d JOIN group_member g ON g.id = d.id WHERE
-			g.group_id <> d.department_id OR g.member_id <> d.member_id OR g.role <> d.role OR
-			COALESCE(g.status, '') <> COALESCE(d.status, '')`, "conflicting department/group member IDs"},
+		{conflictingMembersQuery, "conflicting department/group member IDs"},
 		{`SELECT COUNT(*) FROM department_member d JOIN group_member g
 			ON g.group_id = d.department_id AND g.member_id = d.member_id WHERE g.id <> d.id`, "duplicate group memberships"},
 	}

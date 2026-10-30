@@ -16,8 +16,19 @@
 
 package service
 
-import "context"
+import (
+	"context"
 
-func prepareAgentCreation(_ context.Context, userID string) (string, error) {
-	return userID, nil
+	"ragflow/internal/permission"
+)
+
+func prepareAgentCreation(ctx context.Context, userID string) (string, error) {
+	tenantID, err := requireCurrentTenantID(ctx, userID)
+	if err != nil {
+		return "", err
+	}
+	if err := checkFeatureAction(ctx, userID, "agent", permission.ActionWrite); err != nil {
+		return "", err
+	}
+	return tenantID, nil
 }

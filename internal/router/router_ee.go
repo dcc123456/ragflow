@@ -39,13 +39,35 @@ func RegisterEENoAuthRouter(_ *gin.Engine, apiNoAuth *gin.RouterGroup, r *Router
 	apiNoAuth.POST("/auth/register/captcha", r.userHandler.Captcha)
 	apiNoAuth.POST("/auth/register/otp", r.userHandler.SendOTP)
 	apiNoAuth.POST("/auth/register/otp/verify", r.userHandler.VerifyOTP)
+	apiNoAuth.GET("/tenant-invitations/:token", r.tenantHandler.GetTenantInviteLinkInfo)
 }
 
 func RegisterEEProtectedRouter(authorized *gin.RouterGroup, r *Router) {
 	authorized.POST("/api/v1/tenants/:tenant_id/switch", r.tenantHandler.SwitchTenant)
+	authorized.POST("/api/v1/tenants/:tenant_id/invitation-links", r.tenantHandler.CreateTenantInviteLink)
+	authorized.POST("/api/v1/tenant-invitations/:token/accept", r.tenantHandler.AcceptTenantInviteLink)
+
+	permissions := authorized.Group("/api/v1/permission")
+	permissions.PUT("/update", r.tenantHandler.UpdateResourcePermissions)
+	permissions.PUT("/transfer_owner", r.tenantHandler.TransferResourceOwnership)
+	permissions.POST("/list", r.tenantHandler.ListResourcePermissions)
+	permissions.POST("/list_by_target", r.tenantHandler.ListResourcePermissionsByTarget)
 
 	// Tenant-scoped role configuration uses the Tenant carried by the current token.
 	tenant := authorized.Group("/api/v1/tenant")
+	tenant.GET("/groups", r.tenantHandler.ListGroups)
+	tenant.POST("/groups", r.tenantHandler.CreateGroup)
+	tenant.GET("/groups/:group_id", r.tenantHandler.GetGroup)
+	tenant.PUT("/groups/:group_id", r.tenantHandler.UpdateGroup)
+	tenant.PUT("/groups/:group_id/parent", r.tenantHandler.MoveGroup)
+	tenant.DELETE("/groups/:group_id", r.tenantHandler.DeleteGroup)
+	tenant.GET("/groups/:group_id/members", r.tenantHandler.ListGroupMembers)
+	tenant.POST("/groups/:group_id/members", r.tenantHandler.InviteGroupMember)
+	tenant.DELETE("/groups/:group_id/members/:user_id", r.tenantHandler.RemoveGroupMember)
+	tenant.PUT("/groups/:group_id/members/:user_id/permissions", r.tenantHandler.SetGroupMemberPermissions)
+	tenant.PUT("/groups/:group_id/owner", r.tenantHandler.TransferGroupOwnership)
+	tenant.GET("/group-invitations", r.tenantHandler.ListGroupInvitations)
+	tenant.POST("/group-invitations/:invitation_id/response", r.tenantHandler.RespondToGroupInvitation)
 	tenant.GET("/roles", r.tenantHandler.ListTenantRoles)
 	tenant.POST("/roles", r.tenantHandler.CreateTenantRole)
 	tenant.GET("/roles/:role_id", r.tenantHandler.GetTenantRole)

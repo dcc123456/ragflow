@@ -1,4 +1,9 @@
-import { Permission, PermissionResourceType, TeamRole } from '@/constants/team';
+import {
+  Permission,
+  PermissionResourceType,
+  TeamRole,
+  hasResourcePermission,
+} from '@/constants/team';
 import {
   useFetchPermissionByTarget,
   useUpdatePermission,
@@ -73,13 +78,22 @@ export function useFilteredPermissions(
       if (permissionFilter !== 'all') {
         switch (permissionFilter) {
           case 'manage':
-            matchesPermission = item.permission === Permission.Manage;
+            matchesPermission = hasResourcePermission(
+              item.permission,
+              Permission.Manage,
+            );
             break;
           case 'write':
-            matchesPermission = item.permission === Permission.Write;
+            matchesPermission = hasResourcePermission(
+              item.permission,
+              Permission.Write,
+            );
             break;
           case 'read':
-            matchesPermission = item.permission === Permission.Read;
+            matchesPermission = hasResourcePermission(
+              item.permission,
+              Permission.Read,
+            );
             break;
           case 'invisible':
             matchesPermission = item.permission === 0;

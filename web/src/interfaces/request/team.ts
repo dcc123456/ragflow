@@ -65,15 +65,6 @@ export interface IUpdatePermission {
   department_list?: string[];
 }
 
-export interface IUpdateDialogPermission extends Omit<
-  IUpdatePermission,
-  'resource_ids'
-> {
-  kbs: string[];
-  llm_factory: string;
-  resource_id: string;
-}
-
 export interface IConfirmDeletePermission {
   resource_type: string;
   resource_ids: string[];

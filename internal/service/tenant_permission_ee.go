@@ -20,6 +20,7 @@ package service
 import (
 	"context"
 
+	"ragflow/internal/dao"
 	"ragflow/internal/entity"
 )
 
@@ -27,6 +28,11 @@ func resolveDefaultTenantIDEE(context.Context, string) (string, bool, error) {
 	return "", false, nil
 }
 
-func resolveCurrentUserTenantEE(context.Context, string) (*entity.UserTenant, bool, error) {
-	return nil, false, nil
+func resolveCurrentUserTenantEE(ctx context.Context, userID string) (*entity.UserTenant, bool, error) {
+	tenantID, err := requireCurrentTenantID(ctx, userID)
+	if err != nil {
+		return nil, true, err
+	}
+	membership, err := dao.NewUserTenantDAO().FilterByUserIDAndTenantID(ctx, dao.DB, userID, tenantID)
+	return membership, true, err
 }

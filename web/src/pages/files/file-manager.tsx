@@ -1,6 +1,8 @@
 import { BulkOperateBar } from '@/components/bulk-operate-bar';
 import { FileUploadDialog } from '@/components/file-upload-dialog';
+import { PrivilegeManagementDialog } from '@/components/privilege-management/privilege-management-dialog';
 import { Button } from '@/components/ui/button';
+import { PermissionResourceType } from '@/constants/team';
 import { useClearSelectionOnPageChange } from '@/hooks/logic-hooks/use-clear-selection-on-page-change';
 import {
   DropdownMenu,
@@ -11,8 +13,16 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useRowSelection } from '@/hooks/logic-hooks/use-row-selection';
 import { useFetchFileList } from '@/hooks/use-file-request';
+import { IFile } from '@/interfaces/database/file-manager';
+import { IPrivilegeManagementInitialValues } from '@/components/privilege-management/interface';
 import { Upload } from 'lucide-react';
-import { Dispatch, SetStateAction, useEffect } from 'react';
+import {
+  Dispatch,
+  SetStateAction,
+  useCallback,
+  useEffect,
+  useState,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { FilesInstanceType } from '.';
 import EnterpriseFeature from '../admin/components/enterprise-feature';
@@ -32,6 +42,7 @@ import { useHandleUploadFile } from './use-upload-file';
 import { useGoToPreviousPageOnEmpty } from '@/hooks/logic-hooks';
 import { ListDeletionKey } from '@/constants/list-deletion';
 import { useHandleSyncFile } from './use-sync-file';
+import { isFolderType } from './util';
 export enum FileTabs {
   FILE = 'file',
   EVALUATION = 'evaluation',
@@ -79,6 +90,18 @@ export const FilesManager = {
     } = useFetchFileList();
 
     const navigateToOtherFolder = useNavigateToOtherFolder();
+    const [permissionTarget, setPermissionTarget] =
+      useState<IPrivilegeManagementInitialValues | null>(null);
+    const showPrivilegeModal = useCallback((record: IFile) => {
+      setPermissionTarget({
+        id: record.id,
+        tenant_id: record.tenant_id,
+        name: record.name,
+        resourceType: isFolderType(record.type)
+          ? PermissionResourceType.Folder
+          : PermissionResourceType.File,
+      });
+    }, []);
 
     // The folder currently open was removed (e.g. an ancestor was moved into
     // another folder). Send the user back to the root instead of showing an
@@ -157,7 +180,15 @@ export const FilesManager = {
           setRowSelection={setRowSelection}
           showMoveFileModal={showMoveFileModal}
           connectKnowledgeModal={connectKnowledgeModal}
+          showPrivilegeModal={showPrivilegeModal}
         />
+
+        {permissionTarget && (
+          <PrivilegeManagementDialog
+            hideModal={() => setPermissionTarget(null)}
+            initialValues={permissionTarget}
+          />
+        )}
 
         {fileUploadVisible && (
           <FileUploadDialog

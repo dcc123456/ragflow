@@ -30,10 +30,9 @@ export default {
     `${webAPI}/team/${tenantId}/group/owner`,
 
   // permission
-  updatePermission: `${webAPI}/permission/update`,
-  listPermission: `${webAPI}/permission/list`,
-  listPermissionByTarget: `${webAPI}/permission/list_by_target`,
-  updateDialogPermission: `${webAPI}/permission/share_dialog`,
+  updatePermission: `${restAPIv1}/permission/update`,
+  listPermission: `${restAPIv1}/permission/list`,
+  listPermissionByTarget: `${restAPIv1}/permission/list_by_target`,
 
   // billing
   billing_checkout: `${webAPI}/billing/subscription`,
@@ -65,9 +64,6 @@ export default {
   enableAdmin: `${restAPIv1}/enable_admin`, // enable 为true且 is_admin 为false 隐藏model provide
   isAdmin: `${restAPIv1}/is_admin`, // 非admin用户不给显示model providers页面
   setDefaultLlm: `${webAPI}/llm/set_default_llm`, // 添加一个按钮：重置成默认,需要弹框确认。
-
-  // heart beat
-  heartBeat: `${restAPIv1}/heartbeat`,
 
   // tickets
   ticketGroups: `${webAPI}/ticket/groups`,

@@ -1,4 +1,4 @@
-import { Permission } from '@/constants/team';
+import { Permission, hasResourcePermission } from '@/constants/team';
 import {
   useFetchTenantInfo,
   useFetchUserInfo,
@@ -25,7 +25,7 @@ export function PermissionRibbon({
     return name || list.find((x) => x.user_id === tenantId)?.nickname;
   }, [list, name, tenantId]);
 
-  if (permission === Permission.Owner) {
+  if (hasResourcePermission(permission, Permission.Owner)) {
     return <>{children}</>;
   }
 

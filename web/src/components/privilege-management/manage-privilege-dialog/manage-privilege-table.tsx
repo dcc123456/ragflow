@@ -11,7 +11,14 @@ import {
   getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table';
-import { Eye, ShieldCheck, SquarePen, Trash2 } from 'lucide-react';
+import {
+  Check,
+  Eye,
+  Minus,
+  ShieldCheck,
+  SquarePen,
+  Trash2,
+} from 'lucide-react';
 import * as React from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -30,7 +37,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Permission, PermissionResourceType } from '@/constants/team';
+import {
+  Permission,
+  PermissionResourceType,
+  hasResourceOwnerPermission,
+  hasResourcePermission,
+} from '@/constants/team';
 import { UseRowSelectionType } from '@/hooks/logic-hooks/use-row-selection';
 import { IPermission } from '@/interfaces/database/team';
 import { cn } from '@/lib/utils';
@@ -38,11 +50,6 @@ import { useTranslation } from 'react-i18next';
 import { IPrivilegeManagementInitialValues } from '../interface';
 import { PrivilegeAvatar } from '../privilege-avatar';
 import { UserTypeLabel } from '../privilege-label';
-import {
-  getPermission,
-  hideEditPermissionDropdownItem,
-  hidePermissionDropdownButton,
-} from '../utils';
 import { PermissionCell } from './permission-cell';
 import { useOperatePermission } from './use-operate-permission';
 
@@ -56,7 +63,7 @@ type ManagePrivilegeTableProps = Pick<
 };
 
 function checkOwner(permissions: IPermission['permissions']) {
-  return getPermission(permissions) === Permission.Owner;
+  return hasResourceOwnerPermission(permissions);
 }
 
 export function ManagePrivilegeTable({
@@ -74,7 +81,7 @@ export function ManagePrivilegeTable({
   const [columnVisibility, setColumnVisibility] =
     React.useState<VisibilityState>({});
 
-  const { handleDelete, handleSwitchPermission } = useOperatePermission({
+  const { handleDelete, togglePermission } = useOperatePermission({
     initialValues,
   });
 
@@ -152,9 +159,12 @@ export function ManagePrivilegeTable({
           if (checkOwner(row.original.permissions)) {
             return;
           }
-          const onUpdatePermission = (value: string) => {
-            handleSwitchPermission(value, row.original);
-          };
+          const resourceIds =
+            resourceType === PermissionResourceType.Document
+              ? initialValues.documents || []
+              : [initialValues.id];
+          const onTogglePermission = (permission: Permission) =>
+            togglePermission(permission, [row.original]);
           return (
             <div className="flex items-center justify-center gap-1">
               <DropdownMenu>
@@ -165,58 +175,43 @@ export function ManagePrivilegeTable({
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="min-w-48 p-1.5">
-                  {hidePermissionDropdownButton(resourceType) || (
-                    <>
+                  {(
+                    [
+                      [Permission.Read, Eye, 'readPermission'],
+                      [Permission.Write, SquarePen, 'writePermission'],
+                      [Permission.Manage, ShieldCheck, 'managePermission'],
+                    ] as const
+                  ).map(([permission, Icon, label]) => {
+                    const selectedCount = resourceIds.filter((resourceId) =>
+                      hasResourcePermission(
+                        row.original.permissions[resourceId] ?? 0,
+                        permission,
+                      ),
+                    ).length;
+                    const checked =
+                      resourceIds.length > 0 &&
+                      selectedCount === resourceIds.length;
+                    const partiallyChecked = selectedCount > 0 && !checked;
+                    return (
                       <DropdownMenuItem
+                        key={permission}
+                        role="menuitemcheckbox"
+                        aria-checked={partiallyChecked ? 'mixed' : checked}
                         className={cn(
                           'rounded-md py-2 text-sm',
-                          Number(row.original.permissions) ===
-                            Permission.Read && 'bg-bg-card text-text-primary',
+                          checked && 'bg-bg-card text-text-primary',
                         )}
-                        onClick={() =>
-                          onUpdatePermission(String(Permission.Read))
-                        }
+                        onClick={() => onTogglePermission(permission)}
                       >
-                        <div className="flex items-center gap-2">
-                          <Eye className="mr-2 size-4" />
-                          {t('permission.readPermission')}
-                        </div>
-                      </DropdownMenuItem>
-                      {hideEditPermissionDropdownItem(resourceType) || (
-                        <DropdownMenuItem
-                          className={cn(
-                            'rounded-md py-2 text-sm',
-                            Number(row.original.permissions) ===
-                              Permission.Write &&
-                              'bg-bg-card text-text-primary',
-                          )}
-                          onClick={() =>
-                            onUpdatePermission(String(Permission.Write))
-                          }
-                        >
-                          <div className="flex items-center gap-2">
-                            <SquarePen className="mr-2 size-4" />
-                            {t('permission.writePermission')}
-                          </div>
-                        </DropdownMenuItem>
-                      )}
-                      <DropdownMenuItem
-                        className={cn(
-                          'rounded-md py-2 text-sm',
-                          Number(row.original.permissions) ===
-                            Permission.Manage && 'bg-bg-card text-text-primary',
+                        <Icon className="mr-2 size-4" />
+                        {t(`permission.${label}`)}
+                        {checked && <Check className="ml-auto size-4" />}
+                        {partiallyChecked && (
+                          <Minus className="ml-auto size-4" />
                         )}
-                        onClick={() =>
-                          onUpdatePermission(String(Permission.Manage))
-                        }
-                      >
-                        <div className="flex items-center gap-2">
-                          <ShieldCheck className="mr-2 size-4" />
-                          {t('permission.managePermission')}
-                        </div>
                       </DropdownMenuItem>
-                    </>
-                  )}
+                    );
+                  })}
                 </DropdownMenuContent>
               </DropdownMenu>
               <Button
@@ -234,7 +229,7 @@ export function ManagePrivilegeTable({
     ];
 
     return columns;
-  }, [handleDelete, handleSwitchPermission, resourceType, t]);
+  }, [handleDelete, initialValues, resourceType, t, togglePermission]);
 
   const table = useReactTable({
     data,

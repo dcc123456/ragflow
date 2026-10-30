@@ -18,6 +18,13 @@
 
 package entity
 
+const (
+	GroupMemberStatusRemoved  = "0"
+	GroupMemberStatusJoined   = "1"
+	GroupMemberStatusInvited  = "2"
+	GroupMemberStatusRejected = "3"
+)
+
 type GroupInfo struct {
 	ID            string  `gorm:"column:id;primaryKey;size:32" json:"id"`
 	Name          *string `gorm:"column:name;size:100;index" json:"name,omitempty"`
@@ -38,7 +45,6 @@ type GroupMember struct {
 	ID       string  `gorm:"column:id;primaryKey;size:32" json:"id"`
 	MemberID string  `gorm:"column:member_id;size:32;not null;index" json:"member_id"`
 	GroupID  string  `gorm:"column:group_id;size:32;not null;index" json:"group_id"`
-	Role     string  `gorm:"column:role;size:32;not null;index" json:"role"`
 	Status   *string `gorm:"column:status;size:1;index" json:"status,omitempty"`
 	BaseModel
 }

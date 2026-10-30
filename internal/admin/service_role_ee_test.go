@@ -97,6 +97,7 @@ func TestListRolesWithPermission(t *testing.T) {
 	roleResources := []entity.RoleResource{
 		{ID: 1, RoleID: 1, ResourceType: entity.RoleResourceTypeDataset, Action: entity.RoleActionEnable | entity.RoleActionWrite},
 		{ID: 2, RoleID: 1, ResourceType: entity.RoleResourceTypeChat, Action: entity.RoleActionRead | entity.RoleActionShare},
+		{ID: 3, RoleID: 1, ResourceType: entity.RoleResourceTypeGroup, Action: entity.RoleActionAll},
 	}
 	if err := db.Create(&roleResources).Error; err != nil {
 		t.Fatalf("create role resources: %v", err)
@@ -126,6 +127,12 @@ func TestListRolesWithPermission(t *testing.T) {
 	if got := permissions["file"]; got["enable"] || got["read"] || got["write"] || got["share"] {
 		t.Fatalf("file permissions = %#v, want all permissions disabled", got)
 	}
+	if got := permissions["group"]; !got["enable"] || !got["read"] || !got["write"] || !got["share"] {
+		t.Fatalf("group permissions = %#v, want enable/read/write/share", got)
+	}
+	if _, ok := permissions["team"]; ok {
+		t.Fatalf("legacy team resource is present in role matrix: %#v", permissions)
+	}
 }
 
 func TestListResources(t *testing.T) {
@@ -136,6 +143,11 @@ func TestListResources(t *testing.T) {
 	got, ok := resources["resource_types"].([]string)
 	if !ok || len(got) != len(roleResourceNames) {
 		t.Fatalf("resource_types = %#v, want %d resource types", resources["resource_types"], len(roleResourceNames))
+	}
+	for _, resource := range got {
+		if resource == "team" {
+			t.Fatalf("legacy team resource is present: %#v", got)
+		}
 	}
 }
 

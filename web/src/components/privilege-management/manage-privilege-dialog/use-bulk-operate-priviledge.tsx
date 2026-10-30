@@ -1,4 +1,5 @@
 import { UseRowSelectionType } from '@/hooks/logic-hooks/use-row-selection';
+import { Permission } from '@/constants/team';
 import { IPermission } from '@/interfaces/database/team';
 import { RowSelectionState } from '@tanstack/react-table';
 import { Eye, ShieldCheck, SquarePen, Trash2 } from 'lucide-react';
@@ -13,7 +14,7 @@ export function useSelectedRows<T extends Array<{ id: string }>>(
 ) {
   const selectedRows = useMemo(() => {
     const indexes = Object.keys(rowSelection);
-    return list.filter((x, idx) =>
+    return list.filter((_, idx) =>
       indexes.some((y) => Number(y) === idx),
     ) as IPermission[];
   }, [list, rowSelection]);
@@ -31,7 +32,7 @@ export function useBulkOperatePrivilege({
   permissions: IPermission[];
 }) {
   const { t } = useTranslation();
-  const { handleSwitchPermission, setPermission } = useOperatePermission({
+  const { togglePermission, setPermission } = useOperatePermission({
     initialValues,
   });
 
@@ -46,7 +47,7 @@ export function useBulkOperatePrivilege({
       label: t('permission.readPermission'),
       icon: <Eye />,
       onClick: () => {
-        handleSwitchPermission('1', selectedRows);
+        togglePermission(Permission.Read, selectedRows);
       },
     },
     {
@@ -54,7 +55,7 @@ export function useBulkOperatePrivilege({
       label: t('permission.writePermission'),
       icon: <SquarePen />,
       onClick: () => {
-        handleSwitchPermission('2', selectedRows);
+        togglePermission(Permission.Write, selectedRows);
       },
     },
     {
@@ -62,7 +63,7 @@ export function useBulkOperatePrivilege({
       label: t('permission.managePermission'),
       icon: <ShieldCheck />,
       onClick: () => {
-        handleSwitchPermission('4', selectedRows);
+        togglePermission(Permission.Manage, selectedRows);
       },
     },
     {

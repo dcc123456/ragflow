@@ -20,12 +20,26 @@ package document
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"gorm.io/gorm"
 
 	"ragflow/internal/entity"
+	"ragflow/internal/permission"
 )
 
-func grantDocumentOwnerEE(context.Context, *gorm.DB, *entity.Document) error {
-	return nil
+func grantDocumentOwnerEE(ctx context.Context, tx *gorm.DB, doc *entity.Document) error {
+	if doc == nil || strings.TrimSpace(doc.CreatedBy) == "" {
+		return fmt.Errorf("document owner is required")
+	}
+	var dataset entity.Knowledgebase
+	if err := tx.WithContext(ctx).Select("tenant_id").Where("id = ?", doc.KbID).Take(&dataset).Error; err != nil {
+		return fmt.Errorf("load document dataset Tenant: %w", err)
+	}
+	checker := permission.NewDatabaseChecker(tx)
+	return checker.GrantResourceOwner(ctx,
+		permission.Subject{UserID: doc.CreatedBy, TenantID: dataset.TenantID},
+		permission.ResourceRef{Kind: permission.ResourceKindDocument, ID: doc.ID},
+	)
 }

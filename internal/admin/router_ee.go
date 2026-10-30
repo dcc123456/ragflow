@@ -76,8 +76,8 @@ func RegisterEERouter(protected *gin.RouterGroup, r *Router) {
 		provider.PUT("/:provider_name/instances/:instance_name", r.handler.AlterProviderInstance)
 
 		provider.GET("/:provider_name/instances/:instance_name/models", r.handler.ListInstanceModels)
-		provider.PATCH("/:provider_name/instances/:instance_name/models/*model_name", r.handler.EnableOrDisableModel)
-		provider.POST("/:provider_name/instances/:instance_name/models", r.handler.AddModels)
+		provider.PATCH("/:provider_name/instances/:instance_name/models/*model_name", r.handler.AlterModel)
+		provider.POST("/:provider_name/instances/:instance_name/models", r.handler.AddModel)
 		provider.DELETE("/:provider_name/instances/:instance_name/models", r.handler.DeleteModels)
 	}
 

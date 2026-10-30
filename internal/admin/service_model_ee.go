@@ -20,6 +20,8 @@ package admin
 
 import (
 	"context"
+
+	servicepkg "ragflow/internal/service"
 )
 
 func (s *Service) ListModelProviders(ctx context.Context, available bool) ([]map[string]interface{}, error) {
@@ -54,16 +56,16 @@ func (s *Service) CheckInstanceConnection(ctx context.Context, providerName, ins
 	return s.modelProviderService.CheckSystemInstanceConnection(ctx, providerName, instanceName)
 }
 
-func (s *Service) CheckProviderConnection(ctx context.Context, providerName, region, apiKey, baseURL string) (map[string]interface{}, error) {
-	return s.modelProviderService.CheckSystemProviderConnection(ctx, providerName, region, apiKey, baseURL)
+func (s *Service) CheckProviderConnection(ctx context.Context, providerName string, request *servicepkg.CheckConnectionRequest) (map[string]interface{}, error) {
+	return s.modelProviderService.CheckSystemProviderConnection(ctx, providerName, request)
 }
 
-func (s *Service) AlterProviderInstance(ctx context.Context, providerName, instanceName, newInstanceName, newAPIKey string, region, baseURL *string) (map[string]interface{}, error) {
-	return s.modelProviderService.AlterSystemProviderInstance(ctx, providerName, instanceName, newInstanceName, newAPIKey, region, baseURL)
+func (s *Service) AlterProviderInstance(ctx context.Context, providerName, instanceName string, request *servicepkg.AlterProviderInstanceRequest) (map[string]interface{}, error) {
+	return s.modelProviderService.AlterSystemProviderInstance(ctx, providerName, instanceName, request)
 }
 
-func (s *Service) AddModelInstance(ctx context.Context, providerName, instanceName string) (map[string]interface{}, error) {
-	return s.modelProviderService.AddSystemModelInstance(ctx, providerName, instanceName)
+func (s *Service) AddModelInstance(ctx context.Context, providerName string, request *servicepkg.CreateProviderInstanceRequest) (map[string]interface{}, error) {
+	return s.modelProviderService.AddSystemModelInstance(ctx, providerName, request)
 }
 
 func (s *Service) DeleteModelInstances(ctx context.Context, providerName string, instanceNames []string) (map[string]interface{}, error) {
@@ -74,12 +76,12 @@ func (s *Service) ListInstanceModels(ctx context.Context, providerName, instance
 	return s.modelProviderService.ListSystemInstanceModels(ctx, providerName, instanceName, supported)
 }
 
-func (s *Service) EnableOrDisableModel(ctx context.Context, providerName, instanceName, modelName, modelID, status string) (map[string]interface{}, error) {
-	return s.modelProviderService.EnableOrDisableSystemModel(ctx, providerName, instanceName, modelName, modelID, status)
+func (s *Service) AlterModel(ctx context.Context, providerName, instanceName, modelName string, request *servicepkg.AlterModelRequest) (map[string]interface{}, error) {
+	return s.modelProviderService.AlterSystemModel(ctx, providerName, instanceName, modelName, request)
 }
 
-func (s *Service) AddModels(ctx context.Context, providerName, instanceName string, modelNames []string) (map[string]interface{}, error) {
-	return s.modelProviderService.AddSystemModels(ctx, providerName, instanceName, modelNames)
+func (s *Service) AddModel(ctx context.Context, request *servicepkg.AddModelRequest) error {
+	return s.modelProviderService.AddSystemModel(ctx, request)
 }
 
 func (s *Service) DeleteModels(ctx context.Context, providerName, instanceName string, modelNames []string) (map[string]interface{}, error) {

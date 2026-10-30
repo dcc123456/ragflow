@@ -45,7 +45,7 @@ func TestAddMemberRejectsWhenTenantInvitesAreDisabled(t *testing.T) {
 		t.Fatalf("AddMember() = (%v, %v), want invitation disabled forbidden", code, err)
 	}
 	var count int64
-	if err := db.Model(&entity.UserTenant{}).Where("tenant_id = ? AND role = ?", "tenant-xyz", TenantRoleInvite).Count(&count).Error; err != nil {
+	if err := db.Model(&entity.UserTenant{}).Where("tenant_id = ? AND status = ?", "tenant-xyz", entity.TenantMembershipStatusInvited).Count(&count).Error; err != nil {
 		t.Fatalf("count invitations: %v", err)
 	}
 	if count != 0 {

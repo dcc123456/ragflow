@@ -19,6 +19,7 @@ import { omit } from 'lodash';
 import { UseRenameDocumentShowType } from './use-rename-document';
 import { ShowPrivilegeModalContext } from './use-show-privilege-dialog';
 import { isDocumentProcessing } from './utils';
+import { useTranslation } from 'react-i18next';
 
 const Fields = ['name', 'size', 'type', 'create_time', 'update_time'];
 
@@ -39,6 +40,7 @@ export function DatasetActionCell({
 } & UseRenameDocumentShowType &
   Pick<UseRowSelectionType, 'setRowSelection'>) {
   const { id, type } = record;
+  const { t } = useTranslation();
   const isRunning = isDocumentProcessing(record);
   const isVirtualDocument = type === DocumentType.Virtual;
 
@@ -79,7 +81,8 @@ export function DatasetActionCell({
       <Button
         variant={'ghost'}
         size={'sm'}
-        disabled={isRunning || datasetEditButtonDisabled}
+        disabled={isRunning}
+        aria-label={t('permission.permissionManagement')}
         onClick={handShowPrivilegeModal?.(record)}
       >
         <Key />

@@ -19,6 +19,7 @@
 package admin
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -27,6 +28,7 @@ import (
 	"ragflow/internal/dao"
 	"ragflow/internal/entity"
 	"ragflow/internal/ingestion/testutil"
+	servicepkg "ragflow/internal/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -87,25 +89,39 @@ func TestSystemModelProviderCRUDUsesOnlySystemScope(t *testing.T) {
 		t.Fatalf("ListModelProviders(available) = (%#v, %v), want catalog providers", availableProviders, err)
 	}
 
-	instanceResult, err := service.AddModelInstance(t.Context(), systemProvider.ProviderName, "default")
+	instanceResult, err := service.AddModelInstance(t.Context(), systemProvider.ProviderName, &servicepkg.CreateProviderInstanceRequest{InstanceName: "default"})
 	if err != nil {
 		t.Fatalf("AddModelInstance() error = %v", err)
 	}
 	instanceID := instanceResult["id"].(string)
 	region := "us-test-1"
 	baseURL := "https://models.example.test/v1"
-	instanceResult, err = service.AlterProviderInstance(t.Context(), systemProvider.ProviderName, "default", "", "system-api-key", &region, &baseURL)
+	modelInfo := []servicepkg.CreateInstanceModelInfo{}
+	instanceResult, err = service.AlterProviderInstance(t.Context(), systemProvider.ProviderName, "default", &servicepkg.AlterProviderInstanceRequest{
+		APIKey:    json.RawMessage(`"system-api-key"`),
+		Region:    region,
+		BaseURL:   baseURL,
+		ModelInfo: &modelInfo,
+	})
 	if err != nil {
 		t.Fatalf("AlterProviderInstance() error = %v", err)
 	}
 	if instanceResult["region"] != region || instanceResult["base_url"] != baseURL || instanceResult["api_key"] != "system-api-key" {
 		t.Fatalf("AlterProviderInstance() = %#v, want updated API key, region and base URL", instanceResult)
 	}
-	if _, err := service.AddModels(t.Context(), systemProvider.ProviderName, "default", []string{catalogModelName}); err != nil {
-		t.Fatalf("AddModels() error = %v", err)
+	modelRequest := &servicepkg.AddModelRequest{
+		ProviderName: systemProvider.ProviderName,
+		InstanceName: "default",
+		ModelName:    catalogModelName,
+		ModelTypes:   []string{"chat"},
+		MaxTokens:    1234,
+		Extra:        map[string]interface{}{"is_tools": true},
 	}
-	if _, err := service.AddModels(t.Context(), systemProvider.ProviderName, "default", []string{catalogModelName}); err != nil {
-		t.Fatalf("AddModels() retry error = %v", err)
+	if err := service.AddModel(t.Context(), modelRequest); err != nil {
+		t.Fatalf("AddModel() error = %v", err)
+	}
+	if err := service.AddModel(t.Context(), modelRequest); err == nil {
+		t.Fatal("AddModel() duplicate succeeded, want conflict")
 	}
 
 	models, err := service.ListInstanceModels(t.Context(), systemProvider.ProviderName, "default", false)
@@ -114,6 +130,13 @@ func TestSystemModelProviderCRUDUsesOnlySystemScope(t *testing.T) {
 	}
 	if len(models) != 1 || models[0]["name"] != catalogModelName || models[0]["id"] == "" {
 		t.Fatalf("ListInstanceModels() = %#v, want the configured catalog model with an ID", models)
+	}
+	var storedModel entity.TenantModel
+	if err := db.Where("id = ?", models[0]["id"]).Take(&storedModel).Error; err != nil {
+		t.Fatalf("find added system model: %v", err)
+	}
+	if storedModel.ModelType != int(entity.ModelTypeChat) || !strings.Contains(storedModel.Extra, `"max_tokens":1234`) || !strings.Contains(storedModel.Extra, `"is_tools":true`) {
+		t.Fatalf("stored system model = %#v, want API request model type and extra fields", storedModel)
 	}
 
 	addedModels, err := service.ListSystemAddedModels(t.Context(), "")
@@ -131,8 +154,8 @@ func TestSystemModelProviderCRUDUsesOnlySystemScope(t *testing.T) {
 	}
 	modelID := models[0]["id"].(string)
 
-	if _, err := service.EnableOrDisableModel(t.Context(), systemProvider.ProviderName, "default", catalogModelName, modelID, "inactive"); err != nil {
-		t.Fatalf("EnableOrDisableModel() error = %v", err)
+	if _, err := service.AlterModel(t.Context(), systemProvider.ProviderName, "default", catalogModelName, &servicepkg.AlterModelRequest{ModelID: modelID, Status: "inactive"}); err != nil {
+		t.Fatalf("AlterModel() error = %v", err)
 	}
 	models, err = service.ListInstanceModels(t.Context(), systemProvider.ProviderName, "default", false)
 	if err != nil || models[0]["status"] != "inactive" {
@@ -145,8 +168,8 @@ func TestSystemModelProviderCRUDUsesOnlySystemScope(t *testing.T) {
 	if err != nil || len(models) != 0 {
 		t.Fatalf("ListInstanceModels() after deleting model = (%#v, %v), want empty list", models, err)
 	}
-	if _, err := service.AddModels(t.Context(), systemProvider.ProviderName, "default", []string{catalogModelName}); err != nil {
-		t.Fatalf("AddModels() after deleting model error = %v", err)
+	if err := service.AddModel(t.Context(), modelRequest); err != nil {
+		t.Fatalf("AddModel() after deleting model error = %v", err)
 	}
 
 	if _, err := service.DeleteModelInstances(t.Context(), systemProvider.ProviderName, []string{"default"}); err != nil {
@@ -167,11 +190,13 @@ func TestSystemModelProviderCRUDUsesOnlySystemScope(t *testing.T) {
 		t.Fatalf("instance rows remaining = %d, want 0", remainingInstances)
 	}
 
-	if _, err := service.AddModelInstance(t.Context(), systemProvider.ProviderName, "second"); err != nil {
+	if _, err := service.AddModelInstance(t.Context(), systemProvider.ProviderName, &servicepkg.CreateProviderInstanceRequest{InstanceName: "second"}); err != nil {
 		t.Fatalf("AddModelInstance(second) error = %v", err)
 	}
-	if _, err := service.AddModels(t.Context(), systemProvider.ProviderName, "second", []string{catalogModelName}); err != nil {
-		t.Fatalf("AddModels(second) error = %v", err)
+	secondModelRequest := *modelRequest
+	secondModelRequest.InstanceName = "second"
+	if err := service.AddModel(t.Context(), &secondModelRequest); err != nil {
+		t.Fatalf("AddModel(second) error = %v", err)
 	}
 
 	if _, err := service.DeleteModelProviders(t.Context(), []string{systemProvider.ProviderName}); err != nil {
@@ -233,6 +258,25 @@ func TestListSystemAddedModelsRoute(t *testing.T) {
 	engine := gin.New()
 	RegisterEERouter(engine.Group("/api/v1/admin"), NewRouter(NewHandler(NewService())))
 
+	addResponse := httptest.NewRecorder()
+	addRequest := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/admin/providers/OpenAI/instances/default/models",
+		strings.NewReader(`{"provider_name":"OpenAI","instance_name":"default","model_name":"tt","model_type":["chat"],"max_tokens":1234,"extra":{"is_tools":true}}`),
+	)
+	addRequest.Header.Set("Content-Type", "application/json")
+	engine.ServeHTTP(addResponse, addRequest)
+	if addResponse.Code != http.StatusOK || !strings.Contains(addResponse.Body.String(), `"code":0`) {
+		t.Fatalf("POST /admin/providers/.../models status = %d, body = %s", addResponse.Code, addResponse.Body.String())
+	}
+	var addedModel entity.TenantModel
+	if err := db.Where("provider_id = ? AND instance_id = ? AND model_name = ?", provider.ID, instance.ID, "tt").Take(&addedModel).Error; err != nil {
+		t.Fatalf("find model added through admin API: %v", err)
+	}
+	if addedModel.ModelType != int(entity.ModelTypeChat) || !strings.Contains(addedModel.Extra, `"max_tokens":1234`) || !strings.Contains(addedModel.Extra, `"is_tools":true`) {
+		t.Fatalf("model added through admin API = %#v, want API request fields", addedModel)
+	}
+
 	response := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/admin/models?type=chat", nil)
 	engine.ServeHTTP(response, request)
@@ -258,5 +302,109 @@ func TestListSystemAddedModelsRoute(t *testing.T) {
 	}
 	if !providerDeleteRouteRegistered {
 		t.Fatal("DELETE /admin/providers/:provider_name was not registered")
+	}
+}
+
+func TestAdminProviderInstanceAndModelRoutesUseAPIRequestShapes(t *testing.T) {
+	db := testutil.SetupTestDB(t,
+		&entity.TenantModelProvider{},
+		&entity.TenantModelInstance{},
+		&entity.TenantModel{},
+		&entity.RoleDefaultModel{},
+	)
+	t.Cleanup(testutil.ReplaceDBForTest(t, db))
+
+	provider := entity.TenantModelProvider{ID: "system-provider", ProviderName: "OpenAI"}
+	if err := db.Create(&provider).Error; err != nil {
+		t.Fatalf("create system provider: %v", err)
+	}
+
+	originalMode := gin.Mode()
+	gin.SetMode(gin.TestMode)
+	t.Cleanup(func() { gin.SetMode(originalMode) })
+	engine := gin.New()
+	RegisterEERouter(engine.Group("/api/v1/admin"), NewRouter(NewHandler(NewService())))
+
+	post := httptest.NewRecorder()
+	postRequest := httptest.NewRequest(http.MethodPost, "/api/v1/admin/providers/OpenAI/instances", strings.NewReader(
+		`{"instance_name":"custom","api_key":"system-key","base_url":"https://models.example.test/v1","region":"us-test-1","model_info":[{"model_name":"custom-model","model_type":["chat"],"max_tokens":512,"extra":{"is_tools":true}}]}`,
+	))
+	postRequest.Header.Set("Content-Type", "application/json")
+	engine.ServeHTTP(post, postRequest)
+	if post.Code != http.StatusOK || !strings.Contains(post.Body.String(), `"code":0`) {
+		t.Fatalf("POST /admin/providers/.../instances status = %d, body = %s", post.Code, post.Body.String())
+	}
+
+	var instance entity.TenantModelInstance
+	if err := db.Where("provider_id = ? AND instance_name = ?", provider.ID, "custom").Take(&instance).Error; err != nil {
+		t.Fatalf("find created system instance: %v", err)
+	}
+	var model entity.TenantModel
+	if err := db.Where("provider_id = ? AND instance_id = ? AND model_name = ?", provider.ID, instance.ID, "custom-model").Take(&model).Error; err != nil {
+		t.Fatalf("find model created with instance: %v", err)
+	}
+	if model.ModelType != int(entity.ModelTypeChat) || !strings.Contains(model.Extra, `"max_tokens":512`) || !strings.Contains(model.Extra, `"is_tools":true`) {
+		t.Fatalf("created model = %#v, want model_info fields from API-shaped request", model)
+	}
+
+	put := httptest.NewRecorder()
+	putRequest := httptest.NewRequest(http.MethodPut, "/api/v1/admin/providers/OpenAI/instances/custom", strings.NewReader(
+		`{"instance_name":"renamed","api_key":"updated-key","base_url":"https://models.example.test/v2","region":"us-test-2","model_info":[{"model_name":"custom-model","model_type":["embedding"],"max_tokens":1024,"extra":{"thinking":true}}]}`,
+	))
+	putRequest.Header.Set("Content-Type", "application/json")
+	engine.ServeHTTP(put, putRequest)
+	if put.Code != http.StatusOK || !strings.Contains(put.Body.String(), `"code":0`) {
+		t.Fatalf("PUT /admin/providers/.../instances/:name status = %d, body = %s", put.Code, put.Body.String())
+	}
+	if err := db.Where("id = ?", instance.ID).Take(&instance).Error; err != nil {
+		t.Fatalf("reload updated system instance: %v", err)
+	}
+	if instance.InstanceName != "renamed" || instance.APIKey != "updated-key" || !strings.Contains(instance.Extra, `"region":"us-test-2"`) {
+		t.Fatalf("updated instance = %#v, want API-shaped instance fields", instance)
+	}
+	if err := db.Where("id = ?", model.ID).Take(&model).Error; err != nil {
+		t.Fatalf("reload updated system model: %v", err)
+	}
+	if model.ModelType != int(entity.ModelTypeEmbedding) || !strings.Contains(model.Extra, `"max_tokens":1024`) || !strings.Contains(model.Extra, `"thinking":true`) {
+		t.Fatalf("updated model = %#v, want model_info update fields", model)
+	}
+
+	patchModel := httptest.NewRecorder()
+	patchRequest := httptest.NewRequest(http.MethodPatch, "/api/v1/admin/providers/OpenAI/instances/renamed/models/custom-model", strings.NewReader(
+		`{"model_id":"`+model.ID+`","status":"inactive","model_type":["chat"],"max_tokens":2048,"extra":{"is_tools":false}}`,
+	))
+	patchRequest.Header.Set("Content-Type", "application/json")
+	engine.ServeHTTP(patchModel, patchRequest)
+	if patchModel.Code != http.StatusOK || !strings.Contains(patchModel.Body.String(), `"code":0`) {
+		t.Fatalf("PATCH /admin/providers/.../models/:name status = %d, body = %s", patchModel.Code, patchModel.Body.String())
+	}
+	if err := db.Where("id = ?", model.ID).Take(&model).Error; err != nil {
+		t.Fatalf("reload patched system model: %v", err)
+	}
+	if model.Status != "inactive" || model.ModelType != int(entity.ModelTypeChat) || !strings.Contains(model.Extra, `"max_tokens":2048`) || !strings.Contains(model.Extra, `"is_tools":false`) {
+		t.Fatalf("patched model = %#v, want API PATCH fields", model)
+	}
+
+	deleteModel := httptest.NewRecorder()
+	deleteModelRequest := httptest.NewRequest(http.MethodDelete, "/api/v1/admin/providers/OpenAI/instances/renamed/models", strings.NewReader(`{"model_name":["custom-model"]}`))
+	deleteModelRequest.Header.Set("Content-Type", "application/json")
+	engine.ServeHTTP(deleteModel, deleteModelRequest)
+	if deleteModel.Code != http.StatusOK || !strings.Contains(deleteModel.Body.String(), `"code":0`) {
+		t.Fatalf("DELETE /admin/providers/.../models status = %d, body = %s", deleteModel.Code, deleteModel.Body.String())
+	}
+
+	deleteInstance := httptest.NewRecorder()
+	deleteInstanceRequest := httptest.NewRequest(http.MethodDelete, "/api/v1/admin/providers/OpenAI/instances", strings.NewReader(`{"instances":["renamed"]}`))
+	deleteInstanceRequest.Header.Set("Content-Type", "application/json")
+	engine.ServeHTTP(deleteInstance, deleteInstanceRequest)
+	if deleteInstance.Code != http.StatusOK || !strings.Contains(deleteInstance.Body.String(), `"code":0`) {
+		t.Fatalf("DELETE /admin/providers/.../instances status = %d, body = %s", deleteInstance.Code, deleteInstance.Body.String())
+	}
+	var remainingInstances int64
+	if err := db.Model(&entity.TenantModelInstance{}).Where("id = ?", instance.ID).Count(&remainingInstances).Error; err != nil {
+		t.Fatalf("count deleted system instance: %v", err)
+	}
+	if remainingInstances != 0 {
+		t.Fatalf("system instance rows remaining = %d, want 0", remainingInstances)
 	}
 }

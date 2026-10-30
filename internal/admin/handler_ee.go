@@ -25,6 +25,8 @@ import (
 	"net/url"
 	"ragflow/internal/common"
 	"ragflow/internal/dao"
+	apihandler "ragflow/internal/handler"
+	servicepkg "ragflow/internal/service"
 	"strconv"
 	"strings"
 	"time"
@@ -403,13 +405,13 @@ func (h *Handler) DeleteModelProvider(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
-	result, err := h.service.DeleteModelProviders(ctx, []string{providerName})
+	_, err := h.service.DeleteModelProviders(ctx, []string{providerName})
 	if err != nil {
 		writeAdminModelError(c, err)
 		return
 	}
 
-	common.SuccessWithData(c, result, "Model provider deleted successfully")
+	common.SuccessWithMessage(c, "success")
 }
 
 func (h *Handler) ListModels(c *gin.Context) {
@@ -418,9 +420,9 @@ func (h *Handler) ListModels(c *gin.Context) {
 		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
 		return
 	}
-	models, err := dao.GetModelProviderManager().ListModels(providerName)
+	models, err := apihandler.FetchProviderModels(c.Request.Context(), providerName, c.Query("api_key"), c.Query("base_url"))
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeNotFound, err.Error())
+		writeAdminModelError(c, err)
 		return
 	}
 
@@ -517,19 +519,13 @@ func (h *Handler) CheckInstanceConnection(c *gin.Context) {
 		return
 	}
 	ctx := c.Request.Context()
-	result, err := h.service.CheckInstanceConnection(ctx, providerName, instanceName)
+	_, err := h.service.CheckInstanceConnection(ctx, providerName, instanceName)
 	if err != nil {
 		writeAdminModelError(c, err)
 		return
 	}
 
-	common.SuccessWithData(c, result, "Model instance connection checked successfully")
-}
-
-type CheckConnectionRequest struct {
-	APIKey  string `json:"api_key"`
-	Region  string `json:"region"`
-	BaseURL string `json:"base_url"`
+	common.SuccessWithMessage(c, "success")
 }
 
 func (h *Handler) CheckProviderConnection(c *gin.Context) {
@@ -539,27 +535,20 @@ func (h *Handler) CheckProviderConnection(c *gin.Context) {
 		return
 	}
 
-	var req CheckConnectionRequest
+	var req servicepkg.CheckConnectionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, err.Error())
 		return
 	}
 
 	ctx := c.Request.Context()
-	result, err := h.service.CheckProviderConnection(ctx, providerName, req.Region, req.APIKey, req.BaseURL)
+	_, err := h.service.CheckProviderConnection(ctx, providerName, &req)
 	if err != nil {
 		writeAdminModelError(c, err)
 		return
 	}
 
-	common.SuccessWithData(c, result, "Model provider connection checked successfully")
-}
-
-type AlterProviderInstanceRequest struct {
-	InstanceName string  `json:"instance_name"`
-	APIKey       string  `json:"api_key"`
-	Region       *string `json:"region"`
-	BaseURL      *string `json:"base_url"`
+	common.SuccessWithMessage(c, "success")
 }
 
 func (h *Handler) AlterProviderInstance(c *gin.Context) {
@@ -575,51 +564,42 @@ func (h *Handler) AlterProviderInstance(c *gin.Context) {
 		return
 	}
 
-	var req AlterProviderInstanceRequest
+	var req servicepkg.AlterProviderInstanceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		common.ErrorWithCode(c, common.CodeBadRequest, err.Error())
 		return
 	}
 
 	ctx := c.Request.Context()
-	result, err := h.service.AlterProviderInstance(ctx, providerName, instanceName, req.InstanceName, req.APIKey, req.Region, req.BaseURL)
+	_, err := h.service.AlterProviderInstance(ctx, providerName, instanceName, &req)
 	if err != nil {
 		writeAdminModelError(c, err)
 		return
 	}
 
-	common.SuccessWithData(c, result, "Model instance altered successfully")
-}
-
-type AddModelInstanceRequest struct {
-	InstanceName string `json:"instance_name" binding:"required"`
+	common.SuccessWithMessage(c, "success")
 }
 
 func (h *Handler) AddModelInstance(c *gin.Context) {
-	var req AddModelInstanceRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		common.ResponseWithCodeData(c, common.CodeBadRequest, false, err.Error())
-		return
-	}
-
 	providerName := c.Param("provider_name")
 	if providerName == "" {
 		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
 		return
 	}
+	var req servicepkg.CreateProviderInstanceRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ErrorWithCode(c, common.CodeBadRequest, err.Error())
+		return
+	}
 
 	ctx := c.Request.Context()
-	result, err := h.service.AddModelInstance(ctx, providerName, req.InstanceName)
+	_, err := h.service.AddModelInstance(ctx, providerName, &req)
 	if err != nil {
 		writeAdminModelError(c, err)
 		return
 	}
 
-	common.SuccessWithData(c, result, "Model instance added successfully")
-}
-
-type DropModelInstanceRequest struct {
-	InstanceNames []string `json:"instance_names" binding:"required"`
+	common.SuccessWithMessage(c, "success")
 }
 
 func (h *Handler) DeleteModelInstance(c *gin.Context) {
@@ -629,20 +609,20 @@ func (h *Handler) DeleteModelInstance(c *gin.Context) {
 		return
 	}
 
-	var req DropModelInstanceRequest
+	var req servicepkg.DropProviderInstanceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		common.ErrorWithCode(c, common.CodeBadRequest, err.Error())
 		return
 	}
 
 	ctx := c.Request.Context()
-	result, err := h.service.DeleteModelInstances(ctx, providerName, req.InstanceNames)
+	_, err := h.service.DeleteModelInstances(ctx, providerName, req.Instances)
 	if err != nil {
 		writeAdminModelError(c, err)
 		return
 	}
 
-	common.SuccessWithData(c, result, "Model instances deleted successfully")
+	common.SuccessWithMessage(c, "success")
 }
 
 func (h *Handler) ListInstanceModels(c *gin.Context) {
@@ -668,12 +648,7 @@ func (h *Handler) ListInstanceModels(c *gin.Context) {
 	common.SuccessWithData(c, result, "Model status updated successfully")
 }
 
-type EnableOrDisableModelRequest struct {
-	ModelID string `json:"model_id"`
-	Status  string `json:"status"`
-}
-
-func (h *Handler) EnableOrDisableModel(c *gin.Context) {
+func (h *Handler) AlterModel(c *gin.Context) {
 	providerName := c.Param("provider_name")
 	if providerName == "" {
 		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
@@ -686,66 +661,59 @@ func (h *Handler) EnableOrDisableModel(c *gin.Context) {
 		return
 	}
 
-	var req EnableOrDisableModelRequest
+	var req servicepkg.AlterModelRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		println("JSON bind error: %v (type: %T)", err, err)
 		common.ErrorWithCode(c, common.CodeBadRequest, err.Error())
 		return
 	}
 
-	modelID := strings.TrimSpace(req.ModelID)
 	modelName := strings.TrimPrefix(c.Param("model_name"), "/")
 	modelName = strings.TrimSpace(modelName)
-	if modelName == "" && modelID == "" {
+	if modelName == "" && strings.TrimSpace(req.ModelID) == "" {
 		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "model_name or model_id is required")
 		return
 	}
 
 	ctx := c.Request.Context()
-	result, err := h.service.EnableOrDisableModel(ctx, providerName, instanceName, modelName, modelID, req.Status)
+	_, err := h.service.AlterModel(ctx, providerName, instanceName, modelName, &req)
 	if err != nil {
 		writeAdminModelError(c, err)
 		return
 	}
 
-	common.SuccessWithData(c, result, "Models listed successfully")
+	common.SuccessWithMessage(c, "success")
 }
 
-type AddModelsRequest struct {
-	ModelNames []string `json:"model_names" binding:"required"`
-}
-
-func (h *Handler) AddModels(c *gin.Context) {
-	var req AddModelsRequest
+func (h *Handler) AddModel(c *gin.Context) {
+	var req servicepkg.AddModelRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		common.ResponseWithCodeData(c, common.CodeBadRequest, false, err.Error())
 		return
 	}
 
-	providerName := c.Param("provider_name")
-	if providerName == "" {
+	req.ProviderName = c.Param("provider_name")
+	if req.ProviderName == "" {
 		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
 		return
 	}
 
-	instanceName := c.Param("instance_name")
-	if instanceName == "" {
+	req.InstanceName = c.Param("instance_name")
+	if req.InstanceName == "" {
 		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Instance name is required")
+		return
+	}
+	if strings.TrimSpace(req.ModelName) == "" {
+		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Model name is required")
 		return
 	}
 
 	ctx := c.Request.Context()
-	result, err := h.service.AddModels(ctx, providerName, instanceName, req.ModelNames)
-	if err != nil {
+	if err := h.service.AddModel(ctx, &req); err != nil {
 		writeAdminModelError(c, err)
 		return
 	}
 
-	common.SuccessWithData(c, result, "Models added successfully")
-}
-
-type DropModelsRequest struct {
-	ModelNames []string `json:"model_names" binding:"required"`
+	common.SuccessWithMessage(c, "success")
 }
 
 func (h *Handler) DeleteModels(c *gin.Context) {
@@ -761,20 +729,24 @@ func (h *Handler) DeleteModels(c *gin.Context) {
 		return
 	}
 
-	var req DropModelsRequest
+	var req servicepkg.DropInstanceModelRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		common.ErrorWithCode(c, common.CodeBadRequest, err.Error())
 		return
 	}
+	if len(req.ModelNames) == 0 {
+		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "model_name is required")
+		return
+	}
 
 	ctx := c.Request.Context()
-	result, err := h.service.DeleteModels(ctx, providerName, instanceName, req.ModelNames)
+	_, err := h.service.DeleteModels(ctx, providerName, instanceName, req.ModelNames)
 	if err != nil {
 		writeAdminModelError(c, err)
 		return
 	}
 
-	common.SuccessWithData(c, result, "Models deleted successfully")
+	common.SuccessWithMessage(c, "success")
 }
 
 // GetSystemFingerprint handle get system fingerprint

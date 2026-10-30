@@ -74,7 +74,6 @@ deps/*
 **/node_modules/
 **/web/node_modules/
 
-<<<<<<< HEAD
 # Build artifacts (will be created in container)
 **/web/dist/
 **/web/.next/

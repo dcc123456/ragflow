@@ -36,8 +36,6 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-var TenantRoleInvite = "invite"
-
 var tenantManagementPermissionBits = map[string]int32{
 	"manage_members": entity.TenantPermissionManageMembers,
 	"manage_roles":   entity.TenantPermissionManageRoles,
@@ -49,9 +47,10 @@ var tenantRoleResourceTypes = map[string]int64{
 	"agent":          entity.RoleResourceTypeAgent,
 	"search":         entity.RoleResourceTypeSearch,
 	"file":           entity.RoleResourceTypeFile,
-	"team":           entity.RoleResourceTypeTeam,
+	"group":          entity.RoleResourceTypeGroup,
 	"memory":         entity.RoleResourceTypeMemory,
 	"model_provider": entity.RoleResourceTypeModelProvider,
+	"mcp":            entity.RoleResourceTypeMCP,
 }
 
 var tenantRoleResourceNames = []string{
@@ -60,9 +59,10 @@ var tenantRoleResourceNames = []string{
 	"agent",
 	"search",
 	"file",
-	"team",
+	"group",
 	"memory",
 	"model_provider",
+	"mcp",
 }
 
 var tenantRoleActionMasks = map[string]int32{
@@ -70,6 +70,18 @@ var tenantRoleActionMasks = map[string]int32{
 	"read":   entity.RoleActionRead,
 	"write":  entity.RoleActionWrite,
 	"share":  entity.RoleActionShare,
+}
+
+var tenantRoleResourceActions = map[string][]string{
+	"dataset":        {"enable", "read", "write", "share"},
+	"chat":           {"enable", "read", "write", "share"},
+	"agent":          {"enable", "read", "write", "share"},
+	"search":         {"enable", "read", "write", "share"},
+	"file":           {"enable", "read", "write", "share"},
+	"group":          {"enable", "read", "write", "share"},
+	"memory":         {"enable", "read", "write", "share"},
+	"model_provider": {"enable"},
+	"mcp":            {"enable", "read", "write", "share"},
 }
 
 const (
@@ -305,11 +317,7 @@ func (s *TenantService) ListTenantRoleResources(ctx context.Context, userID, ten
 	}
 	resources := make([]map[string]interface{}, 0, len(tenantRoleResourceNames))
 	for _, name := range tenantRoleResourceNames {
-		actions := []string{"enable", "read", "write", "share"}
-		if name == "model_provider" {
-			actions = []string{"enable"}
-		}
-		resources = append(resources, map[string]interface{}{"resource_type": name, "actions": actions})
+		resources = append(resources, map[string]interface{}{"resource_type": name, "actions": tenantRoleResourceActions[name]})
 	}
 	return map[string]interface{}{"resources": resources}, nil
 }
@@ -558,6 +566,9 @@ func (s *TenantService) SetTenantManagementPermissions(ctx context.Context, user
 				return common.NewCodedError(common.CodeConflict, "Tenant owner permissions cannot be changed")
 			}
 			memberID = &membership.ID
+			if membership.UserID == userID {
+				return common.NewCodedError(common.CodeConflict, "you cannot change your own Tenant permissions")
+			}
 			targetType, targetID = "user", targetUserID
 		} else {
 			var found entity.GroupInfo
@@ -679,9 +690,6 @@ func (s *TenantService) SetTenantMemberRole(ctx context.Context, userID, tenantI
 		}
 		if membership.Role == "owner" || membershipPermission&entity.TenantPermissionOwner != 0 {
 			return common.NewCodedError(common.CodeConflict, "Tenant owner role cannot be changed through member role assignment")
-		}
-		if membership.Role == TenantRoleInvite {
-			return common.NewCodedError(common.CodeConflict, "A pending invitation does not have an assignable Tenant role")
 		}
 		newRole := strconv.FormatInt(int64(role.ID), 10)
 		if membership.Role != newRole {
@@ -842,9 +850,6 @@ func findTenantMembership(db *gorm.DB, tenantID, userID string, lock bool) (*ent
 		}
 		return nil, fmt.Errorf("load Tenant membership: %w", err)
 	}
-	if membership.Role == TenantRoleInvite {
-		return nil, common.NewCodedError(common.CodeForbidden, "Pending Tenant invitation is not an active membership")
-	}
 	return &membership, nil
 }
 
@@ -923,11 +928,8 @@ func normalizeTenantRolePagination(page, pageSize int) (int, int) {
 
 func fullTenantRolePermissionMatrix() map[string]map[string]bool {
 	matrix := emptyTenantRolePermissionMatrix()
-	for resource, actions := range matrix {
+	for _, actions := range matrix {
 		for action := range actions {
-			if resource == "model_provider" && action != "enable" {
-				continue
-			}
 			actions[action] = true
 		}
 	}
@@ -937,11 +939,9 @@ func fullTenantRolePermissionMatrix() map[string]map[string]bool {
 func emptyTenantRolePermissionMatrix() map[string]map[string]bool {
 	matrix := make(map[string]map[string]bool, len(tenantRoleResourceNames))
 	for _, resource := range tenantRoleResourceNames {
-		matrix[resource] = map[string]bool{
-			"enable": false,
-			"read":   false,
-			"write":  false,
-			"share":  false,
+		matrix[resource] = make(map[string]bool, len(tenantRoleResourceActions[resource]))
+		for _, action := range tenantRoleResourceActions[resource] {
+			matrix[resource][action] = false
 		}
 	}
 	return matrix
@@ -962,10 +962,9 @@ func loadTenantRolePermissionMatrix(db *gorm.DB, roleID int32) (map[string]map[s
 		if !ok {
 			return nil, fmt.Errorf("unknown role resource type %d for role %d", row.ResourceType, roleID)
 		}
-		matrix[name]["enable"] = matrix[name]["enable"] || row.Action&entity.RoleActionEnable != 0
-		matrix[name]["read"] = matrix[name]["read"] || row.Action&entity.RoleActionRead != 0
-		matrix[name]["write"] = matrix[name]["write"] || row.Action&entity.RoleActionWrite != 0
-		matrix[name]["share"] = matrix[name]["share"] || row.Action&entity.RoleActionShare != 0
+		for _, action := range tenantRoleResourceActions[name] {
+			matrix[name][action] = matrix[name][action] || row.Action&tenantRoleActionMasks[action] != 0
+		}
 	}
 	return matrix, nil
 }
@@ -982,8 +981,14 @@ func normalizeTenantRolePermissions(roleID int32, requested map[string]map[strin
 		}
 		for action, enabled := range actions {
 			action = strings.ToLower(strings.TrimSpace(action))
-			if _, ok := tenantRoleActionMasks[action]; !ok || resource == "model_provider" && action != "enable" && enabled {
+			if _, ok := tenantRoleActionMasks[action]; !ok {
 				return nil, nil, common.NewCodedError(common.CodeBadRequest, fmt.Sprintf("Action %q is not supported for resource %q", action, resource))
+			}
+			if _, supported := matrix[resource][action]; !supported {
+				if enabled {
+					return nil, nil, common.NewCodedError(common.CodeBadRequest, fmt.Sprintf("Action %q is not supported for resource %q", action, resource))
+				}
+				continue
 			}
 			matrix[resource][action] = enabled
 		}

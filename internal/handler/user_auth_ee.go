@@ -31,6 +31,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// isOAuthLoginNoRoute reports the OAuth login URL with an empty channel.
+func isOAuthLoginNoRoute(c *gin.Context) bool {
+	return c.Request.Method == http.MethodGet && c.Request.URL.Path == "/api/v1/auth/login/"
+}
+
 // GetLoginChannels get all supported authentication channels
 // @Summary Get Login Channels
 // @Description Get all supported OAuth authentication channels

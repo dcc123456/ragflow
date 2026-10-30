@@ -1,4 +1,3 @@
-import { useHeartBeat } from '@/hooks/use-heart-beat-request';
 import { UpgradeModalProvider } from '@/pages/price/global';
 import { isBillingEnabled } from '@/services/billingStatus';
 import React from 'react';
@@ -9,7 +8,6 @@ import { NotificationBanner } from './components/notification-banner';
 export const nextLayoutRef = React.createRef<HTMLDivElement>();
 
 export function RootLayoutContainer({ children }: React.PropsWithChildren) {
-  useHeartBeat();
   const { pathname } = useLocation();
 
   // useComputedRouterChangeCount();

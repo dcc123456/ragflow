@@ -28,6 +28,7 @@ export default {
       writePermission: '寫入權限',
       managePermission: '管理權限',
       ownerPermission: '所有者',
+      unknownPermission: '未知權限（{{value}}）',
       invisible: '不可見',
       read: '讀取',
       write: '寫入',

@@ -36,6 +36,7 @@ func setupTenantRoleTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	db := testutil.SetupTestDB(t,
 		&entity.Tenant{},
+		&entity.User{},
 		&entity.UserTenant{},
 		&entity.Role{},
 		&entity.RoleResource{},
@@ -47,6 +48,32 @@ func setupTenantRoleTestDB(t *testing.T) *gorm.DB {
 	)
 	t.Cleanup(testutil.ReplaceDBForTest(t, db))
 	return db
+}
+
+func TestTenantRoleGroupResourceUsesSharedActions(t *testing.T) {
+	groupPermissions := map[string]bool{"enable": true, "read": true, "write": true, "share": true}
+	matrix, rows, err := normalizeTenantRolePermissions(7, map[string]map[string]bool{
+		"group": groupPermissions,
+	})
+	if err != nil {
+		t.Fatalf("normalize group permissions: %v", err)
+	}
+	if len(matrix["group"]) != 4 || !matrix["group"]["enable"] || !matrix["group"]["read"] || !matrix["group"]["write"] || !matrix["group"]["share"] {
+		t.Fatalf("group permission matrix = %#v, want enable/read/write/share=true", matrix["group"])
+	}
+	if len(rows) != 1 || rows[0].ResourceType != entity.RoleResourceTypeGroup || rows[0].Action != entity.RoleActionAll {
+		t.Fatalf("group permission rows = %#v, want type=6 with shared action mask", rows)
+	}
+	if _, _, err := normalizeTenantRolePermissions(7, map[string]map[string]bool{
+		"team": {"write": true},
+	}); err == nil {
+		t.Fatal("normalize legacy team resource succeeded; group is the supported resource name")
+	}
+	if _, _, err := normalizeTenantRolePermissions(7, map[string]map[string]bool{
+		"group": {"create": true},
+	}); err == nil {
+		t.Fatal("normalize unsupported group create action succeeded")
+	}
 }
 
 func seedTenantRoleTenant(t *testing.T, db *gorm.DB, tenantID string) {
@@ -62,6 +89,15 @@ func seedTenantRoleTenant(t *testing.T, db *gorm.DB, tenantID string) {
 func seedTenantRoleMember(t *testing.T, db *gorm.DB, id, userID, tenantID, role string) {
 	t.Helper()
 	status := string(entity.StatusValid)
+	var user entity.User
+	err := db.Where("id = ?", userID).Take(&user).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		if err := db.Create(&entity.User{ID: userID, Email: userID + "@example.com", Nickname: userID}).Error; err != nil {
+			t.Fatalf("seed Tenant member user %q: %v", userID, err)
+		}
+	} else if err != nil {
+		t.Fatalf("load Tenant member user %q: %v", userID, err)
+	}
 	if err := db.Create(&entity.UserTenant{
 		ID: id, UserID: userID, TenantID: tenantID, Role: role, Status: &status,
 	}).Error; err != nil {
@@ -138,7 +174,7 @@ func TestTenantRoleManagementUsesTenantPermissionAndStoresMembershipRoleID(t *te
 	if err != nil || memberRole["role_id"] != role.ID {
 		t.Fatalf("GetTenantMemberRole() = (%#v, %v), want role ID %d", memberRole, err, role.ID)
 	}
-	if err := permission.NewDatabaseChecker(db).CheckTenant(t.Context(), permission.Subject{UserID: "member-user"}, "tenant-1", permission.TenantMember); err != nil {
+	if err := permission.NewDatabaseChecker(db).CheckTenant(t.Context(), permission.Subject{UserID: "member-user", TenantID: "tenant-1"}, "tenant-1", permission.TenantMember); err != nil {
 		t.Fatalf("role-id membership should still count as a Tenant member: %v", err)
 	}
 
@@ -228,35 +264,67 @@ func TestTenantRoleManagerPermissionCanBeGrantedThroughGroup(t *testing.T) {
 	}
 }
 
-//func TestAcceptTenantInvitationAssignsDefaultRoleAndAudits(t *testing.T) {
-//	db := setupTenantRoleTestDB(t)
-//	seedTenantRoleTenant(t, db, "tenant-1")
-//	role := entity.Role{RoleName: "Member", TenantID: stringPointer("tenant-1")}
-//	if err := db.Create(&role).Error; err != nil {
-//		t.Fatalf("seed Tenant default role: %v", err)
-//	}
-//	if err := db.Model(&entity.Tenant{}).Where("id = ?", "tenant-1").Update("role_id", role.ID).Error; err != nil {
-//		t.Fatalf("set Tenant default role: %v", err)
-//	}
-//	seedTenantRoleMember(t, db, "invite-link", "invitee-user", "tenant-1", TenantRoleInvite)
-//	service := &TenantService{userTenantDAO: dao.NewUserTenantDAO()}
-//	if code, err := service.AcceptInvite(t.Context(), "invitee-user", "tenant-1"); err != nil || code != common.CodeSuccess {
-//		t.Fatalf("AcceptInvite() = (%v, %v), want success", code, err)
-//	}
-//	var membership entity.UserTenant
-//	if err := db.Where("id = ?", "invite-link").Take(&membership).Error; err != nil {
-//		t.Fatalf("load accepted Tenant membership: %v", err)
-//	}
-//	if membership.Role != strconv.FormatInt(int64(role.ID), 10) {
-//		t.Fatalf("accepted membership role = %q, want role ID %d", membership.Role, role.ID)
-//	}
-//	var logCount int64
-//	if err := db.Model(&entity.PermissionChangeLog{}).Where("event_type = ? AND target_id = ?", "tenant.member.joined", "invitee-user").Count(&logCount).Error; err != nil {
-//		t.Fatalf("count invitation acceptance audit: %v", err)
-//	}
-//	if logCount != 1 {
-//		t.Fatalf("invitation acceptance audit count = %d, want 1", logCount)
-//	}
-//}
+func TestTenantManagementPermissionsAllowGroupContainingActor(t *testing.T) {
+	db := setupTenantRoleTestDB(t)
+	seedTenantRoleTenant(t, db, "tenant-1")
+	seedTenantRoleMember(t, db, "owner-link", "owner-user", "tenant-1", "owner")
+	status := string(entity.StatusValid)
+	groupName := "Tenant managers"
+	group := entity.GroupInfo{ID: "group-self", Name: &groupName, OwnerID: "owner-link", TenantID: "tenant-1", Status: &status}
+	if err := db.Create(&group).Error; err != nil {
+		t.Fatalf("seed group: %v", err)
+	}
+	if err := db.Create(&entity.GroupMember{
+		ID: "owner-group-member", MemberID: "owner-link", GroupID: group.ID, Status: &status,
+	}).Error; err != nil {
+		t.Fatalf("seed group membership: %v", err)
+	}
+
+	grant, err := NewTenantService().SetTenantManagementPermissions(t.Context(), "owner-user", "tenant-1", "", group.ID, []string{"manage_roles"})
+	if err != nil {
+		t.Fatalf("SetTenantManagementPermissions for a group containing the actor: %v", err)
+	}
+	var stored entity.Permission
+	if err := db.Where("resource_type = ? AND resource_id = ? AND group_id = ?", "tenant", "tenant-1", group.ID).Take(&stored).Error; err != nil {
+		t.Fatalf("load group Tenant permission: %v", err)
+	}
+	if stored.Permission != entity.TenantPermissionManageRoles || grant == nil || grant.GroupID != group.ID {
+		t.Fatalf("group Tenant permission = %d, returned grant %#v; want manage_roles for %s", stored.Permission, grant, group.ID)
+	}
+}
+
+func TestAcceptTenantInvitationAssignsDefaultRoleAndAudits(t *testing.T) {
+	db := setupTenantRoleTestDB(t)
+	seedTenantRoleTenant(t, db, "tenant-1")
+	role := entity.Role{RoleName: "Member", TenantID: stringPointer("tenant-1")}
+	if err := db.Create(&role).Error; err != nil {
+		t.Fatalf("seed Tenant default role: %v", err)
+	}
+	if err := db.Model(&entity.Tenant{}).Where("id = ?", "tenant-1").Update("role_id", role.ID).Error; err != nil {
+		t.Fatalf("set Tenant default role: %v", err)
+	}
+	invited := entity.TenantMembershipStatusInvited
+	if err := db.Create(&entity.UserTenant{ID: "invite-link", UserID: "invitee-user", TenantID: "tenant-1", Status: &invited}).Error; err != nil {
+		t.Fatalf("seed pending Tenant invitation: %v", err)
+	}
+	service := &TenantService{userTenantDAO: dao.NewUserTenantDAO()}
+	if code, err := service.AcceptInvite(t.Context(), "invitee-user", "tenant-1"); err != nil || code != common.CodeSuccess {
+		t.Fatalf("AcceptInvite() = (%v, %v), want success", code, err)
+	}
+	var membership entity.UserTenant
+	if err := db.Where("id = ?", "invite-link").Take(&membership).Error; err != nil {
+		t.Fatalf("load accepted Tenant membership: %v", err)
+	}
+	if membership.Role != strconv.FormatInt(int64(role.ID), 10) {
+		t.Fatalf("accepted membership role = %q, want role ID %d", membership.Role, role.ID)
+	}
+	var logCount int64
+	if err := db.Model(&entity.PermissionChangeLog{}).Where("event_type = ? AND target_id = ?", "tenant.member.joined", "invitee-user").Count(&logCount).Error; err != nil {
+		t.Fatalf("count invitation acceptance audit: %v", err)
+	}
+	if logCount != 1 {
+		t.Fatalf("invitation acceptance audit count = %d, want 1", logCount)
+	}
+}
 
 func stringPointer(value string) *string { return &value }

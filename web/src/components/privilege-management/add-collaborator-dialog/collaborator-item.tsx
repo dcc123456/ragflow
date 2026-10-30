@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Permission } from '@/constants/team';
+import { hasResourceOwnerPermission } from '@/constants/team';
 import { TeamApiAction } from '@/hooks/use-team';
 import { IPermission } from '@/interfaces/database/team';
 import { cn } from '@/lib/utils';
@@ -22,7 +22,6 @@ import {
 import { CollaboratorItem as ICollaboratorItem } from '../interface';
 import { PrivilegeAvatar } from '../privilege-avatar';
 import { PrivilegeLabel } from '../privilege-label';
-import { getPermission } from '../utils';
 import { useSwitchBreadcrumb } from './use-select-collaborator';
 
 type LeftCollaboratorItemProps = {
@@ -64,8 +63,7 @@ export function CollaboratorItem({
   avatar,
 }: CollaboratorItemProps) {
   const permissionItem = usePermissionItem(item.id);
-  const isOwner =
-    getPermission(permissionItem?.permissions) === Permission.Owner;
+  const isOwner = hasResourceOwnerPermission(permissionItem?.permissions);
 
   return (
     <div className="flex gap-2 items-center">
@@ -109,8 +107,7 @@ export function LeftCollaboratorItem({
   avatar,
 }: LeftCollaboratorItemProps) {
   const permissionItem = usePermissionItem(item.id);
-  const isOwner =
-    getPermission(permissionItem?.permissions) === Permission.Owner;
+  const isOwner = hasResourceOwnerPermission(permissionItem?.permissions);
 
   const handleClick = useCallback(() => {
     if (isOwner) {
@@ -142,8 +139,7 @@ export function LeftMemberItem({
 }: LeftCollaboratorItemProps) {
   const { handleClick: click } = useContext(MemberContext);
   const permissionItem = usePermissionItem(item.id);
-  const isOwner =
-    getPermission(permissionItem?.permissions) === Permission.Owner;
+  const isOwner = hasResourceOwnerPermission(permissionItem?.permissions);
 
   const checkedListMap = useContext(CheckedListContext);
   const checkedList = checkedListMap.memberCheckedList;
@@ -192,8 +188,7 @@ export function LeftDepartmentItem({
 }: LeftDepartmentItemProps) {
   const { handleClick: click } = useContext(DepartmentContext);
   const permissionItem = usePermissionItem(item.id);
-  const isOwner =
-    getPermission(permissionItem?.permissions) === Permission.Owner;
+  const isOwner = hasResourceOwnerPermission(permissionItem?.permissions);
 
   const checkedListMap = useContext(CheckedListContext);
   const checkedList = checkedListMap.departmentCheckedList;
