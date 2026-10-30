@@ -124,6 +124,35 @@ func TestNewClientDefaultsBasedOnIssuer(t *testing.T) {
 	}
 }
 
+// TestExchangeCodeForTokenOmitsUnsetRedirectURI covers the token leg of the
+// provider-registered-callback mode: an unset redirect_uri must not be sent as
+// an empty form field, which GitHub rejects as a mismatch.
+func TestExchangeCodeForTokenOmitsUnsetRedirectURI(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		if r.Form.Has("redirect_uri") {
+			t.Errorf("token request must omit redirect_uri, got %q", r.Form.Get("redirect_uri"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"access_token":"the-access-token","token_type":"Bearer"}`)
+	}))
+	defer srv.Close()
+
+	c, err := NewClient(Config{
+		Type:             "oauth2",
+		ClientID:         "abc",
+		ClientSecret:     "secret",
+		AuthorizationURL: "https://github.example/authorize",
+		TokenURL:         srv.URL,
+	})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	if _, err := c.ExchangeCodeForToken(context.Background(), "the-code"); err != nil {
+		t.Fatalf("ExchangeCodeForToken: %v", err)
+	}
+}
+
 func TestExchangeCodeForTokenJSON(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = r.ParseForm()
@@ -297,12 +326,66 @@ func TestNewOAuthClientMissingFields(t *testing.T) {
 		{Type: "oauth2"},
 		{Type: "oauth2", ClientID: "x"},
 		{Type: "oauth2", ClientID: "x", AuthorizationURL: "https://x/a"},
-		{Type: "oauth2", ClientID: "x", AuthorizationURL: "https://x/a", TokenURL: "https://x/t"},
 	}
 	for i, cfg := range cases {
 		if _, err := NewClient(cfg); err == nil {
 			t.Errorf("case %d: expected error for missing required field", i)
 		}
+	}
+}
+
+// TestRedirectURIOmittedWhenUnset pins the provider-registered-callback mode:
+// GitHub matches an explicitly sent redirect_uri against the app registration,
+// so an unset value must leave the parameter off both requests rather than
+// failing client construction or sending an empty one.
+func TestRedirectURIOmittedWhenUnset(t *testing.T) {
+	// The omission lives in the shared oauthClient, so the plain oauth2 flavor
+	// exercises it without GitHub's hardcoded endpoints in the way.
+	cfg := Config{
+		Type:             "oauth2",
+		ClientID:         "abc",
+		ClientSecret:     "secret",
+		AuthorizationURL: "https://github.example/authorize",
+		TokenURL:         "https://github.example/token",
+	}
+	client, err := NewClient(cfg)
+	if err != nil {
+		t.Fatalf("NewClient without redirect_uri: %v", err)
+	}
+
+	authURL, err := client.AuthorizationURL("state-token")
+	if err != nil {
+		t.Fatalf("AuthorizationURL: %v", err)
+	}
+	parsed, err := url.Parse(authURL)
+	if err != nil {
+		t.Fatalf("parse authorization URL: %v", err)
+	}
+	if parsed.Query().Has("redirect_uri") {
+		t.Errorf("authorization URL must omit redirect_uri, got %s", authURL)
+	}
+
+	withRedirect, err := NewClient(Config{
+		Type:             "oauth2",
+		ClientID:         "abc",
+		ClientSecret:     "secret",
+		AuthorizationURL: "https://github.example/authorize",
+		TokenURL:         "https://github.example/token",
+		RedirectURI:      "https://ragflow.example/api/v1/auth/oauth/github/callback",
+	})
+	if err != nil {
+		t.Fatalf("NewClient with redirect_uri: %v", err)
+	}
+	authURL, err = withRedirect.AuthorizationURL("state-token")
+	if err != nil {
+		t.Fatalf("AuthorizationURL: %v", err)
+	}
+	parsed, err = url.Parse(authURL)
+	if err != nil {
+		t.Fatalf("parse authorization URL: %v", err)
+	}
+	if got := parsed.Query().Get("redirect_uri"); got != "https://ragflow.example/api/v1/auth/oauth/github/callback" {
+		t.Errorf("redirect_uri = %q, want the configured callback", got)
 	}
 }
 

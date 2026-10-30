@@ -322,7 +322,7 @@ declare namespace AdminService {
           {
             enabled: 'bool';
             client_id: 'string';
-            secret_key: 'string';
+            client_secret: 'string';
           },
           'github|sso',
           'github|sso'

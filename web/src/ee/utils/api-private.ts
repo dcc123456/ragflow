@@ -14,6 +14,8 @@ export default {
   notification: '/api/v1/notification',
   exposeModelProvider: '/api/v1/expose_model_provider',
   exposeApi: '/api/v1/expose_api',
+  loginChannels: `${restAPIv1}/auth/login/channels`,
+  loginChannel: (channel: string) => `${restAPIv1}/auth/login/${channel}`,
   loginGetCaptcha: '/api/v1/auth/password/forgot/captcha',
   loginSendVerifyCode: '/api/v1/auth/password/forgot/otp',
   loginVerifyEmail: '/api/v1/auth/password/forgot/otp/verify',

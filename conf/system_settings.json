@@ -103,7 +103,7 @@
       "value": ""
     },
     {
-      "name": "github|sso.secret_key",
+      "name": "github|sso.client_secret",
       "source": "github|sso",
       "data_type": "string",
       "value": ""

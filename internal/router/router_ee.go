@@ -36,6 +36,10 @@ func RegisterEEAuthRouter(_ *gin.RouterGroup, _ *Router) {}
 
 func RegisterEENoAuthRouter(_ *gin.Engine, apiNoAuth *gin.RouterGroup, r *Router) {
 	// For EE
+	apiNoAuth.GET("/auth/login/channels", r.userHandler.GetLoginChannels)
+	apiNoAuth.GET("/auth/login/:channel", r.userHandler.OAuthLogin)
+	apiNoAuth.GET("/auth/oauth/:channel/callback", r.userHandler.OAuthChannelCallback)
+	apiNoAuth.GET("/auth/oauth/callback", r.userHandler.OAuthCallback)
 	apiNoAuth.POST("/auth/register/captcha", r.userHandler.Captcha)
 	apiNoAuth.POST("/auth/register/otp", r.userHandler.SendOTP)
 	apiNoAuth.POST("/auth/register/otp/verify", r.userHandler.VerifyOTP)

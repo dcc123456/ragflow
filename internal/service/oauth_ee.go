@@ -94,7 +94,7 @@ type OAuthLoginInit struct {
 // and returns the authorization URL the browser should be redirected to.
 // Mirrors the body of Python's oauth_login.
 func (s *UserService) OAuthLoginInitiate(ctx context.Context, channel string, kvrocks *kvrocks.Client) (*OAuthLoginInit, common.ErrorCode, error) {
-	cfg, ok := lookupOAuthConfig(channel)
+	cfg, ok := lookupOAuthConfig(ctx, channel)
 	if !ok {
 		return nil, common.CodeDataError, fmt.Errorf("%w: %s", ErrOAuthInvalidChannel, channel)
 	}
@@ -143,7 +143,7 @@ type OAuthCallbackResult struct {
 // from Redis, defending against a replay where an attacker fishes a valid
 // state out of a victim's URL but does not have the cookie.
 func (s *UserService) OAuthCallback(ctx context.Context, channel, code, callbackState, expectedState string, kvrocks *kvrocks.Client) (*OAuthCallbackResult, common.ErrorCode, error) {
-	cfg, ok := lookupOAuthConfig(channel)
+	cfg, ok := lookupOAuthConfig(ctx, channel)
 	if !ok {
 		return nil, common.CodeDataError, fmt.Errorf("%w: %s", ErrOAuthInvalidChannel, channel)
 	}
@@ -338,28 +338,7 @@ func (s *UserService) registerOAuthUser(ctx context.Context, channel string, inf
 	return user, common.CodeSuccess, nil
 }
 
-// lookupOAuthConfig returns the configured OAuth channel by name. The lookup
-// is case-insensitive against the keys server.GetConfig() materialises from
-// the YAML config file.
-func lookupOAuthConfig(channel string) (config.OAuthChannel, bool) {
-	cfg := server.GetConfig()
-	if cfg == nil {
-		return config.OAuthChannel{}, false
-	}
-	oAuthChannels := cfg.GetOAuthChannels()
-	if found, ok := oAuthChannels[channel]; ok {
-		return found, true
-	}
-	want := strings.ToLower(channel)
-	for k, v := range oAuthChannels {
-		if strings.ToLower(k) == want {
-			return v, true
-		}
-	}
-	return config.OAuthChannel{}, false
-}
-
-// toOAuthClientConfig narrows server.OAuthConfig (which carries display-only
+// toOAuthClientConfig narrows config.OAuthChannel (which carries display-only
 // fields like Icon) into the oauth.Config the client package consumes.
 func toOAuthClientConfig(cfg config.OAuthChannel) oauth.Config {
 	return oauth.Config{

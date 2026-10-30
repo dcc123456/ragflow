@@ -76,26 +76,6 @@ func (h *UserHandler) OAuthCallback(c *gin.Context) {
 	c.Redirect(http.StatusFound, init.AuthURL)
 }
 
-func (h *UserHandler) GitHubAuthCallback(c *gin.Context) {
-	common.ErrorWithCode(c, common.CodeNotImplemented, "GitHubAuthCallback not implemented")
-}
-
-func (h *UserHandler) LarkAuthCallback(c *gin.Context) {
-	common.ErrorWithCode(c, common.CodeNotImplemented, "LarkAuthCallback not implemented")
-}
-
-func (h *UserHandler) ICBCAuthCallback(c *gin.Context) {
-	common.ErrorWithCode(c, common.CodeNotImplemented, "ICBCAuthCallback not implemented")
-}
-
-func (h *UserHandler) AzureAuthCallback(c *gin.Context) {
-	common.ErrorWithCode(c, common.CodeNotImplemented, "AzureAuthCallback not implemented")
-}
-
-func (h *UserHandler) AzureAuthLogin(c *gin.Context) {
-	common.ErrorWithCode(c, common.CodeNotImplemented, "AzureAuthLogin not implemented")
-}
-
 func (h *UserHandler) Captcha(c *gin.Context) {
 	common.ErrorWithCode(c, common.CodeNotImplemented, "Captcha not implemented")
 }
@@ -190,13 +170,6 @@ func issueUserAccessToken(user *entity.User, secretKey string) (string, error) {
 	return common.DumpAccessToken(*user.AccessToken, user.ID, secretKey)
 }
 
-// LoginChannel represents a login channel response
-type LoginChannel struct {
-	Channel     string `json:"channel"`
-	DisplayName string `json:"display_name"`
-	Icon        string `json:"icon"`
-}
-
 // oauthStateCookiePrefix namespaces the per-channel HttpOnly cookie that ties
 // the in-flight state token to the browser that initiated the flow. The
 // handler reads it back from the callback request to defend against CSRF in
@@ -278,4 +251,12 @@ func clearOAuthStateCookie(c *gin.Context, channel string) {
 // the same origin that served the SPA.
 func frontendRedirectBase() string {
 	return "/"
+}
+
+// isOAuthLoginNoRoute reports the OAuth login URL with an empty channel. The
+// route is registered as /auth/login/:channel and gin does not bind an empty
+// segment, so the request still falls through to NoRoute and has to
+// reproduce the Python MethodNotAllowed body.
+func isOAuthLoginNoRoute(c *gin.Context) bool {
+	return c.Request.Method == http.MethodGet && c.Request.URL.Path == "/api/v1/auth/login/"
 }

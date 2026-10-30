@@ -53,9 +53,12 @@ type Config struct {
 	AuthorizationURL string
 	TokenURL         string
 	UserinfoURL      string
-	RedirectURI      string
-	Scope            string
-	Issuer           string
+	// RedirectURI is optional. When empty the parameter is left off both the
+	// authorization and token requests, which lets a provider that registers
+	// the callback out of band (GitHub) use that registration as-is.
+	RedirectURI string
+	Scope       string
+	Issuer      string
 
 	// TrustEmailVerified lets an institutionally controlled provider
 	// authenticate a user even when it does not assert `email_verified`.
@@ -150,9 +153,6 @@ func newOAuthClient(cfg Config) (*oauthClient, error) {
 	if cfg.TokenURL == "" {
 		return nil, fmt.Errorf("oauth: token_url is required")
 	}
-	if cfg.RedirectURI == "" {
-		return nil, fmt.Errorf("oauth: redirect_uri is required")
-	}
 	return &oauthClient{
 		cfg:        cfg,
 		httpClient: &http.Client{Timeout: HTTPRequestTimeout},
@@ -161,10 +161,17 @@ func newOAuthClient(cfg Config) (*oauthClient, error) {
 
 // AuthorizationURL builds the URL the browser should be redirected to.
 // Mirrors OAuthClient.get_authorization_url.
+//
+// redirect_uri is omitted when unset so the provider falls back to the callback
+// registered with the application. GitHub requires an explicitly sent
+// redirect_uri to match that registration byte for byte, which makes sending
+// nothing the safer default for a provider the operator configures by hand.
 func (c *oauthClient) AuthorizationURL(state string) (string, error) {
 	params := url.Values{}
 	params.Set("client_id", c.cfg.ClientID)
-	params.Set("redirect_uri", c.cfg.RedirectURI)
+	if c.cfg.RedirectURI != "" {
+		params.Set("redirect_uri", c.cfg.RedirectURI)
+	}
 	params.Set("response_type", "code")
 	if c.cfg.Scope != "" {
 		params.Set("scope", c.cfg.Scope)
@@ -186,7 +193,9 @@ func (c *oauthClient) ExchangeCodeForToken(ctx context.Context, code string) (*T
 	form.Set("client_id", c.cfg.ClientID)
 	form.Set("client_secret", c.cfg.ClientSecret)
 	form.Set("code", code)
-	form.Set("redirect_uri", c.cfg.RedirectURI)
+	if c.cfg.RedirectURI != "" {
+		form.Set("redirect_uri", c.cfg.RedirectURI)
+	}
 	form.Set("grant_type", "authorization_code")
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.cfg.TokenURL, strings.NewReader(form.Encode()))
