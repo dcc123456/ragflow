@@ -43,6 +43,10 @@ func RegisterEENoAuthRouter(_ *gin.Engine, apiNoAuth *gin.RouterGroup, r *Router
 	apiNoAuth.POST("/auth/register/captcha", r.userHandler.Captcha)
 	apiNoAuth.POST("/auth/register/otp", r.userHandler.SendOTP)
 	apiNoAuth.POST("/auth/register/otp/verify", r.userHandler.VerifyOTP)
+	apiNoAuth.POST("/auth/password/forgot/captcha", r.userHandler.ForgotCaptcha)
+	apiNoAuth.POST("/auth/password/forgot/otp", r.userHandler.ForgotSendOTP)
+	apiNoAuth.POST("/auth/password/forgot/otp/verify", r.userHandler.ForgotVerifyOTP)
+	apiNoAuth.POST("/auth/password/reset", r.userHandler.ForgotResetPassword)
 	apiNoAuth.GET("/tenant-invitations/:token", r.tenantHandler.GetTenantInviteLinkInfo)
 }
 
