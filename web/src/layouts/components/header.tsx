@@ -7,7 +7,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { RAGFlowTooltip } from '@/components/ui/tooltip';
+import {
+  EnterpriseHeaderPlanBadge,
+  EnterpriseHeaderTicketsLink,
+  EnterpriseHeaderUpgradeBadge,
+} from '@/ee/layouts/components/header-enterprise';
 import { useChangeLanguage } from '@/hooks/logic-hooks';
 import {
   useFetchUserInfo,
@@ -109,6 +113,7 @@ export function Header({
                 {t('price.upgrade')}
               </div>
             )}
+            <EnterpriseHeaderUpgradeBadge />
           </div>
         </div>
 
@@ -196,20 +201,7 @@ export function Header({
               </Button>
 
               {hasNotification && <BellButton className="!size-8" />}
-              {isBillingEnabled() && (
-                <RAGFlowTooltip tooltip={t('header.tickets')}>
-                  <Link
-                    className="p-2 text-text-secondary hover:text-text-primary focus-visible:text-text-primary"
-                    to={Routes.Tickets}
-                  >
-                    <IconFontFill
-                      name={`kefu`}
-                      className="text-text-primary"
-                    ></IconFontFill>
-                  </Link>
-                  {/* <Tickets className="size-5" /> */}
-                </RAGFlowTooltip>
-              )}
+              <EnterpriseHeaderTicketsLink />
             </>
           )}
 
@@ -229,20 +221,7 @@ export function Header({
               isPerson
               className="size-8"
             />
-            {(currentPlan?.plan_name === PriceName.Starter ||
-              currentPlan?.plan_name === PriceName.Pro) && (
-              <div
-                className={cn(
-                  '-mt-1 z-20 bg-gradient-to-r from-[#00BEB4] to-[#43FFA4] rounded-full px-1 py-0.5 text-xs font-normal text-black cursor-pointer',
-                  currentPlan?.plan_name === 'Starter'
-                    ? 'scale-90 -ml-1.5 '
-                    : '-ml-1',
-                )}
-                onClick={handleClick}
-              >
-                <span className={cn()}>{currentPlan?.plan_name}</span>
-              </div>
-            )}
+            <EnterpriseHeaderPlanBadge />
           </Link>
         </div>
       </header>
@@ -314,6 +293,7 @@ export function Header({
           <Button variant="ghost" size="icon" className="size-8">
             <LucideCircleHelp className="size-[1em]" />
           </Button>
+          <EnterpriseHeaderTicketsLink />
           <ThemeButton className="!size-8" />
           {hasNotification && <BellButton className="!size-8" />}
           <div className="relative ms-3 flex size-10 shrink-0 items-center justify-center">
@@ -323,6 +303,7 @@ export function Header({
               isPerson
               className="size-8"
             />
+            <EnterpriseHeaderPlanBadge />
           </div>
         </div>
       </div>
