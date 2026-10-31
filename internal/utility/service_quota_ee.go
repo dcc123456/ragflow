@@ -19,9 +19,14 @@
 package utility
 
 import (
-	"ragflow/internal/common"
+	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
+
+	"ragflow/internal/common"
+
+	"go.uber.org/zap"
 )
 
 type ServiceFeatures struct {
@@ -106,7 +111,12 @@ type ServiceQuota struct {
 	LastUpdateTime  time.Time
 }
 
-func GetAPIServiceQuota() *APIServiceQuota {
+// GetAPIServiceQuota returns the API server quota snapshot, or nil when this
+// process is not an API server.
+func GetAPIServiceQuota() any {
+	if serviceQuotaInstance == nil || serviceQuotaInstance.apiServiceQuota == nil {
+		return nil
+	}
 	return serviceQuotaInstance.apiServiceQuota
 }
 
@@ -130,7 +140,7 @@ func InitServiceQuota(serverType common.ServerType) {
 	}
 }
 
-func UpdateAPIServiceQuota(quota APIServerHeartbeatResponse) {
+func updateAPIServiceQuota(quota APIServerHeartbeatResponse) {
 
 	serviceQuotaInstance.apiServiceQuota.CPUNum = quota.CPUNum
 	serviceQuotaInstance.apiServiceQuota.MaxConcurrency = quota.MaxConcurrency
@@ -141,7 +151,7 @@ func UpdateAPIServiceQuota(quota APIServerHeartbeatResponse) {
 	GetRateLimit().UpdateGlobalConcurrencyLimit(uint64(serviceQuotaInstance.apiServiceQuota.MaxConcurrency))
 }
 
-func UpdateIngestorQuota(quota IngestorHeartbeatResponse) {
+func updateIngestorQuota(quota IngestorHeartbeatResponse) {
 	serviceQuotaInstance.ingestorQuota.CPUNum = quota.CPUNum
 	serviceQuotaInstance.ingestorQuota.WorkerNum = quota.WorkerNum
 	serviceQuotaInstance.ingestorQuota.Features = NewServiceFeatures(quota.Features)
@@ -149,7 +159,7 @@ func UpdateIngestorQuota(quota IngestorHeartbeatResponse) {
 	serviceQuotaInstance.LastUpdateTime = time.Now()
 }
 
-func UpdateSyncerQuota(quota FileSyncerHeartbeatResponse) {
+func updateSyncerQuota(quota FileSyncerHeartbeatResponse) {
 	serviceQuotaInstance.syncerQuota.CPUNum = quota.CPUNum
 	serviceQuotaInstance.syncerQuota.WorkerNum = quota.WorkerNum
 	serviceQuotaInstance.syncerQuota.Features = NewServiceFeatures(quota.Features)
@@ -157,7 +167,7 @@ func UpdateSyncerQuota(quota FileSyncerHeartbeatResponse) {
 	serviceQuotaInstance.LastUpdateTime = time.Now()
 }
 
-func UpdateDeepDocCPUQuota(quota DeepDocCPUHeartbeatResponse) {
+func updateDeepDocCPUQuota(quota DeepDocCPUHeartbeatResponse) {
 	serviceQuotaInstance.deepDocCPUQuota.CPUNum = quota.CPUNum
 	serviceQuotaInstance.deepDocCPUQuota.WorkerNum = quota.WorkerNum
 	serviceQuotaInstance.deepDocCPUQuota.MaxConcurrency = quota.MaxConcurrency
@@ -166,7 +176,7 @@ func UpdateDeepDocCPUQuota(quota DeepDocCPUHeartbeatResponse) {
 	serviceQuotaInstance.LastUpdateTime = time.Now()
 }
 
-func UpdateDeepDocGPUQuota(quota DeepDocGPUHeartbeatResponse) {
+func updateDeepDocGPUQuota(quota DeepDocGPUHeartbeatResponse) {
 	serviceQuotaInstance.deepDocGPUQuota.CPUNum = quota.CPUNum
 	serviceQuotaInstance.deepDocGPUQuota.GPUNum = quota.GPUNum
 	serviceQuotaInstance.deepDocGPUQuota.WorkerNum = quota.WorkerNum
@@ -174,4 +184,54 @@ func UpdateDeepDocGPUQuota(quota DeepDocGPUHeartbeatResponse) {
 	serviceQuotaInstance.deepDocGPUQuota.Features = NewServiceFeatures(quota.Features)
 
 	serviceQuotaInstance.LastUpdateTime = time.Now()
+}
+
+// UpdateServiceQuota decodes the heartbeat acknowledgement of the reporting
+// server type and refreshes the quota snapshot it carries.
+func UpdateServiceQuota(serverType common.ServerType, payload []byte) error {
+	switch serverType {
+	case common.ServerTypeAPI:
+		var resp APIServerHeartbeatResponse
+		if err := json.Unmarshal(payload, &resp); err != nil {
+			return err
+		}
+		common.Info("API server heartbeat response", zap.Any("resp", resp))
+		updateAPIServiceQuota(resp)
+
+	case common.ServerTypeIngestion:
+		var resp IngestorHeartbeatResponse
+		if err := json.Unmarshal(payload, &resp); err != nil {
+			return err
+		}
+		common.Info("Ingestion server heartbeat response", zap.Any("resp", resp))
+		updateIngestorQuota(resp)
+
+	case common.ServerTypeFileSyncer:
+		var resp FileSyncerHeartbeatResponse
+		if err := json.Unmarshal(payload, &resp); err != nil {
+			return err
+		}
+		common.Info("FileSyncer server heartbeat response", zap.Any("resp", resp))
+		updateSyncerQuota(resp)
+
+	case common.ServerTypeDeepDocCPU:
+		var resp DeepDocCPUHeartbeatResponse
+		if err := json.Unmarshal(payload, &resp); err != nil {
+			return err
+		}
+		common.Info("DeepDocCPU server heartbeat response", zap.Any("resp", resp))
+		updateDeepDocCPUQuota(resp)
+
+	case common.ServerTypeDeepDocGPU:
+		var resp DeepDocGPUHeartbeatResponse
+		if err := json.Unmarshal(payload, &resp); err != nil {
+			return err
+		}
+		common.Info("DeepDocGPU server heartbeat response", zap.Any("resp", resp))
+		updateDeepDocGPUQuota(resp)
+
+	default:
+		return fmt.Errorf("unknown server type: %s", serverType)
+	}
+	return nil
 }

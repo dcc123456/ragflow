@@ -38,6 +38,7 @@ func PrepareEnterprisePermissionFixture(db *gorm.DB, tenantID string, memberIDs 
 	models := []any{
 		&entity.User{}, &entity.UserTenant{}, &entity.Role{}, &entity.RoleResource{},
 		&entity.GroupInfo{}, &entity.GroupMember{}, &entity.Permission{}, &entity.PermissionChangeLog{},
+		&entity.TenantModelProvider{}, &entity.TenantModelInstance{},
 	}
 	var missing []any
 	for _, model := range models {
@@ -66,7 +67,40 @@ func PrepareEnterprisePermissionFixture(db *gorm.DB, tenantID string, memberIDs 
 			return err
 		}
 	}
+	if err := ensureTenantOwner(db, tenantID); err != nil {
+		return err
+	}
 	return grantLegacyTeamResources(db, tenantID)
+}
+
+// ensureTenantOwner promotes the earliest joined member when the test tenant has
+// no owner. The enterprise policy resolves integration resources (MCP servers,
+// model providers, skill spaces) through the tenant owner, which community-era
+// fixtures never seeded because the community policy never needed one.
+func ensureTenantOwner(db *gorm.DB, tenantID string) error {
+	var count int64
+	if err := db.Model(&entity.UserTenant{}).
+		Where("tenant_id = ? AND role = ? AND status = ?", tenantID, string(permission.RoleOwner), entity.TenantMembershipStatusJoined).
+		Count(&count).Error; err != nil {
+		return fmt.Errorf("count test tenant owners: %w", err)
+	}
+	if count > 0 {
+		return nil
+	}
+	var membership entity.UserTenant
+	err := db.Where("tenant_id = ? AND status = ?", tenantID, entity.TenantMembershipStatusJoined).
+		Order("id").Take(&membership).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("load test tenant membership: %w", err)
+	}
+	if err := db.Model(&entity.UserTenant{}).Where("id = ?", membership.ID).
+		Update("role", string(permission.RoleOwner)).Error; err != nil {
+		return fmt.Errorf("promote test tenant owner: %w", err)
+	}
+	return nil
 }
 
 // Shared tests still exercise the community edition's legacy me/team visibility
@@ -109,6 +143,22 @@ func grantLegacyTeamResources(db *gorm.DB, tenantID string) error {
 		for _, canvas := range canvases {
 			if canvas.EffectiveTenantID() == tenantID && canvas.Permission == string(entity.TenantPermissionTeam) {
 				resources = append(resources, resource{resourceType: "canvas", resourceID: canvas.ID, ownerID: canvas.UserID})
+			}
+		}
+	}
+
+	if db.Migrator().HasTable(&entity.TenantModelInstance{}) {
+		// Members may use a saved model instance but not edit its configuration,
+		// so the shared fixture grants read/use only.
+		var instances []entity.TenantModelInstance
+		if err := db.Find(&instances).Error; err != nil {
+			return fmt.Errorf("load test model instances: %w", err)
+		}
+		for _, instance := range instances {
+			for _, membership := range memberships {
+				if err := ensureTeamGrant(db, tenantID, "model_instance", instance.ID, membership.ID, entity.ResourcePermissionRead); err != nil {
+					return err
+				}
 			}
 		}
 	}

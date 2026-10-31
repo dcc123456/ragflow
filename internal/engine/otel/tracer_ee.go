@@ -1,5 +1,3 @@
-//go:build ee
-
 /*
  * Copyright 2026 The RAGFlow Authors
  *

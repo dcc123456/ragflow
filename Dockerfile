@@ -202,6 +202,11 @@ WORKDIR /ragflow
 # runner shares the host Docker daemon, so the mount persists across jobs/replicas).
 ENV GOMODCACHE=/root/.cache/gomod GOCACHE=/root/.cache/gobuild
 
+# Same trap for the build tag: an `RAGFLOW_GO_TAGS=ee` prefix on the `./build.sh --go`
+# RUN below would only reach the `git config` before `&&`, so the server would
+# silently be built as the community edition. Pin it for the whole stage.
+ENV RAGFLOW_GO_TAGS=ee
+
 # GOPROXY is overridable via --build-arg. CI passes a proxy that is reliable
 # from GitHub runners (e.g. proxy.golang.org); the default keeps goproxy.cn
 # first for developers behind the GFW. Both `go mod download` below and the
@@ -251,11 +256,17 @@ ARG ORT_VERSION=1.29.0
 RUN git config --global safe.directory "*" && \
     cd /ragflow && env -u CMAKE_TOOLCHAIN_FILE ./build.sh --cpp
 
+# The image has to be the enterprise edition. `go version -m` records the tags
+# the binary was actually built with, so a build that silently drops the ee tag
+# fails here instead of shipping a community-edition server.
 RUN --mount=type=cache,id=ragflow_gomod,target=/root/.cache/gomod,sharing=locked \
     --mount=type=cache,id=ragflow_gobuild,target=/root/.cache/gobuild \
-    GOMODCACHE=/root/.cache/gomod GOCACHE=/root/.cache/gobuild \
     git config --global safe.directory "*" && \
-    ./build.sh --go
+    ./build.sh --go && \
+    if ! go version -m bin/ragflow_server | grep -Eq -- '-tags=([^ ]*,)?ee(,|$)'; then \
+        echo "ERROR: bin/ragflow_server was built without the ee tag" >&2; \
+        exit 1; \
+    fi
 
 
 ##### production stage

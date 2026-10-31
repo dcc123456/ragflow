@@ -43,6 +43,6 @@ run_ee_native_integration_tests() {
       EE_MODEL_DIR="${EE_MODEL_DIR:-/home/infiniflow/runners_work/artifacts/infiniflow-ai/ee_weights}" \
       RAGFLOW_TESTDATA_REF=deepdoc-native-testdata-v2-ee \
       CGO_LDFLAGS="${CGO_LDFLAGS_EE:-$CGO_LDFLAGS}" \
-      go test -tags "cgo static integration fetch_testdata" -count=1 \
+      go test -tags "cgo static integration fetch_testdata${EXTRA_TAGS_SPACE}" -count=1 \
       "${native_run_filter[@]}" ./internal/deepdoc/native/... )
 }

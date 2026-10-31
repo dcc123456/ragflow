@@ -70,6 +70,7 @@ require (
 	github.com/siongui/gojianfan v0.0.0-20210926212422-2f175ac615de
 	github.com/spf13/cast v1.6.0
 	github.com/spf13/viper v1.18.2
+	github.com/stripe/stripe-go/v87 v87.0.0
 	github.com/ucloud/ucloud-sandbox-sdk-go v0.0.0-20260807065450-08464aef9ed5
 	github.com/xuri/excelize/v2 v2.11.1-0.20261003002531-6258dcebc4e2
 	github.com/yfedoseev/office_oxide/go v0.1.12

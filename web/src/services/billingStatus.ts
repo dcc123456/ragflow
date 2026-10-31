@@ -8,7 +8,7 @@ let billingEnabled: boolean | null = null;
 
 export const fetchBillingStatus = async (): Promise<boolean> => {
   try {
-    const res = await fetch('/v1/billing/status');
+    const res = await fetch('/api/v1/billing/status');
     const data = await res.json();
     billingEnabled = data.billing_enabled === true;
     return billingEnabled;

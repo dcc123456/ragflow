@@ -19,6 +19,7 @@
 package router
 
 import (
+	"ragflow/internal/handler"
 	"ragflow/internal/server"
 	"ragflow/internal/utility"
 
@@ -32,9 +33,12 @@ func SetupEERouter(engine *gin.Engine) {
 	engine.Use(utility.GetRateLimit().Middleware())
 }
 
-func RegisterEEAuthRouter(_ *gin.RouterGroup, _ *Router) {}
-
 func RegisterEENoAuthRouter(_ *gin.Engine, apiNoAuth *gin.RouterGroup, r *Router) {
+	// Banner and feature-exposure settings the web client reads before login.
+	apiNoAuth.GET("/notification", r.systemHandler.Notification)
+	apiNoAuth.GET("/expose-model-provider", r.systemHandler.ExposeModelProvider)
+	apiNoAuth.GET("/expose-api", r.systemHandler.ExposeAPI)
+
 	// For EE
 	apiNoAuth.GET("/auth/login/channels", r.userHandler.GetLoginChannels)
 	apiNoAuth.GET("/auth/login/:channel", r.userHandler.OAuthLogin)
@@ -48,6 +52,46 @@ func RegisterEENoAuthRouter(_ *gin.Engine, apiNoAuth *gin.RouterGroup, r *Router
 	apiNoAuth.POST("/auth/password/forgot/otp/verify", r.userHandler.ForgotVerifyOTP)
 	apiNoAuth.POST("/auth/password/reset", r.userHandler.ForgotResetPassword)
 	apiNoAuth.GET("/tenant-invitations/:token", r.tenantHandler.GetTenantInviteLinkInfo)
+
+	// Billing routes that must stay anonymous: the web client and Stripe
+	// both reach them without a session.
+	billingHandler := handler.NewBillingHandler()
+	apiNoAuth.GET("/billing/status", billingHandler.Status)
+	apiNoAuth.GET("/billing/plans", billingHandler.Plans)
+	apiNoAuth.GET("/billing/downgrade-guard/health", billingHandler.Health)
+	apiNoAuth.POST("/billing/webhooks/stripe", billingHandler.Webhook)
+}
+
+// RegisterEEAuthRouter registers the authenticated billing routes.
+func RegisterEEAuthRouter(authorized *gin.RouterGroup, r *Router) {
+	billingHandler := handler.NewBillingHandler()
+	{
+		group := authorized.Group("/api/v1/billing")
+		group.GET("/subscription", billingHandler.CurrentSubscription)
+		group.GET("/subscription/overview", billingHandler.SubscriptionOverview)
+		group.GET("/storage", billingHandler.Storage)
+		group.GET("/addons", billingHandler.Addons)
+		group.GET("/addons/overview", billingHandler.AddonOverview)
+		group.GET("/points/price", billingHandler.PointsPrice)
+		group.GET("/points/balance", billingHandler.PointsBalance)
+		group.GET("/points/overview", billingHandler.PointsBalance)
+		group.GET("/points/ledger", billingHandler.PointsLedger)
+		group.GET("/points/holds", billingHandler.PointsHolds)
+		group.GET("/spend-overview", billingHandler.SpendOverview)
+		group.GET("/spend-metrics", billingHandler.SpendMetrics)
+		group.GET("/usages/deepdoc", billingHandler.DeepdocUsage)
+
+		group.POST("/subscription", billingHandler.CheckoutSubscription)
+		group.PATCH("/subscription", billingHandler.CheckoutSubscription)
+		group.POST("/subscription/preview", billingHandler.PreviewSubscription)
+		group.POST("/addon-purchases", billingHandler.AddonCheckout)
+		group.PATCH("/storage", billingHandler.SetStorageTarget)
+		group.POST("/setup-intents", billingHandler.SetupIntent)
+		group.POST("/portal-sessions", billingHandler.PortalSession)
+		group.POST("/points/checkout", billingHandler.PointsCheckout)
+		group.GET("/checkouts/:session-id", billingHandler.CheckoutSession)
+		group.GET("/subscriptions/:subscription-id/payment-status", billingHandler.SubscriptionPaymentStatus)
+	}
 }
 
 func RegisterEEProtectedRouter(authorized *gin.RouterGroup, r *Router) {

@@ -149,6 +149,7 @@ jobs:
           GOOS="${{ matrix.goos }}" \
           GOARCH="${{ matrix.goarch }}" \
           go build \
+            -tags ee \
             -trimpath \
             -ldflags="-s -w -X main.version=${RELEASE_TAG} -X main.commit=${GITHUB_SHA}" \
             -o "${output}" \
@@ -175,6 +176,7 @@ jobs:
           $env:GOARCH = "${{ matrix.goarch }}"
 
           go build `
+            -tags ee `
             -trimpath `
             -ldflags="-s -w -X main.version=$env:RELEASE_TAG -X main.commit=$env:GITHUB_SHA" `
             -o "$output" `

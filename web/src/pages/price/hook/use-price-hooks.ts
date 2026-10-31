@@ -594,6 +594,9 @@ export const useSetupIntentPayment = () => {
 
     const { data } = await postBillingSetupIntent({
       tenant_id: tenantId,
+      // Stripe requires a return URL on the SetupIntent itself as well as on
+      // the confirmation, otherwise redirect-based payment methods fail.
+      return_url: window.location.href,
       ...params,
     });
 

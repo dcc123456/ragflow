@@ -33,6 +33,11 @@ on:
 permissions:
   contents: read
 
+# Enterprise repository: build.sh needs the ee build tag for both the binaries
+# and the tagged Go test tiers.
+env:
+  RAGFLOW_GO_TAGS: ee
+
 jobs:
   serenedb_go_integration:
     name: serenedb_go_integration

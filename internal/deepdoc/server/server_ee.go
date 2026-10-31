@@ -1,4 +1,4 @@
-//go:build cgo && ee
+//go:build cgo
 
 //
 //  Copyright 2026 The InfiniFlow Authors. All Rights Reserved.
@@ -20,10 +20,10 @@
 // wires the /predict/dla, /predict/tsr, /predict/ocr (operator-switched
 // det/rec, mirroring the Python EE docker), /predict/ocr_det, /predict/ocr_rec
 // and /health endpoints and exposes Run, the composition root that boots the
-// server. Keeping it in its own (non-main) package lets both the
-// ragflow_server --deepdoc mode (cmd/deepdoc_server_ee.go's runDeepDoc) and any
-// future in-process caller import it without ever sharing a package with a
-// func main(), so there is no "two mains" clash.
+// server, plus RunServer, the edition-selected entrypoint the ragflow_server
+// --deepdoc mode calls. Keeping it in its own (non-main) package lets that mode
+// and any future in-process caller import it without ever sharing a package
+// with a func main(), so there is no "two mains" clash.
 package deepdocserver
 
 import (
@@ -425,9 +425,6 @@ func decodeNative(data []byte) (*native.Image, error) {
 	}
 	return ni, nil
 }
-
-// DefaultPort is the listen port for the DeepDoc inference server.
-const DefaultPort = 8001
 
 // validateModelDir is the fail-fast boot preflight: EE_MODEL_DIR must be set and
 // must contain every weight listed in common.DeepDocModelFiles. It runs before

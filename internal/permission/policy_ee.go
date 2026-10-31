@@ -50,11 +50,8 @@ func newPolicyEE(source Source) (policy, bool) {
 }
 
 func (p *enterprisePolicy) CheckFeature(ctx context.Context, subject Subject, feature Feature, action Action) error {
-	subject, err := resolveSubject(ctx, subject)
+	subject, err := p.subjectFor(ctx, subject)
 	if err != nil {
-		return err
-	}
-	if err := validateEnterpriseSubject(subject); err != nil {
 		return err
 	}
 	if strings.TrimSpace(string(feature)) == "" || !validAction(action) {
@@ -68,11 +65,8 @@ func (p *enterprisePolicy) CheckFeature(ctx context.Context, subject Subject, fe
 }
 
 func (p *enterprisePolicy) CheckTenant(ctx context.Context, subject Subject, tenantID string, requirement TenantRequirement) error {
-	subject, err := resolveSubject(ctx, subject)
+	subject, err := p.subjectFor(ctx, subject)
 	if err != nil {
-		return err
-	}
-	if err := validateEnterpriseSubject(subject); err != nil {
 		return err
 	}
 	tenantID = strings.TrimSpace(tenantID)
@@ -120,7 +114,7 @@ func (p *enterprisePolicy) CheckResource(ctx context.Context, subject Subject, r
 }
 
 func (p *enterprisePolicy) CheckDependency(ctx context.Context, subject Subject, entryRef, dependencyRef ResourceRef, entryOperation, dependencyOperation Operation) error {
-	subject, err := resolveSubject(ctx, subject)
+	subject, err := p.subjectFor(ctx, subject)
 	if err != nil {
 		return err
 	}
@@ -148,11 +142,8 @@ func (p *enterprisePolicy) CheckDependency(ctx context.Context, subject Subject,
 }
 
 func (p *enterprisePolicy) ResolveAccess(ctx context.Context, subject Subject, ref ResourceRef) (Access, error) {
-	subject, err := resolveSubject(ctx, subject)
+	subject, err := p.subjectFor(ctx, subject)
 	if err != nil {
-		return Access{}, err
-	}
-	if err := validateEnterpriseSubject(subject); err != nil {
 		return Access{}, err
 	}
 	resourceType, ok := enterpriseResourceType(ref.Kind)
@@ -244,11 +235,8 @@ func (p *enterprisePolicy) ResolveAccess(ctx context.Context, subject Subject, r
 }
 
 func (p *enterprisePolicy) ResolveAccesses(ctx context.Context, subject Subject, refs []ResourceRef) (map[ResourceRef]Access, error) {
-	subject, err := resolveSubject(ctx, subject)
+	subject, err := p.subjectFor(ctx, subject)
 	if err != nil {
-		return nil, err
-	}
-	if err := validateEnterpriseSubject(subject); err != nil {
 		return nil, err
 	}
 	refs = uniqueRefs(refs)
@@ -393,11 +381,8 @@ func (p *enterprisePolicy) isTenantRootFolder(ctx context.Context, folderID, ten
 }
 
 func (p *enterprisePolicy) GrantResourceOwner(ctx context.Context, subject Subject, ref ResourceRef) error {
-	subject, err := resolveSubject(ctx, subject)
+	subject, err := p.subjectFor(ctx, subject)
 	if err != nil {
-		return err
-	}
-	if err := validateEnterpriseSubject(subject); err != nil {
 		return err
 	}
 	if ref.Kind == ResourceKindModelProvider {
@@ -482,11 +467,8 @@ func (p *enterprisePolicy) GrantResourceOwner(ctx context.Context, subject Subje
 }
 
 func (p *enterprisePolicy) Scope(ctx context.Context, subject Subject, query ScopeQuery) (Scope, error) {
-	subject, err := resolveSubject(ctx, subject)
+	subject, err := p.subjectFor(ctx, subject)
 	if err != nil {
-		return Scope{}, err
-	}
-	if err := validateEnterpriseSubject(subject); err != nil {
 		return Scope{}, err
 	}
 	if strings.TrimSpace(string(query.Kind)) == "" || !validOperation(query.Operation) {
@@ -537,7 +519,7 @@ func (p *enterprisePolicy) Scope(ctx context.Context, subject Subject, query Sco
 }
 
 func (p *enterprisePolicy) FilterResources(ctx context.Context, subject Subject, refs []ResourceRef, operation Operation) ([]ResourceRef, error) {
-	subject, err := resolveSubject(ctx, subject)
+	subject, err := p.subjectFor(ctx, subject)
 	if err != nil {
 		return nil, err
 	}
@@ -574,11 +556,8 @@ func (p *enterprisePolicy) QueryScope(ctx context.Context, subject Subject, quer
 		return QueryScope{}, false, nil
 	}
 	var err error
-	subject, err = resolveSubject(ctx, subject)
+	subject, err = p.subjectFor(ctx, subject)
 	if err != nil {
-		return QueryScope{}, true, err
-	}
-	if err := validateEnterpriseSubject(subject); err != nil {
 		return QueryScope{}, true, err
 	}
 	if err := p.CheckResource(ctx, subject, query.Parent, OperationRead); err != nil {
@@ -613,11 +592,8 @@ func (p *enterprisePolicy) QueryScope(ctx context.Context, subject Subject, quer
 
 func (p *enterprisePolicy) mcpServerReadQueryScope(ctx context.Context, subject Subject) (QueryScope, bool, error) {
 	var err error
-	subject, err = resolveSubject(ctx, subject)
+	subject, err = p.subjectFor(ctx, subject)
 	if err != nil {
-		return QueryScope{}, true, err
-	}
-	if err := validateEnterpriseSubject(subject); err != nil {
 		return QueryScope{}, true, err
 	}
 	membership, err := p.loadMembership(ctx, subject)
@@ -955,6 +931,48 @@ func (p *enterprisePolicy) hasResourceOwnerGrant(ctx context.Context, tenantID, 
 		return false, fmt.Errorf("permission: check resource owner grant: %w", err)
 	}
 	return count > 0, nil
+}
+
+// subjectFor resolves the caller's permission subject and, when the caller
+// carries only a user id, completes the tenant from that user's sole active
+// membership. Background jobs (async space cleanup, tenant deletion) act for a
+// user without a request-scoped tenant, and the community policy never needed
+// one. An ambiguous membership leaves the tenant empty so the subject stays
+// invalid rather than guessing.
+func (p *enterprisePolicy) subjectFor(ctx context.Context, subject Subject) (Subject, error) {
+	subject, err := resolveSubject(ctx, subject)
+	if err != nil {
+		return Subject{}, err
+	}
+	if strings.TrimSpace(subject.TenantID) == "" {
+		tenantID, err := p.uniqueActiveTenantID(ctx, subject.UserID)
+		if err != nil {
+			return Subject{}, err
+		}
+		subject.TenantID = tenantID
+	}
+	if err := validateEnterpriseSubject(subject); err != nil {
+		return Subject{}, err
+	}
+	return subject, nil
+}
+
+// uniqueActiveTenantID returns the tenant of the user's only active membership.
+func (p *enterprisePolicy) uniqueActiveTenantID(ctx context.Context, userID string) (string, error) {
+	if strings.TrimSpace(userID) == "" {
+		return "", nil
+	}
+	var tenantIDs []string
+	if err := p.db.WithContext(ctx).Model(&entity.UserTenant{}).
+		Where("user_id = ? AND status = ?", userID, string(entity.StatusValid)).
+		Pluck("tenant_id", &tenantIDs).Error; err != nil {
+		return "", fmt.Errorf("permission: load active tenants: %w", err)
+	}
+	tenantIDs = uniqueStringValues(tenantIDs)
+	if len(tenantIDs) != 1 {
+		return "", nil
+	}
+	return tenantIDs[0], nil
 }
 
 func validateEnterpriseSubject(subject Subject) error {

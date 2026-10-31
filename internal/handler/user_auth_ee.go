@@ -90,8 +90,16 @@ func (h *UserHandler) VerifyOTP(c *gin.Context) {
 	common.ErrorWithCode(c, common.CodeNotImplemented, "VerifyOTP not implemented")
 }
 
+// IsAdmin reports whether the caller holds the superuser flag. The web client
+// reads data.admin to decide whether to expose the model-provider admin pages.
 func (h *UserHandler) IsAdmin(c *gin.Context) {
-	common.ErrorWithCode(c, common.CodeNotImplemented, "IsAdmin not implemented")
+	user, code, message := GetUser(c)
+	if code != common.CodeSuccess {
+		common.ErrorWithCode(c, code, message)
+		return
+	}
+	admin := user.IsSuperuser != nil && *user.IsSuperuser
+	common.SuccessWithData(c, gin.H{"admin": admin}, "")
 }
 
 func (h *UserHandler) GetMeta(c *gin.Context) {

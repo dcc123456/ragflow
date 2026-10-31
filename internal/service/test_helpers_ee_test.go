@@ -175,5 +175,7 @@ func restrictServiceTestFeatureRole(t *testing.T, tenantID, resourceType string,
 
 // permissionChangeLogTestModels adds the permission audit log written by the enterprise tenant flows.
 func permissionChangeLogTestModels() []interface{} {
-	return []interface{}{&entity.PermissionChangeLog{}}
+	return []interface{}{
+		&entity.PermissionChangeLog{}, &entity.GroupInfo{}, &entity.GroupMember{}, &entity.Permission{},
+	}
 }

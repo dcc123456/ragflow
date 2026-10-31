@@ -2,6 +2,12 @@ name: tests
 permissions:
   contents: read
 
+# This is the enterprise repository: build.sh must compile the enterprise
+# edition, which lives behind the ee build tag. Without it the Go binaries,
+# and every Go test, would silently run the community stand-ins.
+env:
+  RAGFLOW_GO_TAGS: ee
+
 on:
   push:
     branches:
@@ -478,53 +484,53 @@ jobs:
       - name: Enable billing for dedicated HTTP API billing tests
         if: ${{ env.HTTP_API_TEST_LEVEL == 'p3' }}
         run: |
-          sed -i 's/^BILLING_ENABLED=.*/BILLING_ENABLED=1/' docker/.env
-          sudo docker compose -f docker/docker-compose.yml -p ${GITHUB_RUN_ID} up -d --force-recreate ragflow parser
+          set -euo pipefail
+          # The stack already runs the enterprise image built by "Build ragflow:nightly"
+          # (compose reads ${RAGFLOW_IMAGE}); billing only needs the Go service to come
+          # back up with BILLING_ENABLED=1, which docker-compose.yml takes from .env.
+          # No rebuild and no `down -v`: recreating just ragflow-cpu keeps the
+          # database and the rest of the stack, and startup runs the billing
+          # migrations itself.
+          if grep -q '^BILLING_ENABLED=' docker/.env; then
+            sed -i 's/^BILLING_ENABLED=.*/BILLING_ENABLED=1/' docker/.env
+          else
+            echo 'BILLING_ENABLED=1' >> docker/.env
+          fi
+          sudo docker compose -f docker/docker-compose.yml -p ${GITHUB_RUN_ID} up -d --force-recreate ragflow-cpu
+          echo "RAGFLOW_CONTAINER=${GITHUB_RUN_ID}-ragflow-cpu-1" >> ${GITHUB_ENV}
 
-      - name: Start Stripe CLI webhook forwarding for Elasticsearch billing tests
+      - name: Run billing Go API tests against Elasticsearch
         if: ${{ env.HTTP_API_TEST_LEVEL == 'p3' }}
+        timeout-minutes: 45
         env:
-          STRIPE_API_KEY: ${{ env.BILLING_STRIPE_API_KEY }}
+          ZHIPU_AI_API_KEY: ${{ secrets.ZHIPU_AI_API_KEY }}
+          SILICONFLOW_API_KEY: ${{ secrets.SILICONFLOW_API_KEY }}
         run: |
-          if [[ -z "${STRIPE_API_KEY:-}" ]]; then
-            echo "Error: missing BILLING_STRIPE_API_KEY secret for billing P3 tests."
-            exit 1
-          fi
-          if ! command -v stripe >/dev/null 2>&1; then
-            echo "Error: stripe CLI is required on the runner for billing P3 tests."
-            exit 1
-          fi
-          stripe listen \
-            --api-key "${STRIPE_API_KEY}" \
-            --forward-to "${HOST_ADDRESS}/v1/billing/webhooks/stripe" \
-            > stripe_listen.log 2>&1 &
-          echo $! > stripe_listen.pid
-          sleep 5
-          if ! kill -0 "$(cat stripe_listen.pid)" 2>/dev/null; then
-            echo "Error: stripe listen failed to stay running."
-            cat stripe_listen.log || true
-            exit 1
-          fi
-
-      - name: Run billing http api tests against Elasticsearch
-        if: ${{ env.HTTP_API_TEST_LEVEL == 'p3' }}
-        timeout-minutes: 30
-        run: |
+          set -euo pipefail
           export http_proxy=""; export https_proxy=""; export no_proxy=""; export HTTP_PROXY=""; export HTTPS_PROXY=""; export NO_PROXY=""
+          if [[ -z "${ZHIPU_AI_API_KEY:-}" || -z "${SILICONFLOW_API_KEY:-}" ]]; then
+            echo "Error: ZHIPU_AI_API_KEY and SILICONFLOW_API_KEY are required by test/api."
+            exit 1
+          fi
           MAX_RETRIES=180
           COUNT=0
           until curl -sf --connect-timeout 5 "${HOST_ADDRESS}/api/v1/system/ping" > /dev/null; do
             echo "Waiting for billing-enabled service at ${HOST_ADDRESS} to be available... (Attempt: $COUNT/$MAX_RETRIES)"
             if [ $COUNT -ge $MAX_RETRIES ]; then
-              echo "Error: Billing-enabled service did not become available within 5 minutes."
+              echo "Error: Billing-enabled service did not become available within 15 minutes."
               sudo docker logs ${RAGFLOW_CONTAINER} --tail 200
               exit 1
             fi
             COUNT=$((COUNT + 1))
             sleep 5
           done
-          source .venv/bin/activate && set -o pipefail; pytest -s --tb=short -m billing \
-            test/testcases/test_http_api/test_billing \
+          status=$(curl -sf --connect-timeout 5 "${HOST_ADDRESS}/api/v1/billing/status")
+          echo "billing status: ${status}"
+          if ! printf '%s' "${status}" | grep -q '"billing_enabled":true'; then
+            echo "Error: billing is not enabled on the Go service."
+            exit 1
+          fi
+          bash build.sh --test-integration-go ./test/api/ -run '^TestBilling' \
             2>&1 | tee es_http_api_billing_test.log
 
       - name: Collect ragflow log Elasticsearch
@@ -537,19 +543,7 @@ jobs:
           else
             echo "No docker/ragflow-logs directory found; skipping log collection"
           fi
-          if [[ -f stripe_listen.log ]]; then
-            cp stripe_listen.log ${ARTIFACTS_DIR}/stripe-listen.log
-            tail -n 200 stripe_listen.log || true
-          fi
           sudo rm -rf docker/ragflow-logs || true
-
-      - name: Stop Stripe CLI webhook forwarding for Elasticsearch billing tests
-        if: always()
-        run: |
-          if [[ -f stripe_listen.pid ]]; then
-            kill "$(cat stripe_listen.pid)" 2>/dev/null || true
-            rm -f stripe_listen.pid
-          fi
 
       - name: Stop ragflow:nightly for Elasticsearch
         if: always()  # always run this step even if previous steps failed

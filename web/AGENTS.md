@@ -90,14 +90,13 @@ Do not reintroduce backend-variant primitives or detection helpers (e.g. a `useI
 
 ### Enterprise Overlays
 
-`src/ee/` holds the enterprise customization of shared modules at the same path it overrides. This tree ships those files empty so every shared import resolves; the enterprise repository ships the real implementation. Keep both sides in that shape:
+The two repositories share one frontend source tree. Enterprise-only content lives in `src/ee/` at the same path it customizes, and the OSS tree ships that file empty so the shared imports resolve in both trees:
 
-- `src/ee/locales/<lang>-private.ts` carries enterprise locale strings and `src/ee/utils/api-private.ts` enterprise-only API endpoints. Both stay empty objects here.
-- The shared file only imports the overlay and merges it — `merge(base, private)` in `src/locales/config.ts`, `merge(apiEndpoints, apiPrivate)` in `src/utils/api.ts`. Never inline enterprise strings or endpoints into `src/locales/*.ts` or `src/utils/api.ts`, and never delete the overlay import.
+- Enterprise locale strings go to `src/ee/locales/<lang>-private.ts`; enterprise-only API endpoints go to `src/ee/utils/api-private.ts`.
+- The shared file only imports the overlay and merges it — `merge(base, private)` in `src/locales/config.ts`, `merge(apiEndpoints, apiPrivate)` in `src/utils/api.ts`. Never inline enterprise strings or endpoints into `src/locales/*.ts` or `src/utils/api.ts`.
 - The edition is chosen by the file's content, never at runtime: no `import.meta.env` switch that selects enterprise code and no `isEnterprise` branch in shared modules.
-- Adding a new overlay means adding the empty file here and the implementation downstream in the same change.
+- These overlay paths already exist in both trees, so editing one is a part 1 change (same as `stub.go`): keep the path, put the real implementation here, leave the OSS copy an empty object. A new overlay file needs its empty counterpart upstream in the same change.
 
-### CSS and Layout Debugging
 ### CSS and Layout Debugging
 
 When fixing CSS/layout issues (especially flex truncation, ellipsis, or element sizing), **always inspect the full parent hierarchy** for `flex-shrink`, `min-width`, and `overflow` constraints before applying fixes like `min-w-0`. Do not repeatedly apply the same fix without verifying the root cause.
@@ -114,7 +113,7 @@ Respect explicit boundaries from the user. If the user says **"only fix the sele
 
 ### Internationalization (i18n)
 
-For translation tasks, add keys **only to the explicitly requested language files** (commonly `src/locales/zh.ts` and `src/locales/en.ts`). Do not auto-propagate changes to all language files unless the user explicitly asks.
+For translation tasks, add keys **only to the explicitly requested language files** (commonly `src/locales/zh.ts` and `src/locales/en.ts`). Do not auto-propagate changes to all language files unless the user explicitly asks. Strings that exist only in the enterprise edition belong in `src/ee/locales/<lang>-private.ts`, never in the shared files (see Enterprise Overlays).
 
 **Enterprise-only keys are the exception**: they go to the matching `src/ee/locales/<lang>-private.ts` overlay (see *Enterprise Extension Seam* above), never to `src/locales/en.ts` / `zh.ts` — keys in the shared locale files break the byte-identical-to-upstream guarantee and conflict on every merge-oss.
 

@@ -1,5 +1,24 @@
 # 订阅降级配额超限拦截方案
 
+> **状态：设计方案，未按本文件实现。**
+> 当前代码只有一层实现：API 进程内每 10 分钟扫描一次已排期的降级/存储变更，超限时释放 Stripe schedule 并清空 `target_*` / `schedule_id`，仅写日志。
+> 本文描述的三层防护（每日扫描 + 15 分钟高频池 + 生效时刻校验）、邮件与站内通知、分布式锁、监控指标均尚未实现。
+> 现状描述见 [billing_design_zh.md](billing_design_zh.md) §5；实现位于 `internal/service/billing/downgrade_guard_ee.go`。
+
+## 0. 当前实现对照
+
+| 本文设计 | 当前实现 | 差异 |
+|---|---|---|
+| 第 1 层：每日扫描，超限 >3 天发邮件、≤3 天入池 | 无独立层 | 未实现 |
+| 第 2 层：每 15 分钟检查池，超限取消降级 | 每 10 分钟扫描全量排期行（`ListScheduledDowngrades`） | 频率与范围不同；无"池"概念 |
+| 第 3 层：生效时刻最终校验 | 无 | 依赖 Stripe 周期末执行 |
+| 分布式锁，多实例单点执行 | 无锁，每个 API 实例都跑自己的 ticker | 多实例会重复扫描（幂等，但会重复日志） |
+| 邮件 / 站内通知 | 仅 `common.Warn` 日志 | 用户无感知 |
+| 审计记录 | 无 | 未实现 |
+| 监控指标与告警（§8） | 仅 `GET /billing/downgrade-guard/health` 返回静态信息 | 指标未接入 |
+
+已实现部分：配额三维度（apps / members / storage）比较、目标套餐配额解析（Trial 不计存储附加）、超限时 `CancelScheduledChange`（释放 schedule / 撤销 `cancel_at_period_end` / 清空标记）。
+
 ## 1. 背景
 
 ### 1.1 问题

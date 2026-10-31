@@ -11,7 +11,7 @@ Use this file as the local operating guide for the current codebase. Prefer the 
 - Keep refactors centered on the owning abstraction, not on adjacent compatibility layers.
 
 ## Current stack
-- Backend: Go implements the API, admin, ingestor, and syncer modes in `cmd/ragflow_server.go`; the CLI runs from `cmd/ragflow-cli.go`. The Docker entrypoint starts the Go services according to its command-line flags, and the frontend development server uses fixed Go backend proxy routes. The Python API, admin, and workers are still present pending removal.
+- Backend: Go implements the API, admin, ingestor, syncer, DeepDoc, and migration entry points in `cmd/ragflow_server.go` (`--api`, `--admin`, `--ingestor`, `--syncer`, `--deepdoc`, `--migrate`); the CLI runs from `cmd/ragflow-cli.go`. The Docker entrypoint starts the Go services according to its command-line flags, and the frontend development server uses fixed Go backend proxy routes. The Python API, admin, and workers are still present pending removal.
 - Frontend: React + TypeScript + Vite in `web/`. When working under `web/`, read and follow `web/AGENTS.md` for frontend conventions.
 - The Go module contains the server, ingestion, parsing, agent runtime, CLI, and supporting services.
 - Runtime services commonly include MySQL/PostgreSQL, Kvrocks, NATS JetStream, MinIO, ClickHouse, and Elasticsearch/Infinity/OpenSearch depending on configuration.
@@ -19,19 +19,22 @@ Use this file as the local operating guide for the current codebase. Prefer the 
 - Remove all Python code and Python-specific dependencies, scripts, containers, CI jobs, documentation, SDKs, and tests from the repository. Do not add new Python code while this removal is in progress. Replace Python-based preparation of Go native libraries, DeepDoc models, and the BPE table before removing the existing download scripts.
 - Move any still-required behavior and test coverage into the Go backend or the frontend before deleting the old implementation. Do not preserve a Python server, compatibility layer, fallback, or dual-backend path.
 - Before deleting `rag/`, move the Go DeepDoc `.ort` models and `ocr.res` out of `internal/rag/res/deepdoc/`, then update model discovery, dependency preparation, Docker packaging, and tests together.
-- Remove the frontend's Go/Python backend variants and update `web/CLAUDE.md` when the frontend no longer needs them. Until then, treat its dual-backend instructions as migration-only guidance; new frontend work should target the Go API.
+- The frontend no longer carries Go/Python backend variants; new frontend work targets the Go API, and `web/AGENTS.md` forbids reintroducing backend-variant primitives or detection helpers.
 - Update Docker's default entrypoint, dependency image, and CI workflows when removing their remaining Python paths. Keep the frontend development proxy routes aligned with the Go API and Admin ports in `web/vite.config.ts`.
 - Keep this guide aligned with the checked-in tree. Once the Python directories are deleted, remove their migration inventory below.
 
 ## Code Layout to Expect
-- `cmd/ragflow_server.go`: Go entrypoint for the API, admin, ingestor, and syncer modes (`--api`, `--admin`, `--ingestor`, `--syncer`).
-- `cmd/ragflow-cli/`: Go CLI entrypoint.
+- `cmd/ragflow_server.go`: Go entrypoint for the API, admin, ingestor, syncer, DeepDoc, and migration modes (`--api`, `--admin`, `--ingestor`, `--syncer`, `--deepdoc`, `--migrate`).
+- `cmd/ragflow-cli.go`: Go CLI entrypoint.
 - `api/`, `rag/`, `deepdoc/`, and `agent/`: legacy Python implementation pending deletion. Do not add features or extend dependencies there.
 - `internal/`: main Go application code. Important subtrees:
 - `internal/agent/`: Go agent runtime, canvas execution, components, tool bindings, workflow helpers.
+- `internal/agentic_rag/`: agentic retrieval loop, BM25 service, citation handling.
 - `internal/admin/`: Go admin routes, handlers, and services.
+- `internal/channels/`: chat-channel connectors (DingTalk and friends) with their bootstrap wiring.
 - `internal/binding/cpp/`: C++ tokenizer binding built by `build.sh` for the Go server.
 - `internal/cli/`: CLI parsing, HTTP transport, command execution, response formatting.
+- `internal/common/`: shared error codes, HTTP response helpers, constants, environment pins.
 - `internal/dao/`: Go data-access layer and persistence-facing helpers.
 - `internal/deepdoc/`: Go DeepDOC integrations, especially native-backed PDF/DOCX parsing.
 - `internal/engine/`: search/index backends such as Elasticsearch and Infinity.
@@ -40,11 +43,15 @@ Use this file as the local operating guide for the current codebase. Prefer the 
 - `internal/ingestion/`: Go ingestion pipeline, canvas adapter, components, wiring, service orchestration.
 - `internal/ingestion/component/`: stage implementations such as file/parser/chunker/tokenizer/extractor.
 - `internal/ingestion/pipeline/`: DSL translation, canvas-driven execution, checkpoints, resume/run logic.
+- `internal/mcp/`: MCP server and client transport, connector registration, tool catalogue.
+- `internal/permission/`: resource-permission policy, query scope, integration resource resolution.
 - `internal/parser/`: parser and chunk libraries used by ingestion and other Go paths.
 - `internal/parser/parser/`: typed parse-result parsers for markdown/html/pdf/docx/xlsx/text and related families.
 - `internal/parser/chunk/`: chunk operator library and DSL/typed execution helpers.
 - `internal/service/`: higher-level business services used by handlers and server flows.
 - `internal/storage/`: storage backends and in-memory test doubles.
+- `internal/tokenizer/`: BPE tokenizer, asset loading, and token counting.
+- `internal/utility/`: small cross-cutting helpers (rate limiting, quotas, conversion, best-effort wrappers).
 - `internal/router/`: HTTP route registration.
 - `internal/server/`: server bootstrap/config wiring.
 - `internal/syncer/`: Go file synchronization service and connectors.
@@ -62,35 +69,30 @@ Use this file as the local operating guide for the current codebase. Prefer the 
 - Remove commented-out Go code instead of leaving recovery notes in place.
 - Keep package comments and doc comments aligned with the current runtime path, not with migration history.
 
-## Enterprise stubs
-Enterprise-only code lives in the downstream enterprise repository, never here: it is written as `*_ee.go` / `*_ee_test.go` files carrying `//go:build ee`. This tree keeps only what the open-source build needs:
+## Community and enterprise editions
+Every edition difference is a Go build tag, an environment variable, or a same-path overlay module that the OSS tree ships empty; shared non-Go files must not branch on the edition.
 
-- A capability the shared code cannot implement open-source gets a `stub.go` in the same package with `//go:build !ee`, exposing exactly the surface the shared call sites use.
-- A capability that is absent from this tree altogether needs no stub: the downstream repository carries that file and its build tag on its own.
-- Keep stubs minimal: when shared code calls several enterprise functions in a row, collapse them into one entry point instead of stubbing each one.
-- Review every stub from the caller's side: it returns a zero value or an error, and the open-source build still has to behave correctly — the call site needs the fallback that keeps normal operation intact.
-- Never inline enterprise content into a shared file (a config section, an environment variable, a frontend module). The edition is selected by build tags or by an environment variable, and the enterprise repository ships the counterpart file.
-- Both trees must build: this one with `bash build.sh --go`, the enterprise one with `RAGFLOW_GO_TAGS=ee bash build.sh --go`.
-- New tests are Go tests run through `bash build.sh --test`, never pytest. Integration and system tests must exercise the real implementation — no mocks or stubs of the code under test.
+- An enterprise-only Go file is named `*_ee.go` (its tests `*_ee_test.go`) and carries `//go:build ee`.
+- Its community counterpart is a `stub.go` in the same directory with `//go:build !ee`, holding only what the community code still calls.
+- A Go file that exists only in the enterprise repository needs neither a `stub.go` counterpart nor the `//go:build ee` tag: the open-source tree never sees it. It keeps the tag only when it calls code that is itself `ee`-tagged in a shared directory, so the community build of this tree still skips it.
+- Keep stubs minimal: when community code calls several enterprise functions in a row, collapse them into one entry point instead of stubbing each one.
+- Split work by provenance. Take `merge-base(upstream/saas HEAD)..HEAD` plus the working tree and cut it in two: part 1 holds every change to a file that already exists on the OSS upstream branch (`oss/main`), part 2 holds everything else. The `//go:build !ee` stubs belong to part 1; `_ee.go` files that only exist in part 2 follow the tagging rule above.
+- Keep part 1 as small as possible: a shared file touched only for the enterprise edition drags a needless OSS-side change into the split. A shared non-Go file (`build.sh`, Dockerfiles, workflows, configuration) must therefore never branch on the edition. The usual forms are forwarding an environment variable (`build.sh` reads `RAGFLOW_GO_TAGS`, the image Dockerfiles pin it in `ENV`), carrying a section only one edition reads (a configuration block consumed solely when its feature is enabled), or importing a same-path overlay module that the OSS tree ships empty (`@/ee/*` in the frontend, whose conventions stay in `web/AGENTS.md`). Content one edition alone needs belongs in a file of its own; a variant that would force an `if` on the edition inside a shared file means the design is wrong.
+- Both editions must build: `bash build.sh --go` with no extra tags, and `RAGFLOW_GO_TAGS=ee bash build.sh --go`.
+- Review every stub from the caller's side. A stub returning a zero value or an error must leave the community build fully working, so every call site needs a fallback that keeps normal operation intact.
+- New tests are Go tests run through `build.sh --test`, never pytest. Integration and system tests must exercise the real implementation — no mocks or stubs of the code under test.
 
-## GORM query traps
 ## GORM query traps
 - **Never pass a bare string ID as the second argument to `Take`/`First`** (e.g. `Take(&x, id)`). Under GORM v1.25.7 a non-numeric string is treated as a raw SQL condition and concatenated into the `WHERE` clause: `Take(&x, "88b17c7a...")` emits `WHERE 88b17c7a... LIMIT 1`, which MySQL rejects with `Error 1054 (42S22): Unknown column '...' in 'where clause'`. Only strings that parse via `strconv.Atoi` are treated as primary-key values, so this bug is invisible for integer IDs and catastrophic for UUID primary keys. Always bind explicitly: `Take(&x, "id = ?", id)` or `Where("id = ?", id).Take(&x)`.
 - When you change a query form across many files, verify the generated SQL with a `Session(&gorm.Session{DryRun: true})` probe before relying on it. A passing unit test with no rows and a broken `WHERE` clause look identical unless the SQL is inspected.
 
-## Shared database schema (Go + Python)
-The Go services and the Python API write to the same MySQL/PostgreSQL schema, and both own parts of it. Neither is authoritative over the whole.
+## Database schema
+Go owns the schema: `internal/entity/` declares the models and `internal/dao/migration.go` applies the migrations. Databases created by the retired Python ORM are still in service and carry its index names, so migrations reconcile by **column set, not by name**: `hasUniqueIndex` (`internal/dao/migration.go`) accepts an existing index only when its full column set equals the requested one.
 
-Each ORM derives index names differently:
-- Go (`internal/entity/`): GORM derives `idx_<table>_<column>` for indexes and `uni_<table>_<column>` for unique constraints. Tags in this repo name unique indexes explicitly, e.g. `uniqueIndex:idx_commit_file`.
-- Python (`api/db/db_models.py`): Peewee derives `<db_table>_<col1>_<col2>` (truncated with an md5 suffix past 64 chars, see `playhouse.migrate.make_index_name`). There is no `idx_` prefix.
-
-Both sides reconcile by **column set, not by name**: Go's `hasUniqueIndex` (`internal/dao/migration.go`) accepts an existing index only when its full column set equals the requested one, and Python's `ensure_model_indexes` (`api/db/db_models.py`) keys `DB.get_indexes()` on the column tuple. Consequences:
-
-- Divergent names covering the same columns are expected, not a defect. Whichever runtime reaches the database first decides the name. Do not "fix" this by renaming inside a migration; it rewrites live databases for no functional gain.
-- Add a shared unique index to **both** sides (Go tag + Peewee `Meta.indexes` or `unique=True`), so each runtime recreates it when absent. Do not add a second index over a column set an existing one already covers.
+- Index names diverge in practice: GORM derives `idx_<table>_<column>` / `uni_<table>_<column>`, while the old Python ORM derived `<db_table>_<col1>_<col2>`. Divergent names covering the same columns are expected, not a defect: whichever runtime reached the database first decided the name. Do not "fix" this by renaming inside a migration; it rewrites live databases for no functional gain.
+- Do not add a second index over a column set an existing one already covers.
 - In Go, declare single-column uniqueness with a named `uniqueIndex:`, not a bare `unique` tag. A bare `unique` becomes a table-level constraint in DDL, which SQLite materializes as an implicit index that cannot be dropped by name, and which GORM's `MigrateColumnUnique` then tries to drop under its own `uni_<table>_<column>` name — MySQL answers 1091 every startup. `namedIndexMigrator` (`internal/dao/database.go`) suppresses exactly that phantom drop; see `TestNamedIndexMigratorSkipsPhantomUniqueDrop`.
-- A Python model existing does not mean Python owns that table's constraints. `pipeline_operation_log` has no `run_count` column and no unique index in `db_models.py`; both are added only by `internal/dao/migration.go`.
+- Schema that never had a Python model is added only by `internal/dao/migration.go`; `pipeline_operation_log.run_count` and its index are examples.
 
 ## Go Test Tiers
 Go tests are classified by build tag. Tag a test file with `//go:build <tier>` placed before the `package` clause. Run them through `build.sh` so the required CGO configuration and native libraries are available.
@@ -105,11 +107,13 @@ Go tests are classified by build tag. Tag a test file with `//go:build <tier>` p
 
 Run tiers locally via `build.sh`:
 ```bash
-bash build.sh --test                      # unit tier (no tags)
-bash build.sh --test-integration ./...    # integration tier
-bash build.sh --test-e2e                  # e2e tier
-bash build.sh --test-manual               # manual tier (very slow)
-bash build.sh --test-all                  # integration + e2e (never includes manual)
+bash build.sh --test                       # unit tier (no tags)
+bash build.sh --test-integration ./...     # integration tier + native DeepDoc tests
+bash build.sh --test-integration-go ./...  # integration tier only (the CI integration job)
+bash build.sh --test-native                # native DeepDoc backend tests (needs MODEL_DIR)
+bash build.sh --test-e2e                   # e2e tier
+bash build.sh --test-manual                # manual tier (very slow)
+bash build.sh --test-all                   # integration + e2e (never includes manual)
 ```
 Rules:
 - New tests that touch a real external service MUST carry `integration`/`e2e`/`manual` — do not rely on `t.Skip` + env vars to soft-isolate them in the default unit run. Keep an env guard as a harmless secondary safety net if desired.
@@ -132,10 +136,14 @@ Rules:
 ### Go backend
 ```bash
 bash build.sh --all                         # build native code and Go server
+bash build.sh --cpp                         # build only the C++ tokenizer binding
 bash build.sh --go                          # build Go server with native library already built
+RAGFLOW_GO_TAGS=ee bash build.sh --go       # build the enterprise edition of the same tree
 bash build.sh --test ./internal/handler/... # targeted unit tests
 bash build.sh --test                        # all unit tests
 bash build.sh --test-integration ./...      # integration tests; requires real services
+bash build.sh --test-integration-go ./...   # integration tier through the Go path (CI)
+bash build.sh --test-native                 # native DeepDoc backend tests; needs MODEL_DIR
 bash build.sh --test-e2e                    # full-pipeline tests; requires real services
 bash build.sh --test-manual                 # local opt-in only
 bash build.sh --test-all                    # integration + e2e; excludes manual

@@ -1,4 +1,4 @@
-//go:build cgo && ee
+//go:build cgo
 
 // EE DLA post-processor override.
 //

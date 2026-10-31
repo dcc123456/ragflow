@@ -14,32 +14,29 @@
 #  limitations under the License.
 #
 import logging
-from quart import request
+
 import numpy as np
+from quart import request
 
+from api.apps import current_user, login_required
+from api.common.priority_provider import get_tenant_priority
 from api.db import PermissionValue
+from api.db.joint_services.tenant_model_service import get_model_config_from_provider_instance
 from api.db.services.document_service import DocumentService, queue_reembedding_dup_tasks
-
+from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.llm_service import LLMBundle
 from api.db.services.task_service import TaskService
-from api.db.joint_services.tenant_model_service import get_model_config_from_provider_instance
 from api.utils.api_utils import (
     get_error_data_result,
-    validate_request,
+    get_json_result,
     get_request_json,
+    validate_request,
 )
-from api.db.services.knowledgebase_service import KnowledgebaseService
-from api.utils.api_utils import get_json_result
-from api.utils.billing import check_resources
 from api.utils.permission_utils import check_kb_permission
-from common.role_util import check_role_access, KB_API_ACTION_MAP, KB_ROLE_RESOURCE_TYPE
-
-from rag.nlp import search
-from common.constants import RetCode, LLMType
 from common import settings
-from api.common.priority_provider import get_tenant_priority
-from api.apps import login_required, current_user
-
+from common.constants import LLMType, RetCode
+from common.role_util import KB_API_ACTION_MAP, KB_ROLE_RESOURCE_TYPE, check_role_access
+from rag.nlp import search
 
 kb_role_guard = check_role_access(KB_API_ACTION_MAP, KB_ROLE_RESOURCE_TYPE)
 
@@ -50,6 +47,7 @@ kb_role_guard = check_role_access(KB_API_ACTION_MAP, KB_ROLE_RESOURCE_TYPE)
 async def check_embedding():
     import random
     import re
+
     from common.doc_store.doc_store_base import OrderByExpr
 
     def _guess_vec_field(src: dict) -> str | None:
@@ -303,7 +301,6 @@ def trace_embedding():
 @manager.route("/clone", methods=["POST"])  # noqa: F821
 @login_required
 @kb_role_guard
-@check_resources(apps=1)
 async def clone():
     req = await get_request_json()
 

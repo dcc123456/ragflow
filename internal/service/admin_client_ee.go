@@ -1,3 +1,4 @@
+//
 //  Copyright 2026 The InfiniFlow Authors. All Rights Reserved.
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,10 +21,9 @@ package service
 import (
 	"encoding/json"
 	"fmt"
+
 	"ragflow/internal/common"
 	"ragflow/internal/utility"
-
-	"go.uber.org/zap"
 )
 
 func (h *AdminClient) InitHTTPClientEE() error {
@@ -48,56 +48,12 @@ func (h *AdminClient) EnrichMessage(message *common.BaseMessage) (*common.BaseMe
 	return message, nil
 }
 
+// UpdateClient applies the heartbeat acknowledgement the admin server sends
+// back to the reporting process.
 func (h *AdminClient) UpdateClient(clientInfo any) error {
-
-	bytes, err := json.Marshal(clientInfo)
+	payload, err := json.Marshal(clientInfo)
 	if err != nil {
 		return err
 	}
-
-	switch h.serverType {
-	case common.ServerTypeAPI:
-		var resp utility.APIServerHeartbeatResponse
-		if err = json.Unmarshal(bytes, &resp); err != nil {
-			return err
-		}
-		common.Info("API server heartbeat response", zap.Any("resp", resp))
-		utility.UpdateAPIServiceQuota(resp)
-
-	case common.ServerTypeIngestion:
-		var resp utility.IngestorHeartbeatResponse
-		if err = json.Unmarshal(bytes, &resp); err != nil {
-			return err
-		}
-		common.Info("Ingestion server heartbeat response", zap.Any("resp", resp))
-		utility.UpdateIngestorQuota(resp)
-
-	case common.ServerTypeFileSyncer:
-		var resp utility.FileSyncerHeartbeatResponse
-		if err = json.Unmarshal(bytes, &resp); err != nil {
-			return err
-		}
-		common.Info("FileSyncer server heartbeat response", zap.Any("resp", resp))
-		utility.UpdateSyncerQuota(resp)
-
-	case common.ServerTypeDeepDocCPU:
-		var resp utility.DeepDocCPUHeartbeatResponse
-		if err = json.Unmarshal(bytes, &resp); err != nil {
-			return err
-		}
-		common.Info("DeepDocCPU server heartbeat response", zap.Any("resp", resp))
-		utility.UpdateDeepDocCPUQuota(resp)
-
-	case common.ServerTypeDeepDocGPU:
-		var resp utility.DeepDocGPUHeartbeatResponse
-		if err = json.Unmarshal(bytes, &resp); err != nil {
-			return err
-		}
-		common.Info("DeepDocGPU server heartbeat response", zap.Any("resp", resp))
-		utility.UpdateDeepDocGPUQuota(resp)
-
-	default:
-		return fmt.Errorf("unknown server type: %s", h.serverType)
-	}
-	return nil
+	return utility.UpdateServiceQuota(h.serverType, payload)
 }

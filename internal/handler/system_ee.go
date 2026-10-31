@@ -19,6 +19,9 @@
 package handler
 
 import (
+	"os"
+	"strings"
+
 	"ragflow/internal/common"
 	"ragflow/internal/utility"
 
@@ -30,8 +33,19 @@ import (
 // @Tags system
 // @Produce plain
 // @Router /api/v1/system/enable-admin [GET]
+// GetEnableAdmin reports whether the admin console is enabled for this
+// deployment, mirroring python's settings.ENABLE_ADMIN.
 func (h *SystemHandler) GetEnableAdmin(c *gin.Context) {
-	common.ErrorWithCode(c, common.CodeNotImplemented, "EnableAdmin not implemented")
+	common.SuccessWithData(c, gin.H{"enable": enableAdminFlag()}, "")
+}
+
+// enableAdminFlag reads ENABLE_ADMIN once per call; the python default is off.
+func enableAdminFlag() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("ENABLE_ADMIN"))) {
+	case "1", "true", "yes", "on":
+		return true
+	}
+	return false
 }
 
 // GetCores /api/v1/system/cores [GET]

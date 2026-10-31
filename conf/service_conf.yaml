@@ -232,3 +232,62 @@ audit:
 #  secret_id: 'tencent_secret_id'
 #  secret_key: 'tencent_secret_key'
 #  region: 'tencent_region'
+
+billing:
+  stripe_api_key: 'sk_test_51TOCFU2XhWscgPRmTT7EcKsPc7g8CTiGtC6MY6IAUYWBF9P1y8bXjmpQiX7ecn1SUlu3qiwkz3hIpBM9lmSdXdPb00sKLS0WWt'
+  stripe_publishable_key: 'pk_test_51TOCFU2XhWscgPRmvl64yFyx6ZpCPDtUYFidcrefpjoJk4pDWuzZFycwSFXSMbNgiN6iRzovJdxUiP6nymVSI6ds004OM8okoV'
+  stripe_api_version: '2026-04-22.dahlia'
+  # webhook_url: 'https://demo.ragflow.io/api/v1/billing/webhooks/stripe'
+  webhook_url: 'http://127.0.0.1:9380/api/v1/billing/webhooks/stripe'
+  price_point:
+    - product_name: "deepdoc"
+      price_type: "usage_based"
+      billing_frequency: "one_time"
+      unit: "page"
+      unit_quantity: 1
+      price_amount: 1
+      price_currency: "usd"
+      consuming_point_amount: 1  # points charged per page
+  points_recharge:
+    price_id: "price_1TPcBZ2XhWscgPRm3L4VEsJn"
+    points_per_unit: 100 # 1 quantity = 1 USD = 100 points (1 cent = 1 point)
+  billing_plans:
+    - name: "storage"
+      quota_apps: 0
+      quota_members: 0
+      quota_storage: 1G
+      quota_points: 0
+      task_priority: "low"
+      price_ids: "price_1TOCKc2XhWscgPRmJRyTuo5g"
+      product_type: "addon"
+      priority: 0
+    - name: "Trial"
+      quota_apps: 1
+      quota_members: 1
+      quota_storage: 100KB
+      quota_points: 10
+      api_request_limit_per_minute: 10
+      task_priority: "low"
+      price_ids: "price_trailtrailtrailtrailtrai"
+      product_type: "subscription"
+      priority: 1
+    - name: "Starter"
+      quota_apps: 3
+      quota_members: 3
+      quota_storage: 300KB
+      quota_points: 30
+      api_request_limit_per_minute: 100
+      task_priority: "high"
+      price_ids: "price_1TXFtc2XhWscgPRmW3yCiEXV"
+      product_type: "subscription"
+      priority: 2
+    - name: "Pro"
+      quota_apps: 5
+      quota_members: 5
+      quota_storage: 500KB
+      quota_points: 50
+      api_request_limit_per_minute: 1000
+      task_priority: "high"
+      price_ids: "price_1TXFux2XhWscgPRmdDLery5E"
+      product_type: "subscription"
+      priority: 3

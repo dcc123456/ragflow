@@ -182,6 +182,9 @@ export const postBillingSetupIntent = (data: {
   setup_type: 'subscription_upgrade' | 'storage_addon';
   price_id?: string;
   target_storage_bytes?: number;
+  // Where Stripe sends the customer after a redirect-based payment method
+  // authenticates; SetupIntent confirmation fails without it.
+  return_url?: string;
 }) => {
   return request.post(api.billingSetupIntent, { data });
 };

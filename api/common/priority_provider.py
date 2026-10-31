@@ -26,6 +26,10 @@ def get_tenant_priority(tenant_id: str) -> int:
 
     if not BILLING_ENABLED:
         return 0
-    from api.db.services.billing_service import SubscriptionService
+    from api.db.db_models import Product, Subscription
 
-    return SubscriptionService.get_priority(tenant_id)
+    subscription = Subscription.select(Subscription.plan_name).where(Subscription.tenant_id == tenant_id).order_by(Subscription.create_time.desc()).first()
+    if not subscription:
+        return 0
+    product = Product.select(Product.task_priority).where(Product.name == subscription.plan_name).order_by(Product.version.desc()).first()
+    return 1 if product and product.task_priority == "high" else 0
