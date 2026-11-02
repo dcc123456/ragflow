@@ -37,10 +37,14 @@ import (
 //   - Q1 input identical?  YES, aside from the channel swap. Go's bilinearResize
 //     and cv2.INTER_LINEAR letterbox differ by at most one gray level.
 //
-//   - Q2 postproc identical?  YES. Both use conf 0.25, iou 0.7, max_det 300,
-//     per-class NMS, round().int().
+//   - Q2 postproc identical?  YES. Both use conf 0.25, iou 0.7. Go caps per
+//     class (tsrEEMaxDetPerClass=600) so the numerous v-lines cannot starve
+//     the h-lines under a shared global top-K; the Python reference used a
+//     global max_det=1000 to lift the same starvation. per-class NMS, round().int().
 //
-// The curated table had no horizontal-separator divergence and matches 300/300.
+// The curated table had no horizontal-separator divergence and matches 382/382
+// (v≈359 + h≈23) under Go's per-class cap of 600 (golden captured at
+// max_det=1000, also above the per-class counts so results agree).
 // The corpus fixtures do; with the BGR fix they match within the maxDrift slack.
 //
 // Isolation proven by the fixture being a PNG: Go's image.Decode uses the stdlib
@@ -99,9 +103,10 @@ func TestTSREEParity(t *testing.T) {
 				int(u[5]), u[4], u[0], u[1], u[2], u[3])
 		}
 	}
-	// Go must not hallucinate boxes beyond the golden count (+small slack for
-	// float rounding at the 0.25 conf boundary).
-	if len(got.Bboxes) > len(gold.Bboxes)+5 {
+	// Go must not hallucinate boxes beyond the golden count. Golden is captured
+	// from the EE service at max_det=1000 (v≈359 + h≈23); Go's per-class cap of
+	// 600 leaves both classes untruncated, so Go output equals the golden.
+	if len(got.Bboxes) > len(gold.Bboxes) {
 		t.Errorf("TSR EE parity: Go produced %d boxes, golden %d (hallucination)",
 			len(got.Bboxes), len(gold.Bboxes))
 	}

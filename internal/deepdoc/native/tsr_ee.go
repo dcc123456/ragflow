@@ -19,9 +19,9 @@ package native
 //   - class 1 = "h" (horizontal separator)
 //
 // The decoding was validated box-for-box against the live EE service on
-// table.jpg: 300/300 golden boxes matched within 2px / 0.05 score, class
-// distribution v=283 / h=17, identical score-descending order (ultralytics
-// max_det=300 truncation). See the parity fixture testdata/tsr_ee_table.*.
+// table.jpg: 382/382 golden boxes matched within ~1.3px / 0.05 score, class
+// distribution v≈359 / h≈23, identical score-descending order (per-class
+// max_det cap, see tsrEEMaxDetPerClass). See the parity fixture testdata/tsr_ee_table.*.
 
 import (
 	"context"
@@ -34,9 +34,24 @@ import (
 const (
 	tsrEEInputSize  = 640
 	tsrEECandidates = 8400
-	tsrEEMaxDet     = 300  // ultralytics default max_det
-	tsrEEConfThr    = 0.25 // ultralytics default conf_thres
-	tsrEEIouThr     = 0.7  // ultralytics default iou_thres (agnostic=False)
+	// tsrEEMaxDetPerClass caps the number of kept boxes PER CLASS (v and h
+	// independently) AFTER per-class NMS in tsrEEPostprocess. The EE 2-class
+	// TSR model emits far more vertical (v) separators than horizontal (h)
+	// ones; a single GLOBAL cap (ultralytics' default behaviour) lets the
+	// high-scoring, numerous v-lines crowd the lower-scoring h-lines out of
+	// the top-K — the "horizontal-line starvation" defect. Capping per class
+	// keeps the minority h-class from being starved by a shared quota.
+	//
+	// NOTE: ultralytics applies max_det GLOBALLY (offset-trick per-class NMS
+	// then a single i[:max_det]); Go intentionally diverges here to protect h.
+	// 600 is comfortably above the observed per-class counts (v≈359, h≈23 on
+	// the parity fixture) so no real detection is truncated. Lowering this
+	// below the actual per-class count WILL change Go output and requires
+	// re-capturing tsr_ee_table.golden.json (from Go, since the Python
+	// reference is being removed) and updating the integration-test bounds.
+	tsrEEMaxDetPerClass = 600  // per-class cap; ultralytics default is global 300
+	tsrEEConfThr        = 0.25 // ultralytics default conf_thres
+	tsrEEIouThr         = 0.7  // ultralytics default iou_thres (agnostic=False)
 )
 
 // tsrEELabels maps class id → separator kind. Index == cls.
@@ -163,7 +178,7 @@ func tsrEELetterboxBlob(resized []byte, newW, newH, top, left int) []float32 {
 //
 // Decoding mirrors ultralytics YOLO predict: per-class NMS (agnostic=False,
 // iou=0.7 — equivalent to its offset-trick single NMS call), then concat
-// survivors, sort by score DESC, take top max_det(=300). Boxes are
+// survivors, then keep up to tsrEEMaxDetPerClass boxes per class. Boxes are
 // un-letterboxed back to source pixels and rounded (matching tsr_svr.py's
 // bboxes.round().int()).
 func tsrEEPostprocess(out []float32, lb tsrEELetterbox) TSREEResult {
@@ -207,21 +222,29 @@ func tsrEEPostprocess(out []float32, lb tsrEELetterbox) TSREEResult {
 	for i, c := range cands {
 		byClass[c.cls] = append(byClass[c.cls], i)
 	}
+	// Per-class cap: after per-class NMS, keep at most tsrEEMaxDetPerClass
+	// boxes for EACH class independently. This stops the numerous,
+	// high-scoring v-lines from starving the h-lines under one shared cap.
 	keep := make([]cand, 0, len(cands))
 	for cls, idxs := range byClass {
 		sub := make([]nmsBox, len(idxs))
 		for k, i := range idxs {
 			sub[k] = cands[i].nmsBox
 		}
-		for _, k := range nms(sub, tsrEEIouThr, false) {
-			keep = append(keep, cand{nmsBox: sub[k], cls: cls})
+		survived := nms(sub, tsrEEIouThr, false)
+		clsKept := make([]cand, 0, len(survived))
+		for _, k := range survived {
+			clsKept = append(clsKept, cand{nmsBox: sub[k], cls: cls})
 		}
+		// highest-scoring first, then per-class truncation
+		sort.Slice(clsKept, func(i, j int) bool { return clsKept[i].Score > clsKept[j].Score })
+		if len(clsKept) > tsrEEMaxDetPerClass {
+			clsKept = clsKept[:tsrEEMaxDetPerClass]
+		}
+		keep = append(keep, clsKept...)
 	}
-	// ultralytics: concat survivors, sort by score DESC, take top max_det.
+	// stable global ordering for deterministic output (no truncation here)
 	sort.Slice(keep, func(i, j int) bool { return keep[i].Score > keep[j].Score })
-	if len(keep) > tsrEEMaxDet {
-		keep = keep[:tsrEEMaxDet]
-	}
 
 	boxes := make([]TSREEBox, 0, len(keep))
 	for _, c := range keep {
