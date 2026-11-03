@@ -115,8 +115,8 @@ func TestModelPermissionsAllowMemberUseButHideInstanceConfiguration(t *testing.T
 	grantServiceTestResource(t, "user-1", "model_instance", "instance-1", "member-1", testResourcePermissionRead)
 	service := NewModelProviderService()
 	providers, code, err := service.ListProvidersOfTenant(ctx, "member-1")
-	if err != nil || code != common.CodeSuccess || len(providers) != 1 {
-		t.Fatalf("ListProvidersOfTenant() = (%v, %v, %d providers), want success and the provider with a shared instance", code, err, len(providers))
+	if err != nil || code != common.CodeSuccess || len(providers) != 0 {
+		t.Fatalf("ListProvidersOfTenant() = (%v, %v, %d providers), want success without exposing the owner's provider configuration", code, err, len(providers))
 	}
 
 	instance, showCode, showErr := service.ShowProviderInstance(ctx, "OpenAI", "instance-1", "member-1")
@@ -128,7 +128,7 @@ func TestModelPermissionsAllowMemberUseButHideInstanceConfiguration(t *testing.T
 	}
 
 	factory := NewModelFactory()
-	access := ModelAccess{UserID: "member-1", TenantID: "user-1"}
+	access := Identity{UserID: "member-1", TenantID: "user-1"}
 	if _, err = factory.resolveConfig(ctx, access, entity.ModelTypeChat, "model-1"); err != nil {
 		t.Fatalf("member should be able to use the tenant model: %v", err)
 	}

@@ -221,17 +221,19 @@ func (m *ModelProviderService) GetModelEntityByName(ctx context.Context, userID,
 	ownedTenantID, err := requireCurrentTenantID(ctx, userID)
 	if err != nil {
 		if permissionresponse.IsPermissionError(err) {
-			_, normalizedErr := normalizeModelPermissionError(err)
+			_, normalizedErr := permissionresponse.NormalizeHidden(err)
 			return nil, normalizedErr
 		}
 		return nil, err
 	}
-	provider, err := m.findProviderByIDOrNameInTenant(ctx, ownedTenantID, providerName)
+	provider, err := m.findProviderByIDOrNameInTenant(ctx, ownedTenantID, userID, providerName, false)
 	if err != nil {
 		return nil, err
 	}
-	if err = checkModelPermission(ctx, userID, permission.ResourceKindModelProvider, provider.ID, permission.OperationRead); err != nil {
-		_, normalizedErr := normalizeModelPermissionError(err)
+	checker := permission.NewDatabaseChecker(dao.DB)
+	subject := permission.Subject{UserID: userID, TenantID: ownedTenantID}
+	if err = checker.CheckResource(ctx, subject, permission.ResourceRef{Kind: permission.ResourceKindModelProvider, ID: provider.ID}, permission.OperationRead); err != nil {
+		_, normalizedErr := permissionresponse.NormalizeHidden(err)
 		return nil, normalizedErr
 	}
 
@@ -243,8 +245,8 @@ func (m *ModelProviderService) GetModelEntityByName(ctx context.Context, userID,
 			return nil, err
 		}
 	}
-	if err = checkModelPermission(ctx, userID, permission.ResourceKindModelInstance, instance.ID, permission.OperationRead); err != nil {
-		_, normalizedErr := normalizeModelPermissionError(err)
+	if err = checker.CheckResource(ctx, subject, permission.ResourceRef{Kind: permission.ResourceKindModelInstance, ID: instance.ID}, permission.OperationRead); err != nil {
+		_, normalizedErr := permissionresponse.NormalizeHidden(err)
 		return nil, normalizedErr
 	}
 

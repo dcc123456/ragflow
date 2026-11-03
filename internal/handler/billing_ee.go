@@ -746,13 +746,12 @@ func (v *billingFlexInt64) UnmarshalJSON(data []byte) error {
 }
 
 // billingQuotaUser resolves the caller for a quota check.
-func billingQuotaUser(c *gin.Context) (*entity.User, bool) {
+func billingQuotaUser(c *gin.Context) (*entity.User, common.ErrorCode, error) {
 	user, code, message := GetUser(c)
 	if code != common.CodeSuccess {
-		common.ErrorWithCode(c, code, message)
-		return nil, false
+		return nil, code, errors.New(message)
 	}
-	return user, true
+	return user, common.CodeSuccess, nil
 }
 
 // billingEnforceApps rejects a new application when the plan quota is full.

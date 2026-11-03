@@ -38,7 +38,7 @@ func TestAddMemberRejectsWhenTenantInvitesAreDisabled(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatalf("seed tenant: %v", err)
 	}
-	s := &TenantService{userTenantDAO: dao.NewUserTenantDAO(), tenantDAO: dao.NewTenantDAO()}
+	s := &TenantService{userTenantDAO: dao.NewUserTenantDAO()}
 
 	_, code, err := s.AddMember(t.Context(), "owner-user", "tenant-xyz", &AddMemberRequest{Email: "invitee@example.com"})
 	if err == nil || code != common.CodeForbidden {

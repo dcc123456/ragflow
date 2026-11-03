@@ -295,15 +295,12 @@ func (d *Driver) flushOperationLog(batch []*common.OperationLog) {
         INSERT INTO operation_audit_log (
             event_time,
             user_id,
-            user_name,
             ip_address,
             operation,
             api_path,
             http_method,
-            resource_type,
-            resource_id,
-            resource_name,
             request_params,
+            resources,
             error_code,
             message,
             duration_ms
@@ -319,15 +316,12 @@ func (d *Driver) flushOperationLog(batch []*common.OperationLog) {
 		err = batchInsert.Append(
 			record.EventTime,
 			record.UserID,
-			record.UserName,
 			record.IPAddress,
 			record.Operation,
 			record.APIPath,
 			record.HTTPMethod,
-			record.ResourceType,
-			record.ResourceID,
-			record.ResourceName,
 			record.RequestParams,
+			record.Resources,
 			record.Code,
 			record.Error.Error(),
 			record.DurationMS,
@@ -718,16 +712,11 @@ GROUP BY
         event_date Date DEFAULT toDate(event_time) CODEC(ZSTD(1)),
 
         user_id LowCardinality(String) CODEC(ZSTD(1)),
-        user_name LowCardinality(String) CODEC(ZSTD(1)),
         ip_address String CODEC(ZSTD(1)),
 
         operation LowCardinality(String) CODEC(ZSTD(1)),
 	    api_path LowCardinality(String) CODEC(ZSTD(1)),
         http_method LowCardinality(String) CODEC(ZSTD(1)),
-
-        resource_type LowCardinality(String) CODEC(ZSTD(1)),
-        resource_id String CODEC(ZSTD(1)),
-        resource_name LowCardinality(String) CODEC(ZSTD(1)),
 
         request_params String,
         error_code UInt16 CODEC(ZSTD(1)),

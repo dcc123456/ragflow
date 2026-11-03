@@ -566,7 +566,7 @@ func (m *ModelProviderService) AlterSystemProviderInstance(ctx context.Context, 
 			}
 			continue
 		}
-		if err := m.addModelToInstance(ctx, provider, instance, modelInfo); err != nil {
+		if err := m.addModelToInstance(ctx, dao.DB, provider, instance, modelInfo); err != nil {
 			return nil, err
 		}
 	}
@@ -583,7 +583,7 @@ func (m *ModelProviderService) AddSystemModelInstance(ctx context.Context, provi
 		return nil, err
 	}
 	instanceName := strings.TrimSpace(request.InstanceName)
-	if err := ValidateProviderInstanceName(instanceName); err != nil {
+	if err = ValidateProviderInstanceName(instanceName); err != nil {
 		return nil, common.NewCodedError(common.CodeBadRequest, err.Error())
 	}
 	apiKey := NormalizeAPIKey(request.APIKey)
@@ -606,15 +606,15 @@ func (m *ModelProviderService) AddSystemModelInstance(ctx context.Context, provi
 		Status:       "active",
 		Extra:        extra,
 	}
-	if err := m.modelInstanceDAO.Create(ctx, dao.DB, &instance); err != nil {
+	if err = m.modelInstanceDAO.Create(ctx, dao.DB, &instance); err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "already exists") {
 			return nil, common.NewCodedError(common.CodeConflict, err.Error())
 		}
 		return nil, fmt.Errorf("failed to add system model instance: %w", err)
 	}
 	if configured {
-		if err := m.addModelsToNewInstance(ctx, provider, &instance, request.ModelInfo); err != nil {
-			if rollbackErr := m.rollbackCreatedInstance(ctx, instance.ID); rollbackErr != nil {
+		if err = m.addModelsToNewInstance(ctx, dao.DB, provider, &instance, request.ModelInfo); err != nil {
+			if _, rollbackErr := m.modelInstanceDAO.DeleteByIDs(ctx, dao.DB, []string{instance.ID}); rollbackErr != nil {
 				common.Logger.Error("failed to roll back system model instance after model creation failure", zap.String("instance_id", instance.ID), zap.Error(rollbackErr))
 			}
 			return nil, err
