@@ -26,11 +26,7 @@ import {
 import { useFindLlmByUuid } from '@/hooks/use-llm-request';
 import { useFetchUserInfo } from '@/hooks/use-user-setting-request';
 import { IClientConversation } from '@/interfaces/database/chat';
-<<<<<<< HEAD
-import { buildMessageUuidWithRole } from '@/utils/chat';
 import { hasManagePermissionPermission } from '@/utils/permission-util';
-=======
->>>>>>> dev-20261103-2
 import {
   deriveModelPreset,
   removeUselessFieldsFromValues,
@@ -270,40 +266,6 @@ const ChatCard = forwardRef(function ChatCard(
       </CardHeader>
       <CardContent className="flex-1 min-h-0">
         <div ref={messageContainerRef} className="h-full overflow-auto">
-<<<<<<< HEAD
-          <div className="w-full">
-            {derivedMessages?.map((message, i) => {
-              return (
-                <MessageItem
-                  loading={
-                    message.role === MessageType.Assistant &&
-                    sendLoading &&
-                    derivedMessages.length - 1 === i
-                  }
-                  key={buildMessageUuidWithRole(message)}
-                  item={message}
-                  nickname={userInfo.nickname}
-                  avatar={userInfo.avatar}
-                  avatarDialog={currentDialog.icon}
-                  reference={messageReferences.get(message) ?? EmptyReference}
-                  // clickDocumentButton={clickDocumentButton}
-                  index={i}
-                  removeMessageById={
-                    canManageChat ? removeMessageById : undefined
-                  }
-                  regenerateMessage={
-                    canManageChat ? regenerateMessage : undefined
-                  }
-                  isLast={i === derivedMessages.length - 1}
-                  sendLoading={sendLoading}
-                  clickDocumentButton={clickDocumentButton}
-                  showLikeButton={false}
-                ></MessageItem>
-              );
-            })}
-          </div>
-          <div ref={scrollRef} />
-=======
           <VirtualMessageList
             className="w-full"
             items={derivedMessages ?? []}
@@ -329,7 +291,6 @@ const ChatCard = forwardRef(function ChatCard(
               />
             )}
           />
->>>>>>> dev-20261103-2
         </div>
       </CardContent>
     </Card>

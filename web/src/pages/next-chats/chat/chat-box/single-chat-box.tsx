@@ -7,11 +7,7 @@ import { MessageType } from '@/constants/chat';
 import { useFetchChat, useGetChatSearchParams } from '@/hooks/use-chat-request';
 import { useFetchUserInfo } from '@/hooks/use-user-setting-request';
 import { IClientConversation } from '@/interfaces/database/chat';
-<<<<<<< HEAD
-import { buildMessageUuidWithRole } from '@/utils/chat';
 import { hasManagePermissionPermission } from '@/utils/permission-util';
-=======
->>>>>>> dev-20261103-2
 import { useEffect } from 'react';
 import {
   useGetSendButtonDisabled,
@@ -108,14 +104,8 @@ export function SingleChatBox({ conversation }: IProps) {
               reference={messageReferences.get(message) ?? EmptyReference}
               clickDocumentButton={clickDocumentButton}
               index={i}
-<<<<<<< HEAD
-              removeMessageById={canManageChat ? removeMessageById : undefined}
-              regenerateMessage={canManageChat ? regenerateMessage : undefined}
-              isLast={i === messages.length - 1}
-=======
               isLast={(messages?.length ?? 0) - 1 === i}
               removeMessageById={removeMessageById}
->>>>>>> dev-20261103-2
               deleteDisabled={message.awaitingServerId}
               sendLoading={sendLoading}
             />
