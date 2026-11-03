@@ -51,7 +51,7 @@ docker run --rm --entrypoint /app/.venv/bin/python3 \
   -v "$PWD:/w" -w /w 192.168.1.51/infiniflow-ai/deepdoc_cpu:latest \
   tools/scripts/<script>.py ...
 # or, against an already-running container:
-docker exec -w /ragflow/deepdoc_ee_models deepdoc_ee_cpu \
+docker exec -w /ragflow/deepdoc_ee_models deepdoc_cpu_ee \
   python tools/scripts/<script>.py ...
 ```
 

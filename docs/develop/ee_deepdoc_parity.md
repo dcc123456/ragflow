@@ -18,7 +18,7 @@
 
 ## 1. EE 2-class TSR vs OSS 6-class TSR (key concept)
 
-EE does **not** use the open-source 6-class PP-Det `TableStructureRecognizer`. EE replaces it with a self-developed **2-class YOLOv8 separator model** (vertical / horizontal). The two **coexist**: OSS in-process inference (`deepdoc` method) revives the open-source 6-class `RunTSR`; the EE docker (parse method `deepdoc_cpu_ee`, image tagged `deepdoc_ee_cpu`) serves the 2-class `RunTSREE` as an independent HTTP service.
+EE does **not** use the open-source 6-class PP-Det `TableStructureRecognizer`. EE replaces it with a self-developed **2-class YOLOv8 separator model** (vertical / horizontal). The two **coexist**: OSS in-process inference (`deepdoc` method) revives the open-source 6-class `RunTSR`; the EE docker (parse method `deepdoc_cpu_ee`, image tagged `deepdoc_cpu_ee`) serves the 2-class `RunTSREE` as an independent HTTP service.
 
 | | Classes | Model file | Call path | Deployment / routing |
 |---|---|---|---|---|

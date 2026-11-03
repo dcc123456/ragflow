@@ -46,7 +46,7 @@ deepdoc_svr.py, so override it:
       --out deepdoc_ee_models/tsr.ee.cpu.onnx
 
   # then convert the produced .onnx to the .ort the Go backend loads:
-  docker exec -w /ragflow/deepdoc_ee_models deepdoc_ee_cpu \
+  docker exec -w /ragflow/deepdoc_ee_models deepdoc_cpu_ee \
     python tools/scripts/convert_deepdoc_model.py --input tsr.ee.cpu.onnx
 
 After rebuilding, refresh the snapshot lock in

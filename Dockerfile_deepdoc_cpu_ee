@@ -16,12 +16,12 @@
 # DIFFERENT weights by design (OSS 6-class RunTSR is retired in EE).
 #
 # Build (context must be the worktree root so `internal`/`cmd`/`build.sh` resolve):
-#   docker build -f Dockerfile_deepdoc_ee_cpu -t deepdoc_ee_cpu:latest .
+#   docker build -f Dockerfile_deepdoc_cpu_ee -t deepdoc_cpu_ee:latest .
 # With China mirror:
-#   docker build --build-arg NEED_MIRROR=1 -f Dockerfile_deepdoc_ee_cpu -t deepdoc_ee_cpu:latest .
+#   docker build --build-arg NEED_MIRROR=1 -f Dockerfile_deepdoc_cpu_ee -t deepdoc_cpu_ee:latest .
 #
 # Run:
-#   docker run -p 8001:8001 -e EE_MODEL_DIR=/ragflow/models deepdoc_ee_cpu
+#   docker run -p 8001:8001 -e EE_MODEL_DIR=/ragflow/models deepdoc_cpu_ee
 # Probe:
 #   curl -F request=@table.png http://localhost:8001/predict/tsr
 #   curl -F request=@page.png  http://localhost:8001/predict/dla
