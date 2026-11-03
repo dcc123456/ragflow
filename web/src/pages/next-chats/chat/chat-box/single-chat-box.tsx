@@ -2,12 +2,16 @@ import { NextMessageInput } from '@/components/message-input/next';
 import MessageItem from '@/components/message-item';
 import PdfSheet from '@/components/pdf-drawer';
 import { useClickDrawer } from '@/components/pdf-drawer/hooks';
+import { VirtualMessageList } from '@/components/virtual-message-list';
 import { MessageType } from '@/constants/chat';
 import { useFetchChat, useGetChatSearchParams } from '@/hooks/use-chat-request';
 import { useFetchUserInfo } from '@/hooks/use-user-setting-request';
 import { IClientConversation } from '@/interfaces/database/chat';
+<<<<<<< HEAD
 import { buildMessageUuidWithRole } from '@/utils/chat';
 import { hasManagePermissionPermission } from '@/utils/permission-util';
+=======
+>>>>>>> dev-20261103-2
 import { useEffect } from 'react';
 import {
   useGetSendButtonDisabled,
@@ -26,7 +30,7 @@ interface IProps {
 export function SingleChatBox({ conversation }: IProps) {
   const {
     value,
-    scrollRef,
+    virtualizer,
     messageContainerRef,
     sendLoading,
     messages,
@@ -86,31 +90,37 @@ export function SingleChatBox({ conversation }: IProps) {
         ref={messageContainerRef}
         className="p-5 flex-1 overflow-auto min-h-0 scrollbar-auto"
       >
-        <div className="w-full pr-5">
-          {messages?.map((message, i) => (
+        <VirtualMessageList
+          className="w-full pr-5"
+          items={messages ?? []}
+          virtualizer={virtualizer}
+          renderItem={(message, i) => (
             <MessageItem
               loading={
                 message.role === MessageType.Assistant &&
                 sendLoading &&
-                messages.length - 1 === i
+                (messages?.length ?? 0) - 1 === i
               }
-              key={buildMessageUuidWithRole(message)}
-              item={message}
               nickname={userInfo.nickname}
               avatar={userInfo.avatar}
               avatarDialog={currentDialog.icon}
+              item={message}
               reference={messageReferences.get(message) ?? EmptyReference}
               clickDocumentButton={clickDocumentButton}
               index={i}
+<<<<<<< HEAD
               removeMessageById={canManageChat ? removeMessageById : undefined}
               regenerateMessage={canManageChat ? regenerateMessage : undefined}
               isLast={i === messages.length - 1}
+=======
+              isLast={(messages?.length ?? 0) - 1 === i}
+              removeMessageById={removeMessageById}
+>>>>>>> dev-20261103-2
               deleteDisabled={message.awaitingServerId}
               sendLoading={sendLoading}
             />
-          ))}
-        </div>
-        <div ref={scrollRef} />
+          )}
+        />
       </div>
 
       <div className="p-5 pt-0">
