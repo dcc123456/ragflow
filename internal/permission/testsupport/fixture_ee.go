@@ -73,10 +73,9 @@ func PrepareEnterprisePermissionFixture(db *gorm.DB, tenantID string, memberIDs 
 	return grantLegacyTeamResources(db, tenantID)
 }
 
-// ensureTenantOwner promotes the earliest joined member when the test tenant has
-// no owner. The enterprise policy resolves integration resources (MCP servers,
-// model providers, skill spaces) through the tenant owner, which community-era
-// fixtures never seeded because the community policy never needed one.
+// ensureTenantOwner fills in an owner missing from community-era test fixtures.
+// The fixtures commonly use tenant_id == owner user_id for personal tenants,
+// while model-provider fixtures carry the owner in tenant_model_provider.user_id.
 func ensureTenantOwner(db *gorm.DB, tenantID string) error {
 	var count int64
 	if err := db.Model(&entity.UserTenant{}).
@@ -88,16 +87,42 @@ func ensureTenantOwner(db *gorm.DB, tenantID string) error {
 		return nil
 	}
 	var membership entity.UserTenant
-	err := db.Where("tenant_id = ? AND status = ?", tenantID, entity.TenantMembershipStatusJoined).
-		Order("id").Take(&membership).Error
+	var ownerUserID = tenantID
+	ownerInferredFromProvider := false
+	err := db.Where("tenant_id = ? AND user_id = ?", tenantID, ownerUserID).Take(&membership).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) && db.Migrator().HasTable(&entity.TenantModelProvider{}) {
+		var provider entity.TenantModelProvider
+		providerErr := db.Where("tenant_id = ?", tenantID).Order("id").Take(&provider).Error
+		if providerErr == nil && provider.UserID != "" {
+			ownerUserID = provider.UserID
+			ownerInferredFromProvider = true
+			err = db.Where("tenant_id = ? AND user_id = ?", tenantID, ownerUserID).Take(&membership).Error
+		} else if providerErr != nil && !errors.Is(providerErr, gorm.ErrRecordNotFound) {
+			return fmt.Errorf("load test tenant model provider: %w", providerErr)
+		}
+	}
+	if errors.Is(err, gorm.ErrRecordNotFound) && !ownerInferredFromProvider {
+		err = db.Where("tenant_id = ? AND status = ?", tenantID, entity.TenantMembershipStatusJoined).
+			Order("id").Take(&membership).Error
+	}
 	if errors.Is(err, gorm.ErrRecordNotFound) {
+		if err := ensureUser(db, ownerUserID); err != nil {
+			return err
+		}
+		status := entity.TenantMembershipStatusJoined
+		if err := db.Create(&entity.UserTenant{
+			ID: common.GenerateToken(), UserID: ownerUserID, TenantID: tenantID,
+			Role: string(permission.RoleOwner), Status: &status,
+		}).Error; err != nil {
+			return fmt.Errorf("create test tenant owner membership: %w", err)
+		}
 		return nil
 	}
 	if err != nil {
 		return fmt.Errorf("load test tenant membership: %w", err)
 	}
 	if err := db.Model(&entity.UserTenant{}).Where("id = ?", membership.ID).
-		Update("role", string(permission.RoleOwner)).Error; err != nil {
+		Updates(map[string]any{"role": string(permission.RoleOwner), "status": entity.TenantMembershipStatusJoined}).Error; err != nil {
 		return fmt.Errorf("promote test tenant owner: %w", err)
 	}
 	return nil

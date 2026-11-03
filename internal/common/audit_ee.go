@@ -5,6 +5,7 @@ package common
 import (
 	"errors"
 	"path/filepath"
+	"time"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -81,19 +82,34 @@ func initFileAuditLog(file FileOutput, serviceName string) error {
 	return nil
 }
 
+type OperationLog struct {
+	EventTime     time.Time      `json:"event_time"`
+	UserID        string         `json:"user_id"`
+	IPAddress     string         `json:"ip_address"`
+	Operation     string         `json:"operation"`
+	APIPath       string         `json:"api_path"`
+	HTTPMethod    string         `json:"http_method"`
+	RequestParams string         `json:"request_params"`
+	Resources     map[string]any `json:"resources"`
+	Code          int            `json:"code"`
+	Error         error          `json:"error"`
+	DurationMS    int64          `json:"duration_ms"`
+}
+
 func Audit(operationLog *OperationLog, fields ...zap.Field) {
+	if AuditLogger == nil || operationLog == nil {
+		return
+	}
+
 	fields = append(fields,
 		zap.Time("time", operationLog.EventTime),
 		zap.String("user_id", operationLog.UserID),
-		zap.String("user_name", operationLog.UserName),
 		zap.String("ip_address", operationLog.IPAddress),
 		zap.String("operation", operationLog.Operation),
 		zap.String("api_path", operationLog.APIPath),
 		zap.String("http_method", operationLog.HTTPMethod),
-		zap.String("resource_type", operationLog.ResourceType),
-		zap.String("resource_id", operationLog.ResourceID),
-		zap.String("resource_name", operationLog.ResourceName),
 		zap.String("request_params", operationLog.RequestParams),
+		zap.Any("resources", operationLog.Resources),
 		zap.Int("code", operationLog.Code),
 		zap.Error(operationLog.Error),
 		zap.Int64("duration_ms", operationLog.DurationMS),

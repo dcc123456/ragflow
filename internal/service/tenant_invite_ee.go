@@ -51,10 +51,7 @@ func resolveTenantInviteRoleEE(tx *gorm.DB, tenantID string) (tenantInviteRole, 
 }
 
 func (s *TenantService) checkTenantInviteEnabledEE(ctx context.Context, tenantID string) (common.ErrorCode, bool, error) {
-	if s.tenantDAO == nil {
-		return common.CodeServerError, true, fmt.Errorf("tenantDAO not initialized")
-	}
-	tenant, err := s.tenantDAO.GetByID(ctx, dao.DB, tenantID)
+	tenant, err := dao.NewTenantDAO().GetByID(ctx, dao.DB, tenantID)
 	if err != nil {
 		if dao.IsNotFoundErr(err) {
 			return common.CodeDataError, true, fmt.Errorf("tenant not found")
