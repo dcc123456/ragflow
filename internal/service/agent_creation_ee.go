@@ -19,6 +19,7 @@ package service
 import (
 	"context"
 
+	"ragflow/internal/dao"
 	"ragflow/internal/permission"
 )
 
@@ -27,7 +28,8 @@ func prepareAgentCreation(ctx context.Context, userID string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := checkFeatureAction(ctx, userID, "agent", permission.ActionWrite); err != nil {
+	if err := permission.NewDatabaseChecker(dao.DB).CheckFeature(ctx,
+		permission.Subject{UserID: userID, TenantID: tenantID}, "agent", permission.ActionWrite); err != nil {
 		return "", err
 	}
 	return tenantID, nil
