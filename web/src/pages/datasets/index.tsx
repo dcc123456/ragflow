@@ -163,9 +163,9 @@ export default function Datasets() {
                 isSearch
                 type={EmptyCardType.Dataset}
                 onClick={() => showModal()}
-                />
-              </div>
-            )}
+              />
+            </div>
+          )}
           <CardContainer className="flex-1 overflow-auto px-8">
             {kbs.map((dataset) => {
               return (

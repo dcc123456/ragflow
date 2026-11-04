@@ -17,9 +17,7 @@
 import Spotlight from '@/components/spotlight';
 import { PrivilegeManagementDialog } from '@/components/privilege-management/privilege-management-dialog';
 import { IPrivilegeManagementInitialValues } from '@/components/privilege-management/interface';
-import {
-  PermissionResourceType,
-} from '@/constants/team';
+import { PermissionResourceType } from '@/constants/team';
 import { ProviderInstanceCardWithPrivilege } from '@/ee/pages/user-setting/setting-model/provider-instance-card-with-privilege';
 import { useTranslate } from '@/hooks/common-hooks';
 import {

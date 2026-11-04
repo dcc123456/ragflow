@@ -40,11 +40,9 @@ export default function Chat() {
   const { removeChatBox, addChatBox, chatBoxIds, hasSingleChatBox } =
     useAddChatBox(isDebugMode);
 
-
   const { conversationId, isNew } = useGetChatSearchParams();
 
   const { data: dialogList } = useFetchSessionList();
-
 
   const currentConversationName = useMemo(() => {
     return (
