@@ -21,7 +21,6 @@ import {
 import { PenLine, Trash2 } from 'lucide-react';
 import { MouseEventHandler, PropsWithChildren, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import useDuplicateDataset from './use-duplicate-dataset';
 import { useRenameDataset } from './use-rename-dataset';
 
 type IDatasetDropdownProps = {

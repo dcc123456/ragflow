@@ -28,7 +28,6 @@ import authorizationUtil, {
   getAuthorization,
 } from '@/utils/authorization-util';
 import notification from '@/utils/notification';
-import { redirectToLogin } from '@/utils/private-util';
 import { RequestMethod, extend } from 'umi-request';
 import api from './api';
 import { convertTheKeysOfTheObjectToSnake, isFormData } from './common-util';
