@@ -18,6 +18,8 @@ import { IconFontFill } from '@/components/icon-font';
 import { RAGFlowAvatar } from '@/components/ragflow-avatar';
 import ThemeSwitch from '@/components/theme-switch';
 import { Button } from '@/components/ui/button';
+import { Domain } from '@/constants/common';
+import { useSettingMenuItems } from '@/ee/pages/user-setting/sidebar/use-setting-menu';
 import { useLogout } from '@/hooks/use-login-request';
 import {
   useFetchEnableAdmin,
@@ -108,53 +110,12 @@ export function SideBar() {
   const { handleMenuClick, active: activeItemKey } = useHandleMenuClick();
   const { version, fetchSystemVersion } = useFetchSystemVersion();
   const { t } = useTranslation();
-  const { data: isAdmin } = useFetchIsAdmin();
-  const { data: enableAdmin } = useFetchEnableAdmin();
-  const { data: exposeModelProvider } = useFetchExposeModelProvider();
-  const { data: exposeApi } = useFetchExposeApi();
 
   useEffect(() => {
     fetchSystemVersion();
   }, [fetchSystemVersion]);
   const { logout } = useLogout();
-  const { data: currentPlan } = useFetchCurrentPlan();
-
-  const items = useMemo(() => {
-    const menus: MenuItem[] = [...menuItems(t)];
-    if (isBillingEnabled()) {
-      const billingMenuItem: MenuItem = {
-        icon: <ReceiptText className="size-[1em]" />,
-        label: t('setting.billing'),
-        key: PrivateRoutes.Billing,
-      };
-      menus.splice(3, 0, billingMenuItem);
-    }
-    return menus.filter((x) => {
-      if (x.key === Routes.Api) {
-        if (
-          exposeApi ||
-          (currentPlan?.plan_name &&
-            [PriceName.Starter, PriceName.Pro].includes(
-              currentPlan.plan_name as PriceName,
-            ))
-        ) {
-          return true;
-        }
-        return false;
-      }
-
-      if (x.key === Routes.Model) {
-        if (exposeModelProvider) {
-          return true;
-        }
-        if (enableAdmin && !isAdmin) {
-          return false;
-        }
-      }
-
-      return x;
-    });
-  }, [enableAdmin, isAdmin, exposeModelProvider, exposeApi, t, currentPlan]);
+  const items = useSettingMenuItems(menuItems(t));
 
   return (
     <aside className="shrink-0 w-16 md:w-[303px] bg-bg-base flex flex-col overflow-hidden">

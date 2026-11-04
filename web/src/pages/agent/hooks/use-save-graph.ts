@@ -4,16 +4,16 @@ import { useModelValidIds } from '@/hooks/use-llm-request';
 import { Operator } from '../constant';
 import {
   useFetchAgent,
-  useFetchCanvasPresence,
   useResetAgent,
   useSaveAgent,
 } from '@/hooks/use-agent-request';
+import { useFetchCanvasPresence } from '@/ee/hooks/use-agent-presence';
 import {
   GlobalVariableType,
   RAGFlowNodeType,
 } from '@/interfaces/database/agent';
 import { formatDate } from '@/utils/date';
-import { disableEditButton } from '@/utils/permission-util';
+import { canEditAgent } from '@/ee/pages/agent/can-edit-agent';
 import i18n from '@/locales/config';
 import { useDebounceEffect } from 'ahooks';
 import { useCallback, useEffect, useState } from 'react';
@@ -182,7 +182,7 @@ export const useWatchAgentChange = (chatDrawerVisible: boolean) => {
         nodeCount: nodes.length,
         edgeCount: edges.length,
       }) ||
-      disableEditButton(presence.operator_permission ?? 0)
+      !canEditAgent(presence.operator_permission ?? 0)
     ) {
       return;
     }

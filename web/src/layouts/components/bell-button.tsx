@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { BellRing } from 'lucide-react';
-import { TeamInvitationReminderDialog } from './team-invitation-reminder-dialog';
+import { TeamInvitationReminderDialog } from '@/ee/layouts/components/team-invitation-reminder-dialog';
 
 export function BellButton({ className }: { className?: string }) {
   return (

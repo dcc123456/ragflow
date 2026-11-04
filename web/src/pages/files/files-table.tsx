@@ -61,7 +61,7 @@ type FilesTableProps = Pick<
   Pick<UseRowSelectionType, 'rowSelection' | 'setRowSelection'> &
   UseMoveDocumentShowType & {
     connectKnowledgeModal: UseHandleConnectToKnowledgeReturnType;
-    showPrivilegeModal(record: IFile): void;
+    showPrivilegeModal?(record: IFile): void;
   };
 
 export function FilesTable({

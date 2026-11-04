@@ -1,5 +1,4 @@
-import QueryClientSingleton from '@/utils/query-client-singleton';
-import { QueryClientProvider } from '@tanstack/react-query';
+import { EnterpriseModalProvider } from '@/ee/components/modal-provider';
 import { ReactNode, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
@@ -76,9 +75,9 @@ export const createPortalModal = () => {
     };
     root?.render(
       isVisible ? (
-        <QueryClientProvider client={QueryClientSingleton.getInstance()}>
+        <EnterpriseModalProvider>
           <PortalModal {...modalParam} />
-        </QueryClientProvider>
+        </EnterpriseModalProvider>
       ) : null,
     );
   };

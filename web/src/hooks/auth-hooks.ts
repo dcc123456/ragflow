@@ -15,6 +15,7 @@
  */
 
 import message from '@/components/ui/message';
+import { useEnterpriseAuthRedirect } from '@/ee/hooks/auth-hooks-private';
 import authorizationUtil, {
   type CredentialStorage,
 } from '@/utils/authorization-util';
@@ -57,10 +58,7 @@ export const useLoginWithGithub = () => {
 export const useAuth = (
   credentialStorage: CredentialStorage = authorizationUtil,
 ) => {
-  const value = useLoginWithGithub();
-
-  const auth = value?.auth;
-  const redirectUrl = value?.redirectUrl;
+  const redirectUrl = useEnterpriseAuthRedirect();
 
   const [isLogin, setIsLogin] = useState<Nullable<boolean>>(null);
 

@@ -32,14 +32,13 @@ import weekYear from 'dayjs/plugin/weekYear';
 import weekday from 'dayjs/plugin/weekday';
 import React from 'react';
 import { RouterProvider } from 'react-router';
-import StarModal from './components/star-modal';
+import StarModal from '@/ee/components/star-modal';
+import { routers } from '@/ee/merge-routes';
 import { ThemeProvider } from './components/theme-provider';
 import { TooltipProvider } from './components/ui/tooltip';
 import { ThemeEnum } from './constants/common';
-// import { getRouter } from './routes';
 
 import 'react-photo-view/dist/react-photo-view.css';
-import { routers } from './merge-routes';
 
 configResponsive({
   sm: 640,

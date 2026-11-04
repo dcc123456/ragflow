@@ -18,7 +18,7 @@ import { FileUploadProps } from '@/components/file-upload';
 import { useHandleFilterSubmit } from '@/components/list-filter-bar/use-handle-filter-submit';
 import message from '@/components/ui/message';
 import { AgentCategory, AgentGlobals } from '@/constants/agent';
-import { Permission } from '@/constants/team';
+import { Permission } from '@/ee/constants/team';
 import { ListDeletionKey } from '@/constants/list-deletion';
 import { useFetchTenantInfo } from '@/hooks/use-user-setting-request';
 import {
@@ -363,7 +363,7 @@ export const useDeleteAgent = () => {
         });
         markListItemsDeleted(ListDeletionKey.AgentList);
       }
-      return data?.data ?? false;
+      return data?.code;
     },
   });
 
@@ -1211,7 +1211,7 @@ export const useCancelDataflow = () => {
       if (ret?.data?.code === 0) {
         message.success('success');
       } else {
-        message.error(ret?.data?.data);
+        message.error(ret?.data?.message);
       }
       return ret?.data?.code;
     },

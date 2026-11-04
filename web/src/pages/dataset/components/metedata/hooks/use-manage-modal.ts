@@ -1,7 +1,7 @@
 import message from '@/components/ui/message';
+import { useSaveBuiltinMetadata } from '@/ee/pages/dataset/components/metedata/hooks/use-save-builtin-metadata';
 import { useSetModalState } from '@/hooks/common-hooks';
 import { useSelectedIds } from '@/hooks/logic-hooks/use-row-selection';
-import { useFetchKnowledgeBaseConfiguration } from '@/hooks/use-knowledge-request';
 import { DocumentApiAction } from '@/hooks/use-document-request';
 import {
   getMetaDataService,
@@ -9,7 +9,6 @@ import {
   updateDocumentMetaDataConfig,
   updateDocumentsMetadata,
 } from '@/services/knowledge-service';
-import { hasManagePermissionPermission } from '@/utils/permission-util';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { RowSelectionState } from '@tanstack/react-table';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -296,10 +295,7 @@ export const useManageMetaDataModal = (
   const { id } = useParams();
   const { t } = useTranslation();
   const { data, loading } = useFetchMetaDataManageData(type, documentIds);
-  const { data: knowledgeDetails } = useFetchKnowledgeBaseConfiguration();
-  const canManageDocument = hasManagePermissionPermission(
-    knowledgeDetails.operator_permission,
-  );
+  const { saveBuiltinMetadata } = useSaveBuiltinMetadata();
 
   const [tableData, setTableData] = useState<IMetaDataTableData[]>(metaData);
   const queryClient = useQueryClient();
@@ -475,16 +471,12 @@ export const useManageMetaDataModal = (
         case MetadataType.UpdateSingle:
           // handleSaveUpdateSingle(callback);
           handleSaveManage(callback);
-          if (builtInMetadata && documentIds?.length && canManageDocument) {
-            await updateDocumentMetaDataConfig({
-              kb_id: id || '',
-              doc_id: documentIds[0],
-              data: {
-                metadata: util.tableDataToMetaDataSettingJSON(tableData),
-                builtInMetadata,
-              },
-            });
-          }
+          await saveBuiltinMetadata({
+            kbId: id,
+            documentId: documentIds?.[0],
+            builtInMetadata,
+            metadata: util.tableDataToMetaDataSettingJSON(tableData),
+          });
           break;
         case MetadataType.Manage:
           handleSaveManage(callback);
@@ -500,12 +492,12 @@ export const useManageMetaDataModal = (
       }
     },
     [
+      id,
       documentIds,
       tableData,
-      id,
       handleSaveManage,
       type,
-      canManageDocument,
+      saveBuiltinMetadata,
       // handleSaveUpdateSingle,
       handleSaveSettings,
       handleSaveSingleFileSettings,

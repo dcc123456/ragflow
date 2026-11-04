@@ -15,7 +15,7 @@
  */
 
 import { useLogout } from '@/hooks/use-login-request';
-import { PrivateRoutes } from '@/private-routes';
+import { PrivateRoutes } from '@/ee/private-routes';
 import { Routes } from '@/routes';
 import { useCallback, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';

@@ -15,6 +15,7 @@
  */
 
 import { Modal } from '@/components/ui/modal/modal';
+import { useEmptyModelWarning } from '@/ee/hooks/use-empty-model-warning';
 import DOMPurify from 'dompurify';
 import { isEmpty } from 'lodash';
 import { useEffect } from 'react';
@@ -39,41 +40,41 @@ export const useWarnEmptyModel = (
   const { data: isAdmin, loading: isAdminLoading } = useFetchIsAdmin();
   const { data: enableAdmin, loading: enableAdminLoading } =
     useFetchEnableAdmin();
+  const { isChecking, showWarning } = useEmptyModelWarning();
 
   useEffect(() => {
     if (
       !isAdminLoading &&
       !enableAdminLoading &&
       !loading &&
+      !isChecking &&
       (isEmpty(embdId) || isEmpty(llmId)) &&
       typeof embdId === 'string' &&
       typeof llmId === 'string' &&
       showEmptyModelWarn
     ) {
-      if (enableAdmin && !isAdmin) {
-        toast.warning(t('setting.requestAdminAddModel'), {
-          position: 'top-center',
-          closeButton: false,
-          duration: 5000,
-          id: 'model-providers-warn', // Add a unique ID to prevent duplicate toasts
-        });
-      } else {
-        Modal.warning({
-          title: t('common.warn'),
-          content: (
-            <div
-              dangerouslySetInnerHTML={{
-                __html: DOMPurify.sanitize(t('setting.modelProvidersWarn')),
-              }}
-            ></div>
-          ),
-          closable: false,
-          showCancel: false,
-          onOk() {
-            navigateToModelSetting();
-          },
-        });
+      if (showWarning()) {
+        return;
       }
+
+      // warnedRef.current = true;
+      isWarningVisible = true;
+      Modal.warning({
+        title: t('common.warn'),
+        content: (
+          <div
+            dangerouslySetInnerHTML={{
+              __html: DOMPurify.sanitize(t('setting.modelProvidersWarn')),
+            }}
+          ></div>
+        ),
+        closable: false,
+        showCancel: false,
+        onOk() {
+          isWarningVisible = false;
+          navigateToModelSetting();
+        },
+      });
     }
   }, [
     showEmptyModelWarn,
@@ -86,5 +87,7 @@ export const useWarnEmptyModel = (
     enableAdmin,
     isAdminLoading,
     enableAdminLoading,
+    isChecking,
+    showWarning,
   ]);
 };

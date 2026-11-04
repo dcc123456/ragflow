@@ -19,8 +19,12 @@ import {
   ConfirmDeleteDialog,
   ConfirmDeleteDialogNode,
 } from '@/components/confirm-delete-dialog';
-import { PrivilegeManagementDialog } from '@/components/privilege-management/privilege-management-dialog';
-import Spotlight from '@/components/spotlight';
+import { PrivilegeManagementDialog } from '@/ee/components/privilege-management/privilege-management-dialog';
+import {
+  McpEmptyStateGuard,
+  McpSelectionBarGuard,
+  McpToolbarGuard,
+} from '@/ee/pages/user-setting/mcp/mcp-list-guard';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { SearchInput } from '@/components/ui/input';
@@ -29,11 +33,8 @@ import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
 import { ListDeletionKey } from '@/constants/list-deletion';
 import { useGoToPreviousPageOnEmpty } from '@/hooks/logic-hooks';
 import { useClearSelectionOnPageChange } from '@/hooks/logic-hooks/use-clear-selection-on-page-change';
+import { useExitMcpSelectionWithoutOwner } from '@/ee/pages/user-setting/mcp/use-exit-mcp-selection-without-owner';
 import { useListMcpServer } from '@/hooks/use-mcp-request';
-import {
-  hasOwnerPermission,
-  hasPreviewPermission,
-} from '@/utils/permission-util';
 import { pick } from 'lodash';
 import {
   Download,
@@ -43,7 +44,7 @@ import {
   Trash2,
   Upload,
 } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ProfileSettingWrapperCard } from '../components/user-setting-header';
 import { EditMcpDialog } from './edit-mcp-dialog';
@@ -52,10 +53,9 @@ import { McpCard } from './mcp-card';
 import { useBulkOperateMCP } from './use-bulk-operate-mcp';
 import { useEditMcp } from './use-edit-mcp';
 import { useImportMcp } from './use-import-mcp';
-import { useShowPrivilegeDialog } from './use-show-privilege-dialog';
+import { useShowPrivilegeDialog } from '@/ee/pages/user-setting/mcp/use-show-privilege-dialog';
 
 export default function McpServer() {
-
   const {
     editVisible,
     showEditModal,
@@ -106,21 +106,15 @@ export default function McpServer() {
 
   const [isSelectionMode, setSelectionMode] = useState(false);
 
-  const hasAnyWritePermission =
-    data.mcp_servers?.length === 0 ||
-    data.mcp_servers?.some(
-      (item) => !hasPreviewPermission(item.operator_permission),
-    );
+  const exitSelectionMode = useCallback(() => {
+    setSelectionMode(false);
+  }, []);
 
-  const hasAnyOwnerPermission = data.mcp_servers?.some((item) =>
-    hasOwnerPermission(item.operator_permission),
+  useExitMcpSelectionWithoutOwner(
+    data.mcp_servers,
+    isSelectionMode,
+    exitSelectionMode,
   );
-
-  useEffect(() => {
-    if (!hasAnyOwnerPermission && isSelectionMode) {
-      setSelectionMode(false);
-    }
-  }, [hasAnyOwnerPermission, isSelectionMode]);
 
   const handlePageChange = useCallback(
     (page: number, pageSize?: number) => {
@@ -155,29 +149,29 @@ export default function McpServer() {
               onChange={handleInputChange}
               placeholder={t('common.search')}
             />
-            {hasAnyWritePermission && (
-              <>
-                {hasAnyOwnerPermission && (
-                  <Button variant="outline" onClick={switchSelectionMode}>
-                    {isSelectionMode ? (
-                      <ListChecks className="size-3.5" />
-                    ) : (
-                      <LayoutList className="size-3.5" />
-                    )}
-                    {t(
-                      `mcp.${isSelectionMode ? 'exitBulkManage' : 'bulkManage'}`,
-                    )}
-                  </Button>
-                )}
-                <Button variant="outline" onClick={showImportModal}>
-                  <Download className="size-3.5" />
-                  {t('mcp.import')}
+            <McpToolbarGuard
+              mcpList={data.mcp_servers}
+              bulkManageButton={
+                <Button variant="outline" onClick={switchSelectionMode}>
+                  {isSelectionMode ? (
+                    <ListChecks className="size-3.5" />
+                  ) : (
+                    <LayoutList className="size-3.5" />
+                  )}
+                  {t(
+                    `mcp.${isSelectionMode ? 'exitBulkManage' : 'bulkManage'}`,
+                  )}
                 </Button>
-                <Button onClick={showEditModal('')}>
-                  <Plus /> {t('mcp.addMCP')}
-                </Button>
-              </>
-            )}
+              }
+            >
+              <Button variant="outline" onClick={showImportModal}>
+                <Download className="size-3.5" />
+                {t('mcp.import')}
+              </Button>
+              <Button onClick={showEditModal('')}>
+                <Plus /> {t('mcp.addMCP')}
+              </Button>
+            </McpToolbarGuard>
           </div>
         </header>
       }
@@ -185,46 +179,48 @@ export default function McpServer() {
       <div className="h-full p-5 overflow-x-hidden overflow-y-auto">
         {data.mcp_servers?.length ? (
           <>
-            {isSelectionMode && hasAnyOwnerPermission && (
-              <section className="pb-5 flex items-center">
-                <Checkbox
-                  id="all"
-                  checked={selectAllChecked}
-                  onCheckedChange={handleSelectAll}
-                />
-                <Label
-                  className="pl-2 text-text-primary cursor-pointer"
-                  htmlFor="all"
-                >
-                  {t('common.selectAll')}
-                </Label>
-                <span className="text-text-secondary pr-10 pl-5">
-                  {t('mcp.selected')} {selectedList.length}
-                </span>
-                <div className="flex gap-10 items-center">
-                  <Button variant={'secondary'} onClick={handleExportMcp}>
-                    <Upload className="size-3.5"></Upload>
-                    {t('mcp.export')}
-                  </Button>
-                  <ConfirmDeleteDialog
-                    onOk={handleDelete}
-                    title={t('common.delete') + ' ' + t('mcp.mcpServers')}
-                    content={{
-                      title: t('common.deleteThem'),
-                      node: (
-                        <ConfirmDeleteDialogNode
-                          name={`${t('mcp.selected')} ${selectedList.length} ${t('mcp.mcpServers')}`}
-                        ></ConfirmDeleteDialogNode>
-                      ),
-                    }}
+            {isSelectionMode && (
+              <McpSelectionBarGuard mcpList={data.mcp_servers}>
+                <section className="pb-5 flex items-center">
+                  <Checkbox
+                    id="all"
+                    checked={selectAllChecked}
+                    onCheckedChange={handleSelectAll}
+                  />
+                  <Label
+                    className="pl-2 text-text-primary cursor-pointer"
+                    htmlFor="all"
                   >
-                    <Button variant={'danger'}>
-                      <Trash2 className="size-3.5 cursor-pointer" />
-                      {t('common.delete')}
+                    {t('common.selectAll')}
+                  </Label>
+                  <span className="text-text-secondary pr-10 pl-5">
+                    {t('mcp.selected')} {selectedList.length}
+                  </span>
+                  <div className="flex gap-10 items-center">
+                    <Button variant={'secondary'} onClick={handleExportMcp}>
+                      <Upload className="size-3.5"></Upload>
+                      {t('mcp.export')}
                     </Button>
-                  </ConfirmDeleteDialog>
-                </div>
-              </section>
+                    <ConfirmDeleteDialog
+                      onOk={handleDelete}
+                      title={t('common.delete') + ' ' + t('mcp.mcpServers')}
+                      content={{
+                        title: t('common.deleteThem'),
+                        node: (
+                          <ConfirmDeleteDialogNode
+                            name={`${t('mcp.selected')} ${selectedList.length} ${t('mcp.mcpServers')}`}
+                          ></ConfirmDeleteDialogNode>
+                        ),
+                      }}
+                    >
+                      <Button variant={'danger'}>
+                        <Trash2 className="size-3.5 cursor-pointer" />
+                        {t('common.delete')}
+                      </Button>
+                    </ConfirmDeleteDialog>
+                  </div>
+                </section>
+              </McpSelectionBarGuard>
             )}
             <CardContainer>
               {data.mcp_servers.map((item) => (
@@ -248,24 +244,20 @@ export default function McpServer() {
             </div>
           </>
         ) : (
-          <div
-            className={
-              hasAnyWritePermission
-                ? 'flex items-center justify-between border border-dashed border-border-button rounded-md p-10 cursor-pointer w-[590px]'
-                : 'flex items-center justify-between border border-dashed border-border-button rounded-md p-10 w-[590px]'
-            }
-            onClick={hasAnyWritePermission ? showEditModal('') : undefined}
-          >
-            <div className="text-text-secondary text-sm">
-              {t('empty.noMCP')}
-            </div>
-            {hasAnyWritePermission && (
+          <McpEmptyStateGuard
+            mcpList={data.mcp_servers}
+            addButton={
               <Button variant="outline">
                 <Plus />
                 {t('empty.addNow')}
               </Button>
-            )}
-          </div>
+            }
+            onClickAdd={showEditModal('')}
+          >
+            <div className="text-text-secondary text-sm">
+              {t('empty.noMCP')}
+            </div>
+          </McpEmptyStateGuard>
         )}
       </div>
 
@@ -291,7 +283,6 @@ export default function McpServer() {
           initialValues={recordWithSourceType}
         />
       )}
-      <Spotlight />
     </ProfileSettingWrapperCard>
   );
 }

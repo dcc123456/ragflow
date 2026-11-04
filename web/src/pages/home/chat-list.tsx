@@ -1,6 +1,6 @@
 import { HomeCard } from '@/components/home-card';
 import { MoreButton } from '@/components/more-button';
-import { PrivilegeManagementDialog } from '@/components/privilege-management/privilege-management-dialog';
+import { PrivilegeManagementDialog } from '@/ee/components/privilege-management/privilege-management-dialog';
 import { RenameDialog } from '@/components/rename-dialog';
 import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
 import { useFetchChatList } from '@/hooks/use-chat-request';
@@ -8,7 +8,7 @@ import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChatDropdown } from '../next-chats/chat-dropdown';
 import { useRenameChat } from '../next-chats/hooks/use-rename-chat';
-import { useShowPrivilegeDialog } from '../next-chats/use-show-privilege-dialog';
+import { useShowPrivilegeDialog } from '@/ee/pages/next-chats/use-show-privilege-dialog';
 
 export function ChatList({
   setListLength,
@@ -43,7 +43,7 @@ export function ChatList({
 
   return (
     <>
-      {data.chats &&
+      {data?.chats &&
         data.chats.length > 0 &&
         data.chats.slice(0, 10).map((x) => (
           <HomeCard

@@ -16,6 +16,11 @@
  */
 
 import dayjs, { type ConfigType } from 'dayjs';
+import utc from 'dayjs/plugin/utc';
+
+// `parseDate` calls `.utc()` for strings that already carry a timezone
+// suffix; dayjs only exposes that method once the plugin is registered.
+dayjs.extend(utc);
 
 const hasTimezoneSuffix = (value: string) =>
   /(?:GMT|Z|[+-]\d{2}:?\d{2})$/.test(value.trim());
@@ -27,11 +32,12 @@ const parseDate = (date: ConfigType) => {
   return dayjs(date);
 };
 
-export function formatDate(date: ConfigType) {
+export function formatDate(date: ConfigType, format?: string) {
+  const thisFormat = format || 'DD/MM/YYYY HH:mm:ss';
   if (!date) {
     return '';
   }
-  return parseDate(date).format('DD/MM/YYYY HH:mm:ss');
+  return parseDate(date).format(thisFormat);
 }
 
 export function formatTime(date: ConfigType) {

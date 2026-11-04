@@ -1,7 +1,6 @@
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { EvaluationType } from '@/constants/evaluation';
-import { useEvaluationNavigate } from '@/ee/hooks/use-evaluation-navigate';
+import { ChatEvaluationButton } from '@/ee/pages/next-chats/chat/evaluation-button';
 import {
   useFetchSessionList,
   useFetchSessionManually,
@@ -41,13 +40,11 @@ export default function Chat() {
   const { removeChatBox, addChatBox, chatBoxIds, hasSingleChatBox } =
     useAddChatBox(isDebugMode);
 
-  const { navigateToEvaluation } = useEvaluationNavigate();
 
   const { conversationId, isNew } = useGetChatSearchParams();
 
   const { data: dialogList } = useFetchSessionList();
 
-  const { id } = useParams();
 
   const currentConversationName = useMemo(() => {
     return (
@@ -131,12 +128,7 @@ export default function Chat() {
                   <CardTitle className="flex justify-between items-center text-base gap-2">
                     <div className="truncate">{currentConversationName}</div>
                     <div className="flex gap-4 items-center">
-                      <Button
-                        variant={'ghost'}
-                        onClick={navigateToEvaluation(EvaluationType.Chat, id!)}
-                      >
-                        <ChartColumn /> {t('evaluation.title')}
-                      </Button>
+                      <ChatEvaluationButton />
                       <Button
                         variant="ghost"
                         onClick={switchDebugMode}

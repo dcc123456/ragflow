@@ -1,13 +1,13 @@
 import { HomeCard } from '@/components/home-card';
 import { IconFont } from '@/components/icon-font';
 import { MoreButton } from '@/components/more-button';
-import { PrivilegeManagementDialog } from '@/components/privilege-management/privilege-management-dialog';
+import { PrivilegeManagementDialog } from '@/ee/components/privilege-management/privilege-management-dialog';
 import { RenameDialog } from '@/components/rename-dialog';
 import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
 import { useEffect } from 'react';
 import { useFetchSearchList, useRenameSearch } from '../next-searches/hooks';
 import { SearchDropdown } from '../next-searches/search-dropdown';
-import { useShowPrivilegeDialog } from '../next-searches/use-show-privilege-dialog';
+import { useShowPrivilegeDialog } from '@/ee/pages/next-searches/use-show-privilege-dialog';
 
 export function SearchList({
   setListLength,

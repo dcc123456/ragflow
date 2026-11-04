@@ -1,13 +1,13 @@
 import { HomeCard } from '@/components/home-card';
 import { MoreButton } from '@/components/more-button';
-import { PrivilegeManagementDialog } from '@/components/privilege-management/privilege-management-dialog';
+import { PrivilegeManagementDialog } from '@/ee/components/privilege-management/privilege-management-dialog';
 import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
 import { useEffect } from 'react';
 import { AddOrEditModal } from '../memories/add-or-edit-modal';
 import { useFetchMemoryList, useRenameMemory } from '../memories/hooks';
 import { ICreateMemoryProps } from '../memories/interface';
 import { MemoryDropdown } from '../memories/memory-dropdown';
-import { useShowPrivilegeDialog } from '../memories/use-show-privilege-dialog';
+import { useShowPrivilegeDialog } from '@/ee/pages/memories/use-show-privilege-dialog';
 
 export function MemoryList({
   setListLength,

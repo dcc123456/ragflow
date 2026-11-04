@@ -10,6 +10,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { DatasetDropdownGuard } from '@/ee/pages/datasets/dataset-dropdown-guard';
+import useDuplicateDataset from '@/ee/pages/datasets/use-duplicate-dataset';
 import { useDeleteKnowledge } from '@/hooks/use-knowledge-request';
 import { IDataset } from '@/interfaces/database/dataset';
 import {
@@ -74,59 +76,44 @@ export function DatasetDropdown({
     <DropdownMenu>
       <DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>
       <DropdownMenuContent>
-        {hasManagePermissionPermission(dataset.operator_permission) && (
-          <DropdownMenuItem onClick={handleShowDatasetRenameModal}>
-            {t('common.rename')} <PenLine />
-          </DropdownMenuItem>
-        )}
-
-        {/* {hasManagePermissionPermission(dataset.operator_permission) && (
-          <DropdownMenuItem
-            onClick={(e) => {
-              e.stopPropagation();
-              showDatasetDuplicateModal(dataset);
-            }}
-          >
-            {t('common.duplicate')} <LucideCopy />
-          </DropdownMenuItem>
-        )} */}
-        {hasManagePermissionPermission(dataset.operator_permission) && (
-          <>
-            <DropdownMenuItem onClick={handlesShowPrivilegeModal}>
-              <PrivilegeDropdown></PrivilegeDropdown>
+        <DatasetDropdownGuard
+          dataset={dataset}
+          showPrivilegeModal={showPrivilegeModal}
+          manageItems={
+            <DropdownMenuItem onClick={handleShowDatasetRenameModal}>
+              {t('common.rename')} <PenLine />
             </DropdownMenuItem>
-          </>
-        )}
-
-        {hasOwnerPermission(dataset.operator_permission) && (
-          <>
-            <DropdownMenuSeparator />
-            <ConfirmDeleteDialog
-              onOk={handleDelete}
-              content={{
-                node: (
-                  <ConfirmDeleteDialogNode
-                    avatar={{ avatar: dataset.avatar, name: dataset.name }}
-                    name={dataset.name}
-                  />
-                ),
-              }}
-              title={t('deleteModal.delDataset')}
-            >
-              <DropdownMenuItem
-                className="text-state-error"
-                onSelect={(e) => {
-                  e.preventDefault();
+          }
+          deleteItems={
+            <>
+              <DropdownMenuSeparator />
+              <ConfirmDeleteDialog
+                onOk={handleDelete}
+                content={{
+                  node: (
+                    <ConfirmDeleteDialogNode
+                      avatar={{ avatar: dataset.avatar, name: dataset.name }}
+                      name={dataset.name}
+                    />
+                  ),
                 }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                }}
+                title={t('deleteModal.delDataset')}
               >
-                {t('common.delete')} <Trash2 />
-              </DropdownMenuItem>
-            </ConfirmDeleteDialog>
-          </>
-        )}
+                <DropdownMenuItem
+                  className="text-state-error"
+                  onSelect={(e) => {
+                    e.preventDefault();
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                  }}
+                >
+                  {t('common.delete')} <Trash2 />
+                </DropdownMenuItem>
+              </ConfirmDeleteDialog>
+            </>
+          }
+        />
       </DropdownMenuContent>
     </DropdownMenu>
   );

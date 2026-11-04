@@ -19,6 +19,8 @@
 
 import message from '@/components/ui/message';
 import { Authorization } from '@/constants/authorization';
+import { redirectToLogin } from '@/ee/utils/private-util';
+import { handleEnterpriseResponseError } from '@/ee/utils/response-private';
 import { ResponseType } from '@/interfaces/database/base';
 import i18n from '@/locales/config';
 import { isBillingEnabled } from '@/services/billingStatus';
@@ -133,7 +135,7 @@ const errorHandler = (error: {
       });
     }
   }
-  return response;
+  return response ?? ({ data: { code: 1999 } } as unknown as Response);
 };
 
 const request: RequestMethod = extend({
@@ -172,7 +174,7 @@ request.interceptors.request.use((url: string, options: any) => {
   };
 });
 
-request.interceptors.response.use(async (response: any, options: any) => {
+request.interceptors.response.use(async (response: Response, options: any) => {
   if (response?.status === 413 || response?.status === 504) {
     if (!options.noToast) {
       message.error(RetcodeMessage[response?.status as ResultCode]);
@@ -209,9 +211,7 @@ request.interceptors.response.use(async (response: any, options: any) => {
   // Per-request opt-out for response codes that the caller handles itself
   // (e.g. a vanished folder on a list request is a normal navigation case,
   // not a user-facing error).
-  const skipErrorCodes = (options as any)?.skipErrorCodes as
-    | number[]
-    | undefined;
+  const skipErrorCodes = options?.skipErrorCodes as number[] | undefined;
 
   const data: ResponseType = await response?.clone()?.json();
 
@@ -241,17 +241,8 @@ request.interceptors.response.use(async (response: any, options: any) => {
     authorizationUtil.removeAll();
     redirectToLogin();
   } else if (data?.code !== 0 && !skipErrorCodes?.includes(data?.code)) {
-    notification.error({
-      message: `${i18n.t('message.hint')} : ${data?.code}`,
-      description: data?.message,
-      duration: 3,
-    });
-  } else if (data?.code !== 0) {
-    if (!(await showBillingUpgradeModalIfNeeded(data))) {
-      if (
-        !options.noToast &&
-        !shouldSilent(options.url, data?.code, data?.message)
-      ) {
+    if (!(await handleEnterpriseResponseError(data, options))) {
+      if (!options.noToast) {
         notification.error({
           message: `${i18n.t('message.hint')} : ${data?.code}`,
           description: data?.message,

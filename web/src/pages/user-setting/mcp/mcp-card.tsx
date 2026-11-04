@@ -17,6 +17,7 @@
 import { SharedBadge } from '@/components/shared-badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
+import { McpSelectionGuard } from '@/ee/pages/user-setting/mcp/mcp-selection-guard';
 import { IMcpServer } from '@/interfaces/database/mcp';
 import { formatDate } from '@/utils/date';
 import { hasOwnerPermission } from '@/utils/permission-util';
@@ -67,7 +68,7 @@ export function McpCard({
           </h3>
           <div className="space-x-4">
             {isSelectionMode ? (
-              isOwner ? (
+              <McpSelectionGuard mcp={data}>
                 <Checkbox
                   checked={selectedList.includes(data.id)}
                   onCheckedChange={onCheckedChange}
@@ -75,7 +76,7 @@ export function McpCard({
                     e.stopPropagation();
                   }}
                 />
-              ) : null
+              </McpSelectionGuard>
             ) : (
               <McpOperation
                 mcp={data}

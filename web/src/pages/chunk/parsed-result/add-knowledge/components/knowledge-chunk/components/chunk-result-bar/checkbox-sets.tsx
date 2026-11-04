@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import { useDatasetEditButtonDisabled } from '@/hooks/logic-hooks/use-permission';
+import { useDatasetEditButtonDisabled } from '@/ee/hooks/logic-hooks/use-permission';
 import { cn } from '@/lib/utils';
 import {
   LucideToggleLeft,

@@ -16,6 +16,7 @@
 
 import message from '@/components/ui/message';
 import { Authorization } from '@/constants/authorization';
+import { handleEnterpriseResponseError } from '@/ee/utils/response-private';
 import i18n from '@/locales/config';
 import authorizationUtil, {
   getAuthorization,
@@ -98,7 +99,7 @@ const errorHandler = (error: {
       });
     }
   }
-  return response ?? { data: { code: 1999 } };
+  return response ?? ({ data: { code: 1999 } } as unknown as Response);
 };
 
 // avoid duplicate 401 redirects
@@ -170,7 +171,7 @@ request.interceptors.response.use(
         redirectToLogin();
       }
     } else if (data?.code !== 0 && !skipErrorNotification) {
-      if (!(await showBillingUpgradeModalIfNeeded(data))) {
+      if (!(await handleEnterpriseResponseError(data, response.config))) {
         notification.error({
           message: `${i18n.t('message.hint')} : ${data?.code}`,
           description: data?.message,

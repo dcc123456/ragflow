@@ -1,8 +1,8 @@
 import { CardSineLineContainer } from '@/components/card-singleline-container';
-import DuplicateDialog from '@/components/duplicate-dialog';
+import DuplicateDialog from '@/ee/components/duplicate-dialog';
 import { EmptyCardType } from '@/components/empty/constant';
 import { EmptyAppCard } from '@/components/empty/empty';
-import { PrivilegeManagementDialog } from '@/components/privilege-management/privilege-management-dialog';
+import { PrivilegeManagementDialog } from '@/ee/components/privilege-management/privilege-management-dialog';
 import { RenameDialog } from '@/components/rename-dialog';
 import { HomeIcon } from '@/components/svg-icon';
 import { CardSkeleton } from '@/components/ui/skeleton';
@@ -10,9 +10,9 @@ import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
 import { useFetchNextKnowledgeListByPage } from '@/hooks/use-knowledge-request';
 import { useTranslation } from 'react-i18next';
 import { DatasetCard } from '../datasets/dataset-card';
-import useDuplicateDataset from '../datasets/use-duplicate-dataset';
+import useDuplicateDataset from '@/ee/pages/datasets/use-duplicate-dataset';
 import { useRenameDataset } from '../datasets/use-rename-dataset';
-import { useShowPrivilegeDialog } from '../datasets/use-show-privilege-dialog';
+import { useShowPrivilegeDialog } from '@/ee/pages/datasets/use-show-privilege-dialog';
 import { SeeAllAppCard } from './application-card';
 
 export function Datasets() {
@@ -62,7 +62,7 @@ export function Datasets() {
           </div>
         ) : (
           <>
-            {kbs?.length > 0 && (
+            {(kbs?.length ?? 0) > 0 && (
               <CardSineLineContainer>
                 {kbs?.slice(0, 6).map((dataset) => (
                   <DatasetCard

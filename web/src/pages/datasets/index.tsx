@@ -1,9 +1,9 @@
 import { CardContainer } from '@/components/card-container';
-import DuplicateDialog from '@/components/duplicate-dialog';
+import DuplicateDialog from '@/ee/components/duplicate-dialog';
 import { EmptyCardType } from '@/components/empty/constant';
 import { EmptyAppCard } from '@/components/empty/empty';
 import ListFilterBar from '@/components/list-filter-bar';
-import { PrivilegeManagementDialog } from '@/components/privilege-management/privilege-management-dialog';
+import { PrivilegeManagementDialog } from '@/ee/components/privilege-management/privilege-management-dialog';
 import { RenameDialog } from '@/components/rename-dialog';
 import { Button } from '@/components/ui/button';
 import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
@@ -20,10 +20,10 @@ import { useSearchParams } from 'react-router';
 import { DatasetCard } from './dataset-card';
 import { DatasetCreatingDialog } from './dataset-creating-dialog';
 import { useSaveKnowledge } from './hooks';
-import useDuplicateDataset from './use-duplicate-dataset';
+import useDuplicateDataset from '@/ee/pages/datasets/use-duplicate-dataset';
 import { useRenameDataset } from './use-rename-dataset';
 import { useSelectOwners } from './use-select-owners';
-import { useShowPrivilegeDialog } from './use-show-privilege-dialog';
+import { useShowPrivilegeDialog } from '@/ee/pages/datasets/use-show-privilege-dialog';
 
 export default function Datasets() {
   const { t } = useTranslation();
@@ -130,19 +130,42 @@ export default function Datasets() {
                 {t('knowledgeList.createKnowledgeBase')}
               </Button>
             </ListFilterBar>
-            {(!kbs?.length || kbs?.length <= 0) && searchString && (
-              <div className="flex w-full items-center justify-center h-[calc(100vh-220px)]">
-                <EmptyAppCard
-                  showIcon
-                  size="large"
-                  className="w-[480px] p-14"
-                  isSearch={!!searchString}
-                  type={EmptyCardType.Dataset}
-                  onClick={() => showModal()}
+          </header>
+
+          {kbs?.length ? (
+            <>
+              <CardContainer className="flex-1 overflow-auto px-5">
+                {kbs.map((dataset) => (
+                  <DatasetCard
+                    dataset={dataset}
+                    key={dataset.id}
+                    showDatasetRenameModal={showDatasetRenameModal}
+                    showDatasetDuplicateModal={showDatasetDuplicateModal}
+                    showPrivilegeModal={handShowPrivilegeModal(dataset)}
+                  />
+                ))}
+              </CardContainer>
+
+              <footer className="mt-4 px-5 pb-5">
+                <RAGFlowPagination
+                  {...pick(pagination, 'current', 'pageSize')}
+                  total={total_datasets}
+                  onChange={handlePageChange}
+                />
+              </footer>
+            </>
+          ) : (
+            <div className="flex-1 flex items-center justify-center">
+              <EmptyAppCard
+                showIcon
+                size="large"
+                className="w-[480px] p-14"
+                isSearch
+                type={EmptyCardType.Dataset}
+                onClick={() => showModal()}
                 />
               </div>
             )}
-          </header>
           <CardContainer className="flex-1 overflow-auto px-8">
             {kbs.map((dataset) => {
               return (
