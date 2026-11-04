@@ -7,10 +7,9 @@ import {
 } from '@/components/ui/popover';
 import { Radio } from '@/components/ui/radio';
 import { Segmented } from '@/components/ui/segmented';
-import { useTranslate } from '@/hooks/common-hooks';
-import { useDatasetEditButtonDisabled } from '@/hooks/logic-hooks/use-permission';
+import { useDatasetEditButtonDisabled } from '@/ee/hooks/logic-hooks/use-permission';
 import { cn } from '@/lib/utils';
-import { ListFilter, Plus } from 'lucide-react';
+import { ListFilter, LucideFilter, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChunkTextMode } from '../../constant';
@@ -74,41 +73,36 @@ export default function ChunkResultBar({
         value={textSelectValue}
         onChange={changeTextSelectValue}
       />
-      <div className="ml-auto"></div>
-      <div className="h-8 flex items-center gap-5">
-        <SearchInput
-          // style={{ width: 200 }}
-          placeholder={t('search', { keyPrefix: 'common' })}
-          // icon={<SearchOutlined />}
-          onChange={handleInputChange}
-          value={searchString}
-        />
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button
-              variant={'ghost'}
-              disabled={datasetEditButtonDisabled}
-              // className="bg-bg-card text-text-secondary hover:bg-card"
-            >
-              <ListFilter />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="p-0 w-[200px]">
-            {filterContent}
-          </PopoverContent>
-        </Popover>
-        <Button
-          variant={'outline'}
-          size="icon"
-          onClick={() => createChunk()}
-          disabled={datasetEditButtonDisabled}
-          // className="bg-bg-card text-primary hover:bg-card"
-        >
-          <Plus size={44} />
-        </Button>
-      </div>
-      {/* <div className="w-[20px]"></div>
-      <div className="w-[20px]"></div> */}
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            size="icon"
+            disabled={datasetEditButtonDisabled}
+          >
+            <LucideFilter />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="p-0 w-[200px]">
+          {filterContent}
+        </PopoverContent>
+      </Popover>
+
+      <SearchInput
+        className="w-28"
+        placeholder={t('search', { keyPrefix: 'common' })}
+        onChange={handleInputChange}
+        value={searchString}
+      />
+
+      <Button
+        variant="outline"
+        size="icon"
+        onClick={() => createChunk()}
+        disabled={datasetEditButtonDisabled}
+      >
+        <Plus size={44} />
+      </Button>
     </div>
   );
 }

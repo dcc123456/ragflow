@@ -1,26 +1,25 @@
-import { UpgradeModalProvider } from '@/pages/price/global';
-import { isBillingEnabled } from '@/services/billingStatus';
-import React from 'react';
-import { Outlet, useLocation } from 'react-router';
+import {
+  RootLayoutBanner,
+  RootLayoutContent,
+  useRootLayoutChrome,
+} from '@/ee/layouts/root-layout-shell';
+import { Outlet } from 'react-router';
 import { Header } from './components/header';
-import { NotificationBanner } from './components/notification-banner';
-
-export const nextLayoutRef = React.createRef<HTMLDivElement>();
 
 export function RootLayoutContainer({ children }: React.PropsWithChildren) {
-  const { pathname } = useLocation();
+  const { containerRef, showHeader } = useRootLayoutChrome();
 
-  // useComputedRouterChangeCount();
   return (
     <div
-      className="size-full grid grid-rows-[auto_auto_1fr] grid-cols-1 grid-flow-col"
-      ref={nextLayoutRef}
+      className="size-full min-w-0 grid grid-flow-col grid-cols-1 grid-rows-[auto_auto_1fr]"
+      ref={containerRef}
     >
       <div>
-        <NotificationBanner />
+        <RootLayoutBanner />
       </div>
 
-      {pathname !== '/price' && <Header className="px-5 py-4" />}
+      {showHeader && <Header className="px-5 py-4" />}
+
       <main className="size-full min-w-0 overflow-hidden">{children}</main>
     </div>
   );
@@ -29,12 +28,9 @@ export function RootLayoutContainer({ children }: React.PropsWithChildren) {
 export default function RootLayout() {
   return (
     <RootLayoutContainer>
-      {isBillingEnabled() && (
-        <UpgradeModalProvider>
-          <Outlet />
-        </UpgradeModalProvider>
-      )}
-      {!isBillingEnabled() && <Outlet />}
+      <RootLayoutContent>
+        <Outlet />
+      </RootLayoutContent>
     </RootLayoutContainer>
   );
 }

@@ -14,9 +14,9 @@
  *  limitations under the License.
  */
 
-import { TeamManagement } from './team-management';
+import { TeamManagement } from '@/ee/pages/user-setting/setting-team/team-management';
 
-import styles from './index.module.less';
+import styles from '@/ee/pages/user-setting/setting-team/index.module.less';
 
 const UserSettingTeam = () => {
   return (

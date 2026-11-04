@@ -48,8 +48,8 @@ func TestCheckFeatureUsesTenantRoleAndSystemRoleCeiling(t *testing.T) {
 	}
 
 	checker := NewDatabaseChecker(db)
-	subject := Subject{UserID: "user-1", TenantID: tenantID}
-	if err := checker.CheckFeature(context.Background(), subject, "dataset", ActionWrite); err != nil {
+	ctx := WithIdentity(context.Background(), "user-1", tenantID)
+	if err := checker.CheckFeature(ctx, "dataset", ActionWrite); err != nil {
 		t.Fatalf("CheckFeature with numeric Tenant role = %v, want nil", err)
 	}
 
@@ -58,7 +58,7 @@ func TestCheckFeatureUsesTenantRoleAndSystemRoleCeiling(t *testing.T) {
 		Update("action", entity.RoleActionEnable|entity.RoleActionRead).Error; err != nil {
 		t.Fatalf("restrict system role ceiling: %v", err)
 	}
-	if err := checker.CheckFeature(context.Background(), subject, "dataset", ActionWrite); !errors.Is(err, ErrPermissionDenied) {
+	if err := checker.CheckFeature(ctx, "dataset", ActionWrite); !errors.Is(err, ErrPermissionDenied) {
 		t.Fatalf("CheckFeature above system role ceiling = %v, want permission denied", err)
 	}
 }
@@ -129,13 +129,13 @@ func TestResolveMCPServerAccessesMatchesSingleResourceResolution(t *testing.T) {
 		{Kind: ResourceKindMCPServer, ID: "mcp-2"},
 	}
 	for _, userID := range []string{"owner", "member"} {
-		subject := Subject{UserID: userID, TenantID: tenantID}
-		batched, err := checker.ResolveAccesses(context.Background(), subject, refs)
+		ctx := WithIdentity(context.Background(), userID, tenantID)
+		batched, err := checker.ResolveAccesses(ctx, refs)
 		if err != nil {
 			t.Fatalf("ResolveAccesses(MCP servers) for %q: %v", userID, err)
 		}
 		for _, ref := range refs {
-			individual, err := checker.ResolveAccess(context.Background(), subject, ref)
+			individual, err := checker.ResolveAccess(ctx, ref)
 			if err != nil {
 				if _, ok := batched[ref]; ok {
 					t.Errorf("batched access for %q unexpectedly grants %q: %#v", userID, ref.ID, batched[ref])
@@ -148,11 +148,12 @@ func TestResolveMCPServerAccessesMatchesSingleResourceResolution(t *testing.T) {
 			}
 		}
 	}
-	memberAccess := checkerResolveAccessForTest(t, checker, Subject{UserID: "member", TenantID: tenantID}, refs[0])
+	memberCtx := WithIdentity(context.Background(), "member", tenantID)
+	memberAccess := checkerResolveAccessForTest(t, checker, memberCtx, refs[0])
 	if memberAccess.PermissionMask != entity.ResourcePermissionRead {
 		t.Errorf("shared MCP permission mask = %d, want %d", memberAccess.PermissionMask, entity.ResourcePermissionRead)
 	}
-	scope, err := checker.QueryScope(context.Background(), Subject{UserID: "member", TenantID: tenantID}, ScopeQuery{
+	scope, err := checker.QueryScope(memberCtx, ScopeQuery{
 		Kind: ResourceKindMCPServer, Operation: OperationRead,
 	})
 	if err != nil {
@@ -167,9 +168,9 @@ func TestResolveMCPServerAccessesMatchesSingleResourceResolution(t *testing.T) {
 	}
 }
 
-func checkerResolveAccessForTest(t *testing.T, checker *Checker, subject Subject, ref ResourceRef) Access {
+func checkerResolveAccessForTest(t *testing.T, checker *Checker, ctx context.Context, ref ResourceRef) Access {
 	t.Helper()
-	access, err := checker.ResolveAccess(context.Background(), subject, ref)
+	access, err := checker.ResolveAccess(ctx, ref)
 	if err != nil {
 		t.Fatalf("ResolveAccess(%q): %v", ref.ID, err)
 	}

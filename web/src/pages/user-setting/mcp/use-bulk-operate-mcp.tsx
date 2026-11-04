@@ -14,9 +14,9 @@
  *  limitations under the License.
  */
 
+import { useOwnerMcpList } from '@/ee/pages/user-setting/mcp/use-owner-mcp-list';
 import { useDeleteMcpServer } from '@/hooks/use-mcp-request';
 import { IMcpServer } from '@/interfaces/database/mcp';
-import { hasOwnerPermission } from '@/utils/permission-util';
 import { Trash2, Upload } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -46,9 +46,7 @@ export function useBulkOperateMCP(mcpList: IMcpServer[]) {
     });
   }, []);
 
-  const ownerMcpList = mcpList.filter((item) =>
-    hasOwnerPermission(item.operator_permission),
-  );
+  const ownerMcpList = useOwnerMcpList(mcpList);
 
   const handleSelectAll = useCallback(
     (checked: boolean) => {

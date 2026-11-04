@@ -17,12 +17,8 @@
 import Spotlight from '@/components/spotlight';
 import { PrivilegeManagementDialog } from '@/components/privilege-management/privilege-management-dialog';
 import { IPrivilegeManagementInitialValues } from '@/components/privilege-management/interface';
-import { Button } from '@/components/ui/button';
-import {
-  Permission,
-  PermissionResourceType,
-  hasResourcePermission,
-} from '@/constants/team';
+import { PermissionResourceType } from '@/constants/team';
+import { ProviderInstanceCardWithPrivilege } from '@/ee/pages/user-setting/setting-model/provider-instance-card-with-privilege';
 import { useTranslate } from '@/hooks/common-hooks';
 import {
   useFetchAddedProviders,
@@ -30,7 +26,7 @@ import {
 } from '@/hooks/use-llm-request';
 import { useFetchTenantInfo } from '@/hooks/use-user-setting-request';
 import { IProviderInstance } from '@/interfaces/database/llm';
-import { KeyRound, Plus } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { InstanceSavePayload } from './instance-card/interface';
@@ -206,37 +202,15 @@ const SettingModelV2: FC = () => {
                 </div>
               )}
               {instances.map((instance, index) => (
-                <div key={instance.instance_name} className="relative">
-                  {tenantInfo?.tenant_id &&
-                    instance.id &&
-                    (hasResourcePermission(
-                      instance.operator_permission ?? 0,
-                      Permission.Manage,
-                    ) ||
-                      hasResourcePermission(
-                        instance.operator_permission ?? 0,
-                        Permission.Owner,
-                      )) && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        className="absolute right-3 top-3 z-20"
-                        aria-label={t('permission.permissionManagement')}
-                        onClick={showInstancePermissions(instance)}
-                      >
-                        <KeyRound />
-                      </Button>
-                    )}
-                  <ProviderInstanceCard
-                    providerName={selection as string}
-                    instance={instance}
-                    defaultOpen={
-                      index === 0 ||
-                      instance.instance_name === newlySavedInstanceName
-                    }
-                  />
-                </div>
+                <ProviderInstanceCardWithPrivilege
+                  key={instance.instance_name}
+                  providerName={selection as string}
+                  instance={instance}
+                  defaultOpen={
+                    index === 0 ||
+                    instance.instance_name === newlySavedInstanceName
+                  }
+                />
               ))}
               {draftIds.map((id) => (
                 <ProviderInstanceCard

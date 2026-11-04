@@ -6,9 +6,14 @@ import {
   HoverCardTrigger,
 } from '@/components/ui/hover-card';
 import { DocumentType } from '@/constants/knowledge';
+import {
+  DocumentPrivilegeAction,
+  useDocumentActionCellOverrides,
+} from '@/ee/pages/dataset/dataset/dataset-action-cell-seams';
 import { UseRowSelectionType } from '@/hooks/logic-hooks/use-row-selection';
 import { useRemoveDocument } from '@/hooks/use-document-request';
 import { IDocumentInfo } from '@/interfaces/database/document';
+import { cn } from '@/lib/utils';
 import { downloadDatasetDocument } from '@/services/file-manager-service';
 import { formatFileSize } from '@/utils/common-util';
 import { formatDate } from '@/utils/date';
@@ -29,20 +34,24 @@ const FunctionMap = {
   update_time: formatDate,
 };
 
+type DatasetActionCellProps = {
+  record: IDocumentInfo;
+  datasetEditButtonDisabled?: boolean;
+} & UseRenameDocumentShowType &
+  Pick<UseRowSelectionType, 'setRowSelection'>;
+
 export function DatasetActionCell({
   record,
   showRenameModal,
   setRowSelection,
   datasetEditButtonDisabled,
-}: {
-  record: IDocumentInfo;
-  datasetEditButtonDisabled: boolean;
-} & UseRenameDocumentShowType &
-  Pick<UseRowSelectionType, 'setRowSelection'>) {
+}: DatasetActionCellProps) {
   const { id, type } = record;
   const { t } = useTranslation();
   const isRunning = isDocumentProcessing(record);
   const isVirtualDocument = type === DocumentType.Virtual;
+  const actionDisabled = isRunning || Boolean(datasetEditButtonDisabled);
+  const { actionClassName } = useDocumentActionCellOverrides();
 
   const { removeDocument } = useRemoveDocument();
 
@@ -77,20 +86,17 @@ export function DatasetActionCell({
   const { handShowPrivilegeModal } = useContext(ShowPrivilegeModalContext);
 
   return (
-    <section className="flex gap-4 items-center text-text-sub-title-invert">
+    <div
+      className={cn(
+        'flex gap-2 items-center opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100',
+        actionClassName,
+      )}
+    >
+      <DocumentPrivilegeAction record={record} disabled={actionDisabled} />
       <Button
-        variant={'ghost'}
-        size={'sm'}
-        disabled={isRunning}
-        aria-label={t('permission.permissionManagement')}
-        onClick={handShowPrivilegeModal?.(record)}
-      >
-        <Key />
-      </Button>
-      <Button
-        variant={'ghost'}
-        size={'sm'}
-        disabled={isRunning || datasetEditButtonDisabled}
+        size="icon-xs"
+        variant="ghost"
+        disabled={actionDisabled}
         onClick={handleRename}
       >
         <PenLine className="size-[1em]" />
@@ -134,14 +140,14 @@ export function DatasetActionCell({
       )}
       <ConfirmDeleteDialog onOk={handleRemove}>
         <Button
-          disabled={isRunning || datasetEditButtonDisabled}
           data-testid="document-delete"
           size="icon-xs"
           variant="ghost"
+          disabled={actionDisabled}
         >
           <Trash2 className="size-[1em]" />
         </Button>
       </ConfirmDeleteDialog>
-    </section>
+    </div>
   );
 }

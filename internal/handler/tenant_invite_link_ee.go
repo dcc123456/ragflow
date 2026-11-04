@@ -35,7 +35,7 @@ func (h *TenantHandler) CreateTenantInviteLink(c *gin.Context) {
 		return
 	}
 	if requestedTenantID := strings.TrimSpace(c.Param("tenant_id")); requestedTenantID == "" || requestedTenantID != tenantID {
-		common.ErrorWithCode(c, common.CodeForbidden, "Tenant does not match the active token context")
+		common.RespondError(c, common.CodeForbidden, "Tenant does not match the active token context")
 		return
 	}
 	link, err := h.tenantService.CreateTenantInviteLinkEE(c.Request.Context(), userID, tenantID, store)
@@ -43,7 +43,7 @@ func (h *TenantHandler) CreateTenantInviteLink(c *gin.Context) {
 		writeTenantRoleError(c, err)
 		return
 	}
-	common.SuccessWithData(c, link, "success")
+	common.RespondSuccess(c, link, "success")
 }
 
 func (h *TenantHandler) GetTenantInviteLinkInfo(c *gin.Context) {
@@ -53,7 +53,7 @@ func (h *TenantHandler) GetTenantInviteLinkInfo(c *gin.Context) {
 	}
 	token := strings.TrimSpace(c.Param("token"))
 	if token == "" {
-		common.ErrorWithCode(c, common.CodeBadRequest, "invitation token is required")
+		common.RespondError(c, common.CodeBadRequest, "invitation token is required")
 		return
 	}
 	info, err := h.tenantService.GetTenantInviteLinkInfoEE(c.Request.Context(), token, store)
@@ -61,18 +61,18 @@ func (h *TenantHandler) GetTenantInviteLinkInfo(c *gin.Context) {
 		writeTenantRoleError(c, err)
 		return
 	}
-	common.SuccessWithData(c, info, "success")
+	common.RespondSuccess(c, info, "success")
 }
 
 func (h *TenantHandler) AcceptTenantInviteLink(c *gin.Context) {
 	user, code, message := GetUser(c)
 	if code != common.CodeSuccess {
-		common.ErrorWithCode(c, code, message)
+		common.RespondError(c, code, message)
 		return
 	}
 	token := strings.TrimSpace(c.Param("token"))
 	if token == "" {
-		common.ErrorWithCode(c, common.CodeBadRequest, "invitation token is required")
+		common.RespondError(c, common.CodeBadRequest, "invitation token is required")
 		return
 	}
 	store := tenantInviteLinkStore(c)
@@ -83,13 +83,13 @@ func (h *TenantHandler) AcceptTenantInviteLink(c *gin.Context) {
 		writeTenantRoleError(c, err)
 		return
 	}
-	common.SuccessWithData(c, true, "success")
+	common.RespondSuccess(c, true, "success")
 }
 
 func tenantInviteLinkStore(c *gin.Context) *kvrocks.Client {
 	store := kvrocks.Get()
 	if store == nil || !kvrocks.IsEnabled() {
-		common.ErrorWithCode(c, common.CodeServerError, "Tenant invitation link storage is unavailable")
+		common.RespondError(c, common.CodeServerError, "Tenant invitation link storage is unavailable")
 		return nil
 	}
 	return store

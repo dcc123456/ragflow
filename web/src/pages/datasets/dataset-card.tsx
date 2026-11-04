@@ -8,7 +8,7 @@ import { ChevronRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import { DatasetDropdown } from './dataset-dropdown';
-import useDuplicateDataset from './use-duplicate-dataset';
+import useDuplicateDataset from '@/ee/pages/datasets/use-duplicate-dataset';
 import { useRenameDataset } from './use-rename-dataset';
 
 export type DatasetCardProps = {

@@ -14,8 +14,11 @@
  *  limitations under the License.
  */
 
+import {
+  redirectToLogin,
+  redirectToSpecifiedPage,
+} from '@/ee/utils/private-util';
 import { useAuth } from '@/hooks/auth-hooks';
-import { redirectToLogin, redirectToSpecifiedPage } from '@/utils/private-util';
 import { Outlet } from 'react-router';
 
 export default () => {

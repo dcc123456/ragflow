@@ -16,6 +16,7 @@
 
 import { Collapse } from '@/components/collapse';
 import { Button, ButtonLoading } from '@/components/ui/button';
+import { useMcpReadOnly } from '@/ee/pages/user-setting/mcp/use-mcp-read-only';
 import { Card, CardContent } from '@/components/ui/card';
 import { DialogFooter } from '@/components/ui/dialog';
 import { Modal } from '@/components/ui/modal/modal';
@@ -129,7 +130,7 @@ export function EditMcpDialog({
   }, [data, form]);
 
   const disabled = !tools?.length || testLoading || fieldChanged;
-  const isReadOnly = hasPreviewPermission(
+  const isReadOnly = useMcpReadOnly(
     operatorPermission ?? data.operator_permission,
   );
 

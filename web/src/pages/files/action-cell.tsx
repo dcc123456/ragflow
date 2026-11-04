@@ -5,7 +5,7 @@ import {
 import { FileIcon } from '@/components/icon-font';
 import NewDocumentLink from '@/components/new-document-link';
 import { Button } from '@/components/ui/button';
-import { Permission, hasResourcePermission } from '@/constants/team';
+import { FilePrivilegeButton } from '@/ee/pages/files/file-privilege-button';
 import { UseRowSelectionType } from '@/hooks/logic-hooks/use-row-selection';
 import { useDownloadFile } from '@/hooks/use-file-request';
 import { IFile } from '@/interfaces/database/file-manager';
@@ -39,7 +39,7 @@ type IProps = Pick<CellContext<IFile, unknown>, 'row'> &
   Pick<UseRenameCurrentFileReturnType, 'showFileRenameModal'> &
   Pick<UseRowSelectionType, 'setRowSelection'> &
   UseMoveDocumentShowType & {
-    showPrivilegeModal(record: IFile): void;
+    showPrivilegeModal?(record: IFile): void;
   };
 
 export function ActionCell({
@@ -60,9 +60,6 @@ export function ActionCell({
   const isSkillsFolder = isFolder && record.name.toLowerCase() === 'skills';
   const extension = getExtension(record.name);
   const isKnowledgeBase = isKnowledgeBaseType(record.source_type);
-  const canManagePermissions =
-    hasResourcePermission(record.operator_permission ?? 0, Permission.Manage) ||
-    hasResourcePermission(record.operator_permission ?? 0, Permission.Owner);
 
   const handleShowConnectToKnowledgeModal = useCallback(() => {
     showConnectToKnowledgeModal(record);
@@ -114,17 +111,10 @@ export function ActionCell({
           <Link2 />
         </Button>
       )}
-      {!isKnowledgeBase && canManagePermissions && (
-        <Button
-          variant="transparent"
-          className="border-none hover:bg-bg-card text-text-primary"
-          size="icon-sm"
-          aria-label={t('permission.permissionManagement')}
-          onClick={() => showPrivilegeModal(record)}
-        >
-          <KeyRound />
-        </Button>
-      )}
+      <FilePrivilegeButton
+        record={record}
+        showPrivilegeModal={showPrivilegeModal}
+      />
       {isKnowledgeBase || (
         <Button
           variant="transparent"

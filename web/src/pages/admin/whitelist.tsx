@@ -68,8 +68,8 @@ import useImportExcelForm, {
   ImportExcelFormData,
 } from './forms/import-excel-form';
 
-import NotFound from './404';
-import useAdminVariables from './hooks/useAdminVariables';
+import NotFound from '@/ee/pages/admin/404';
+import useAdminVariables from '@/ee/pages/admin/hooks/useAdminVariables';
 
 const columnHelper = createColumnHelper<AdminService.ListWhitelistItem>();
 const globalFilterFn = createFuzzySearchFn<AdminService.ListWhitelistItem>([

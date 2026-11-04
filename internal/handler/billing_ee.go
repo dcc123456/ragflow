@@ -49,7 +49,7 @@ func NewBillingHandler() *BillingHandler {
 func billingServiceOrDisabled(c *gin.Context) (*billing.Service, bool) {
 	service := billing.Get()
 	if service == nil || !service.Enabled() {
-		common.ResponseWithCodeData(c, common.CodeDataError, false, "Billing is disabled.")
+		common.RespondError(c, common.CodeDataError, "Billing is disabled.")
 		return nil, false
 	}
 	return service, true
@@ -58,7 +58,7 @@ func billingServiceOrDisabled(c *gin.Context) (*billing.Service, bool) {
 func billingTenant(c *gin.Context) (string, bool) {
 	user, code, message := GetUser(c)
 	if code != common.CodeSuccess {
-		common.ErrorWithCode(c, code, message)
+		common.RespondError(c, code, message)
 		return "", false
 	}
 	tenantID := c.Query("tenant_id")
@@ -66,7 +66,7 @@ func billingTenant(c *gin.Context) (string, bool) {
 		tenantID = user.ID
 	}
 	if tenantID != user.ID {
-		common.ResponseWithCodeData(c, common.CodeAuthenticationError, false, "no authorization")
+		common.RespondError(c, common.CodeAuthenticationError, "no authorization")
 		return "", false
 	}
 	return tenantID, true
@@ -74,10 +74,10 @@ func billingTenant(c *gin.Context) (string, bool) {
 
 func billingFailure(c *gin.Context, err error) {
 	if errors.Is(err, billing.ErrInvalidArgument) {
-		common.ErrorWithCode(c, common.CodeArgumentError, err.Error())
+		common.RespondError(c, common.CodeArgumentError, err.Error())
 		return
 	}
-	common.ErrorWithCode(c, common.CodeServerError, err.Error())
+	common.RespondError(c, common.CodeServerError, err.Error())
 }
 
 // Status handles GET /billing/status. It returns a bare JSON object:
@@ -90,7 +90,7 @@ func (h *BillingHandler) Status(c *gin.Context) {
 
 // Health handles GET /billing/downgrade-guard/health.
 func (h *BillingHandler) Health(c *gin.Context) {
-	common.SuccessWithData(c, gin.H{
+	common.RespondSuccess(c, gin.H{
 		"enabled":        billingGuardEnabled(),
 		"pool_size":      0,
 		"daily_scan_ok":  false,
@@ -109,7 +109,7 @@ func (h *BillingHandler) Plans(c *gin.Context) {
 		billingFailure(c, err)
 		return
 	}
-	common.SuccessWithData(c, payload, "")
+	common.RespondSuccess(c, payload, "")
 }
 
 // CurrentSubscription handles GET /billing/subscription.
@@ -127,7 +127,7 @@ func (h *BillingHandler) CurrentSubscription(c *gin.Context) {
 		billingFailure(c, err)
 		return
 	}
-	common.SuccessWithData(c, payload, "")
+	common.RespondSuccess(c, payload, "")
 }
 
 // SubscriptionOverview handles GET /billing/subscription/overview.
@@ -145,7 +145,7 @@ func (h *BillingHandler) SubscriptionOverview(c *gin.Context) {
 		billingFailure(c, err)
 		return
 	}
-	common.SuccessWithData(c, payload, "")
+	common.RespondSuccess(c, payload, "")
 }
 
 // Storage handles GET /billing/storage.
@@ -163,7 +163,7 @@ func (h *BillingHandler) Storage(c *gin.Context) {
 		billingFailure(c, err)
 		return
 	}
-	common.SuccessWithData(c, payload, "")
+	common.RespondSuccess(c, payload, "")
 }
 
 // Addons handles GET /billing/addons.
@@ -177,7 +177,7 @@ func (h *BillingHandler) Addons(c *gin.Context) {
 		billingFailure(c, err)
 		return
 	}
-	common.SuccessWithData(c, payload, "")
+	common.RespondSuccess(c, payload, "")
 }
 
 // AddonOverview handles GET /billing/addons/overview.
@@ -195,7 +195,7 @@ func (h *BillingHandler) AddonOverview(c *gin.Context) {
 		billingFailure(c, err)
 		return
 	}
-	common.SuccessWithData(c, payload, "")
+	common.RespondSuccess(c, payload, "")
 }
 
 // PointsBalance handles GET /billing/points/balance and /points/overview.
@@ -213,7 +213,7 @@ func (h *BillingHandler) PointsBalance(c *gin.Context) {
 		billingFailure(c, err)
 		return
 	}
-	common.SuccessWithData(c, payload, "")
+	common.RespondSuccess(c, payload, "")
 }
 
 // PointsPrice handles GET /billing/points/price.
@@ -225,7 +225,7 @@ func (h *BillingHandler) PointsPrice(c *gin.Context) {
 	if _, ok := billingTenant(c); !ok {
 		return
 	}
-	common.SuccessWithData(c, service.PointsPricePayload(), "")
+	common.RespondSuccess(c, service.PointsPricePayload(), "")
 }
 
 // PointsLedger handles GET /billing/points/ledger.
@@ -245,7 +245,7 @@ func (h *BillingHandler) PointsLedger(c *gin.Context) {
 		billingFailure(c, err)
 		return
 	}
-	common.SuccessWithData(c, payload, "")
+	common.RespondSuccess(c, payload, "")
 }
 
 // PointsHolds handles GET /billing/points/holds.
@@ -265,7 +265,7 @@ func (h *BillingHandler) PointsHolds(c *gin.Context) {
 		billingFailure(c, err)
 		return
 	}
-	common.SuccessWithData(c, payload, "")
+	common.RespondSuccess(c, payload, "")
 }
 
 // SpendOverview handles GET /billing/spend-overview.
@@ -299,7 +299,7 @@ func (h *BillingHandler) SpendOverview(c *gin.Context) {
 		billingFailure(c, err)
 		return
 	}
-	common.SuccessWithData(c, payload, "")
+	common.RespondSuccess(c, payload, "")
 }
 
 // SpendMetrics handles GET /billing/spend-metrics.
@@ -317,7 +317,7 @@ func (h *BillingHandler) SpendMetrics(c *gin.Context) {
 		billingFailure(c, err)
 		return
 	}
-	common.SuccessWithData(c, payload, "")
+	common.RespondSuccess(c, payload, "")
 }
 
 // DeepdocUsage handles GET /billing/usages/deepdoc.
@@ -335,7 +335,7 @@ func (h *BillingHandler) DeepdocUsage(c *gin.Context) {
 		billingFailure(c, err)
 		return
 	}
-	common.SuccessWithData(c, payload, "")
+	common.RespondSuccess(c, payload, "")
 }
 
 func billingGuardEnabled() bool {
@@ -453,7 +453,7 @@ func (h *BillingHandler) CheckoutSubscription(c *gin.Context) {
 	}
 	var req billingCheckoutRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		common.ResponseWithCodeData(c, common.CodeArgumentError, nil, err.Error())
+		common.RespondError(c, common.CodeArgumentError, err.Error())
 		return
 	}
 	user, _, _ := GetUser(c)
@@ -469,11 +469,11 @@ func (h *BillingHandler) CheckoutSubscription(c *gin.Context) {
 			billingFailure(c, err)
 			return
 		}
-		common.SuccessWithData(c, result, "")
+		common.RespondSuccess(c, result, "")
 		return
 	}
 	if req.SubscriptionPriceID == "" {
-		common.ResponseWithCodeData(c, common.CodeArgumentError, nil, "subscription_price_id is required")
+		common.RespondError(c, common.CodeArgumentError, "subscription_price_id is required")
 		return
 	}
 	subscription, _ := service.Subscription(ctx, tenantID)
@@ -490,7 +490,7 @@ func (h *BillingHandler) CheckoutSubscription(c *gin.Context) {
 			billingFailure(c, err)
 			return
 		}
-		common.SuccessWithData(c, result, "")
+		common.RespondSuccess(c, result, "")
 		return
 	}
 	_ = user
@@ -499,7 +499,7 @@ func (h *BillingHandler) CheckoutSubscription(c *gin.Context) {
 		billingFailure(c, err)
 		return
 	}
-	common.SuccessWithData(c, result, "")
+	common.RespondSuccess(c, result, "")
 }
 
 // AddonCheckout handles POST /billing/addon-purchases.
@@ -510,7 +510,7 @@ func (h *BillingHandler) AddonCheckout(c *gin.Context) {
 	}
 	var req billingCheckoutRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		common.ResponseWithCodeData(c, common.CodeArgumentError, nil, err.Error())
+		common.RespondError(c, common.CodeArgumentError, err.Error())
 		return
 	}
 	tenantID, ok := billingRequestTenant(c, req.TenantID)
@@ -522,7 +522,7 @@ func (h *BillingHandler) AddonCheckout(c *gin.Context) {
 		billingFailure(c, err)
 		return
 	}
-	common.SuccessWithData(c, result, "")
+	common.RespondSuccess(c, result, "")
 }
 
 // PreviewSubscription handles POST /billing/subscription/preview.
@@ -536,7 +536,7 @@ func (h *BillingHandler) PreviewSubscription(c *gin.Context) {
 		NewPriceID string `json:"new_price_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		common.ResponseWithCodeData(c, common.CodeArgumentError, nil, err.Error())
+		common.RespondError(c, common.CodeArgumentError, err.Error())
 		return
 	}
 	tenantID, ok := billingRequestTenant(c, req.TenantID)
@@ -544,7 +544,7 @@ func (h *BillingHandler) PreviewSubscription(c *gin.Context) {
 		return
 	}
 	if req.NewPriceID == "" {
-		common.ResponseWithCodeData(c, common.CodeArgumentError, nil, "new_price_id is required")
+		common.RespondError(c, common.CodeArgumentError, "new_price_id is required")
 		return
 	}
 	result, err := service.PreviewPlanChange(c.Request.Context(), tenantID, req.NewPriceID)
@@ -552,7 +552,7 @@ func (h *BillingHandler) PreviewSubscription(c *gin.Context) {
 		billingFailure(c, err)
 		return
 	}
-	common.SuccessWithData(c, result, "")
+	common.RespondSuccess(c, result, "")
 }
 
 // SetStorageTarget handles PATCH /billing/storage.
@@ -569,7 +569,7 @@ func (h *BillingHandler) SetStorageTarget(c *gin.Context) {
 		SessionCancelURL   string `json:"session_cancel_url"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		common.ResponseWithCodeData(c, common.CodeArgumentError, nil, err.Error())
+		common.RespondError(c, common.CodeArgumentError, err.Error())
 		return
 	}
 	tenantID, ok := billingRequestTenant(c, req.TenantID)
@@ -581,7 +581,7 @@ func (h *BillingHandler) SetStorageTarget(c *gin.Context) {
 		billingFailure(c, err)
 		return
 	}
-	common.SuccessWithData(c, result, "")
+	common.RespondSuccess(c, result, "")
 }
 
 // SetupIntent handles POST /billing/setup-intents.
@@ -604,7 +604,7 @@ func (h *BillingHandler) SetupIntent(c *gin.Context) {
 		billingFailure(c, err)
 		return
 	}
-	common.SuccessWithData(c, result, "")
+	common.RespondSuccess(c, result, "")
 }
 
 // PortalSession handles POST /billing/portal-sessions.
@@ -618,7 +618,7 @@ func (h *BillingHandler) PortalSession(c *gin.Context) {
 		ReturnURL string `json:"return_url"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		common.ResponseWithCodeData(c, common.CodeArgumentError, nil, err.Error())
+		common.RespondError(c, common.CodeArgumentError, err.Error())
 		return
 	}
 	tenantID, ok := billingRequestTenant(c, req.TenantID)
@@ -630,7 +630,7 @@ func (h *BillingHandler) PortalSession(c *gin.Context) {
 		billingFailure(c, err)
 		return
 	}
-	common.SuccessWithData(c, result, "")
+	common.RespondSuccess(c, result, "")
 }
 
 // PointsCheckout handles POST /billing/points/checkout.
@@ -646,7 +646,7 @@ func (h *BillingHandler) PointsCheckout(c *gin.Context) {
 		SessionCancelURL  string           `json:"session_cancel_url"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		common.ResponseWithCodeData(c, common.CodeArgumentError, nil, err.Error())
+		common.RespondError(c, common.CodeArgumentError, err.Error())
 		return
 	}
 	tenantID, ok := billingRequestTenant(c, req.TenantID)
@@ -658,7 +658,7 @@ func (h *BillingHandler) PointsCheckout(c *gin.Context) {
 		billingFailure(c, err)
 		return
 	}
-	common.SuccessWithData(c, result, "")
+	common.RespondSuccess(c, result, "")
 }
 
 // CheckoutSession handles GET /billing/checkouts/:session-id.
@@ -676,7 +676,7 @@ func (h *BillingHandler) CheckoutSession(c *gin.Context) {
 		billingFailure(c, err)
 		return
 	}
-	common.SuccessWithData(c, result, "")
+	common.RespondSuccess(c, result, "")
 }
 
 // SubscriptionPaymentStatus handles GET /billing/subscriptions/:subscription-id/payment-status.
@@ -694,13 +694,13 @@ func (h *BillingHandler) SubscriptionPaymentStatus(c *gin.Context) {
 		billingFailure(c, err)
 		return
 	}
-	common.SuccessWithData(c, result, "")
+	common.RespondSuccess(c, result, "")
 }
 
 func billingRequestTenant(c *gin.Context, requested string) (string, bool) {
 	user, code, message := GetUser(c)
 	if code != common.CodeSuccess {
-		common.ErrorWithCode(c, code, message)
+		common.RespondError(c, code, message)
 		return "", false
 	}
 	tenantID := requested
@@ -711,7 +711,7 @@ func billingRequestTenant(c *gin.Context, requested string) (string, bool) {
 		tenantID = user.ID
 	}
 	if tenantID != user.ID {
-		common.ResponseWithCodeData(c, common.CodeAuthenticationError, false, "no authorization")
+		common.RespondError(c, common.CodeAuthenticationError, "no authorization")
 		return "", false
 	}
 	return tenantID, true
@@ -766,12 +766,12 @@ func billingEnforceApps(c *gin.Context, tenantID string) bool {
 	}
 	var insufficient *billing.InsufficientResourceError
 	if errors.As(err, &insufficient) {
-		common.ResponseWithDetail(c, common.CodeBillingAppsInsufficient, err.Error(), gin.H{
+		common.RespondError(c, common.CodeBillingAppsInsufficient, err.Error(), common.ResponseOptions{Detail: gin.H{
 			"resource": "apps", "current": insufficient.Current, "limit": insufficient.Limit,
-		})
+		}})
 		return false
 	}
-	common.ErrorWithCode(c, common.CodeServerError, err.Error())
+	common.RespondError(c, common.CodeServerError, err.Error())
 	return false
 }
 
@@ -787,11 +787,11 @@ func billingEnforceStorage(c *gin.Context, tenantID string, size int64) bool {
 	}
 	var insufficient *billing.InsufficientResourceError
 	if errors.As(err, &insufficient) {
-		common.ResponseWithDetail(c, common.CodeBillingStorageInsufficient, err.Error(), gin.H{
+		common.RespondError(c, common.CodeBillingStorageInsufficient, err.Error(), common.ResponseOptions{Detail: gin.H{
 			"resource": "storage", "current": insufficient.Current, "limit": insufficient.Limit,
-		})
+		}})
 		return false
 	}
-	common.ErrorWithCode(c, common.CodeServerError, err.Error())
+	common.RespondError(c, common.CodeServerError, err.Error())
 	return false
 }

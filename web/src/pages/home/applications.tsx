@@ -1,14 +1,14 @@
 import { CardSineLineContainer } from '@/components/card-singleline-container';
 import { EmptyCardType } from '@/components/empty/constant';
 import { EmptyAppCard } from '@/components/empty/empty';
-import { PrivilegeManagementDialog } from '@/components/privilege-management/privilege-management-dialog';
+import { PrivilegeManagementDialog } from '@/ee/components/privilege-management/privilege-management-dialog';
 import { HomeIcon } from '@/components/svg-icon';
 import { Segmented, SegmentedValue } from '@/components/ui/segmented';
 import { Routes } from '@/routes';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
-import { useShowPrivilegeDialog as useAgentShowPrivilegeDialog } from '../agents/use-show-privilege-dialog';
+import { useShowPrivilegeDialog as useAgentShowPrivilegeDialog } from '@/ee/pages/agents/use-show-privilege-dialog';
 import { Agents } from './agent-list';
 import { SeeAllAppCard } from './application-card';
 import { ChatList } from './chat-list';

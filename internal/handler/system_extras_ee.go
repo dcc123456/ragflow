@@ -33,7 +33,7 @@ func (h *SystemHandler) Notification(c *gin.Context) {
 	settingsDAO := dao.NewSystemSettingsDAO()
 	rows, err := settingsDAO.GetByNamePrefix(c.Request.Context(), dao.GetDB(), "notification.")
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 	payload := map[string]interface{}{
@@ -48,13 +48,13 @@ func (h *SystemHandler) Notification(c *gin.Context) {
 			payload["enabled"] = settingBool(row.Value, row.DataType)
 		}
 	}
-	common.SuccessWithData(c, payload, "")
+	common.RespondSuccess(c, payload, "")
 }
 
 // ExposeModelProvider reports whether the deployment publishes its model
 // providers to end users.
 func (h *SystemHandler) ExposeModelProvider(c *gin.Context) {
-	common.SuccessWithData(c, gin.H{"enabled": settingEnabled(c, "expose_model_provider.enabled", false)}, "")
+	common.RespondSuccess(c, gin.H{"enabled": settingEnabled(c, "expose_model_provider.enabled", false)}, "")
 }
 
 // ExposeAPI reports whether the deployment publishes its HTTP API to end users.
@@ -63,10 +63,10 @@ func (h *SystemHandler) ExposeAPI(c *gin.Context) {
 	settingsDAO := dao.NewSystemSettingsDAO()
 	rows, err := settingsDAO.GetByName(c.Request.Context(), dao.GetDB(), "expose_api.enabled")
 	if err != nil || len(rows) == 0 {
-		common.SuccessWithData(c, gin.H{"enabled": nil}, "")
+		common.RespondSuccess(c, gin.H{"enabled": nil}, "")
 		return
 	}
-	common.SuccessWithData(c, gin.H{"enabled": settingBool(rows[0].Value, rows[0].DataType)}, "")
+	common.RespondSuccess(c, gin.H{"enabled": settingBool(rows[0].Value, rows[0].DataType)}, "")
 }
 
 // settingEnabled reads a boolean system setting, falling back when absent.

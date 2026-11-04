@@ -11,6 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { ChatDropdownGuard } from '@/ee/pages/next-chats/chat-dropdown-guard';
 import { useDeleteChat } from '@/hooks/use-chat-request';
 import { IDialog } from '@/interfaces/database/chat';
 import {
@@ -65,45 +66,44 @@ export function ChatDropdown({
     <DropdownMenu>
       <DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>
       <DropdownMenuContent>
-        {hasManagePermissionPermission(chat.operator_permission) && (
-          <>
+        <ChatDropdownGuard
+          chat={chat}
+          showPrivilegeModal={showPrivilegeModal}
+          manageItems={
             <DropdownMenuItem onClick={handleShowChatRenameModal}>
               {t('common.rename')} <PenLine />
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={handlesShowPrivilegeModal}>
-              <PrivilegeDropdown></PrivilegeDropdown>
-            </DropdownMenuItem>
-          </>
-        )}
-        {hasOwnerPermission(chat.operator_permission) && (
-          <>
-            <DropdownMenuSeparator />
-            <ConfirmDeleteDialog
-              onOk={handleDelete}
-              title={t('deleteModal.delChat')}
-              content={{
-                node: (
-                  <ConfirmDeleteDialogNode
-                    avatar={{ avatar: chat.icon, name: chat.name }}
-                    name={chat.name}
-                  />
-                ),
-              }}
-            >
-              <DropdownMenuItem
-                className="text-state-error"
-                onSelect={(e) => {
-                  e.preventDefault();
-                }}
-                onClick={(e) => {
-                  e.stopPropagation();
+          }
+          deleteItems={
+            <>
+              <DropdownMenuSeparator />
+              <ConfirmDeleteDialog
+                onOk={handleDelete}
+                title={t('deleteModal.delChat')}
+                content={{
+                  node: (
+                    <ConfirmDeleteDialogNode
+                      avatar={{ avatar: chat.icon, name: chat.name }}
+                      name={chat.name}
+                    />
+                  ),
                 }}
               >
-                {t('common.delete')} <Trash2 />
-              </DropdownMenuItem>
-            </ConfirmDeleteDialog>
-          </>
-        )}
+                <DropdownMenuItem
+                  className="text-state-error"
+                  onSelect={(e) => {
+                    e.preventDefault();
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                  }}
+                >
+                  {t('common.delete')} <Trash2 />
+                </DropdownMenuItem>
+              </ConfirmDeleteDialog>
+            </>
+          }
+        />
       </DropdownMenuContent>
     </DropdownMenu>
   );

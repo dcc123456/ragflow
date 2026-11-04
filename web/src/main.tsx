@@ -21,10 +21,11 @@ import '../tailwind.css';
 import App from './app';
 import './global.less';
 import { initLanguage } from './locales/config';
-import { fetchBillingStatus } from './services/billingStatus';
+import { fetchBillingStatus } from '@/ee/services/billingStatus';
 
-Promise.all([initLanguage()]).then(() => {
-  fetchBillingStatus().then(() => {
+initLanguage()
+  .then(() => fetchBillingStatus())
+  .then(() => {
     ReactDOM.createRoot(document.getElementById('root')!).render(
       <React.StrictMode>
         <Inspector keys={['alt', 'c']} />
@@ -32,4 +33,3 @@ Promise.all([initLanguage()]).then(() => {
       </React.StrictMode>,
     );
   });
-});

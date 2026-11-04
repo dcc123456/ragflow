@@ -36,7 +36,7 @@ import (
 // GetEnableAdmin reports whether the admin console is enabled for this
 // deployment, mirroring python's settings.ENABLE_ADMIN.
 func (h *SystemHandler) GetEnableAdmin(c *gin.Context) {
-	common.SuccessWithData(c, gin.H{"enable": enableAdminFlag()}, "")
+	common.RespondSuccess(c, gin.H{"enable": enableAdminFlag()}, "")
 }
 
 // enableAdminFlag reads ENABLE_ADMIN once per call; the python default is off.
@@ -50,39 +50,39 @@ func enableAdminFlag() bool {
 
 // GetCores /api/v1/system/cores [GET]
 func (h *SystemHandler) GetCores(c *gin.Context) {
-	common.ErrorWithCode(c, common.CodeNotImplemented, "Get cores not implemented")
+	common.RespondError(c, common.CodeNotImplemented, "Get cores not implemented")
 }
 
 // SetCores /api/v1/system/cores [PUT]
 func (h *SystemHandler) SetCores(c *gin.Context) {
-	common.ErrorWithCode(c, common.CodeNotImplemented, "Set cores not implemented")
+	common.RespondError(c, common.CodeNotImplemented, "Set cores not implemented")
 }
 
 // GetMemory /api/v1/system/memory [GET]
 func (h *SystemHandler) GetMemory(c *gin.Context) {
-	common.ErrorWithCode(c, common.CodeNotImplemented, "Get memory not implemented")
+	common.RespondError(c, common.CodeNotImplemented, "Get memory not implemented")
 }
 
 // SetMemory /api/v1/system/memory [PUT]
 func (h *SystemHandler) SetMemory(c *gin.Context) {
-	common.ErrorWithCode(c, common.CodeNotImplemented, "Set memory not implemented")
+	common.RespondError(c, common.CodeNotImplemented, "Set memory not implemented")
 }
 
 // GetConcurrency /api/v1/system/concurrency [GET]
 func (h *SystemHandler) GetConcurrency(c *gin.Context) {
-	common.ErrorWithCode(c, common.CodeNotImplemented, "Get concurrency not implemented")
+	common.RespondError(c, common.CodeNotImplemented, "Get concurrency not implemented")
 }
 
 // SetConcurrency /api/v1/system/concurrency [PUT]
 func (h *SystemHandler) SetConcurrency(c *gin.Context) {
-	common.ErrorWithCode(c, common.CodeNotImplemented, "Set concurrency not implemented")
+	common.RespondError(c, common.CodeNotImplemented, "Set concurrency not implemented")
 }
 
 // GetQuota /api/v1/system/quota [GET]
 func (h *SystemHandler) GetQuota(c *gin.Context) {
 	quota := utility.GetAPIServiceQuota()
 	if quota == nil {
-		common.ErrorWithCode(c, common.CodeNotFound, "API Service quota is not set")
+		common.RespondError(c, common.CodeNotFound, "API Service quota is not set")
 	}
-	common.SuccessWithData(c, quota, "success")
+	common.RespondSuccess(c, quota, "success")
 }

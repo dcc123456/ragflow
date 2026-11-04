@@ -35,7 +35,7 @@ func requireAdminActorID(c *gin.Context) (string, bool) {
 	value, ok := c.Get("user_id")
 	actorUserID, valid := value.(string)
 	if !ok || !valid || strings.TrimSpace(actorUserID) == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusUnauthorized, common.CodeUnauthorized, nil, "Not authenticated")
+		common.Respond(c, http.StatusUnauthorized, common.CodeUnauthorized, nil, "Not authenticated")
 		return "", false
 	}
 	return strings.TrimSpace(actorUserID), true
@@ -44,12 +44,12 @@ func requireAdminActorID(c *gin.Context) (string, bool) {
 func parseAdminPagination(c *gin.Context) (int, int, bool) {
 	page, err := common.ParseRequestIntPositive(c, c.Query("page"), "page", 1)
 	if err != nil || page < 1 {
-		common.ErrorWithCode(c, common.CodeBadRequest, "page must be a positive integer")
+		common.RespondError(c, common.CodeBadRequest, "page must be a positive integer")
 		return 0, 0, false
 	}
 	pageSize, err := common.ParseRequestIntPositive(c, c.Query("page_size"), "page_size", 10)
 	if err != nil || pageSize < 1 || pageSize > maxAdminPageSize {
-		common.ErrorWithCode(c, common.CodeBadRequest, "page_size must be between 1 and 100")
+		common.RespondError(c, common.CodeBadRequest, "page_size must be between 1 and 100")
 		return 0, 0, false
 	}
 	return page, pageSize, true
@@ -62,7 +62,7 @@ func parseAdminOptionalTime(c *gin.Context, key string) (*int64, bool) {
 	}
 	timestamp, err := strconv.ParseInt(value, 10, 64)
 	if err != nil || timestamp < 0 {
-		common.ErrorWithCode(c, common.CodeBadRequest, key+" must be a non-negative Unix timestamp in milliseconds")
+		common.RespondError(c, common.CodeBadRequest, key+" must be a non-negative Unix timestamp in milliseconds")
 		return nil, false
 	}
 	return &timestamp, true
@@ -81,7 +81,7 @@ func (h *Handler) ListTenants(c *gin.Context) {
 	if raw := strings.TrimSpace(c.Query("invite_enabled")); raw != "" {
 		enabled, err := strconv.ParseBool(raw)
 		if err != nil {
-			common.ErrorWithCode(c, common.CodeBadRequest, "invite_enabled must be true or false")
+			common.RespondError(c, common.CodeBadRequest, "invite_enabled must be true or false")
 			return
 		}
 		filter.InviteEnabled = &enabled
@@ -91,7 +91,7 @@ func (h *Handler) ListTenants(c *gin.Context) {
 		writeRoleError(c, err)
 		return
 	}
-	common.SuccessWithData(c, result, "")
+	common.RespondSuccess(c, result, "")
 }
 
 type updateTenantInviteSettingRequest struct {
@@ -102,12 +102,12 @@ type updateTenantInviteSettingRequest struct {
 func (h *Handler) UpdateTenantInviteSetting(c *gin.Context) {
 	tenantID := strings.TrimSpace(c.Param("tenant_id"))
 	if tenantID == "" {
-		common.ErrorWithCode(c, common.CodeBadRequest, "tenant_id is required")
+		common.RespondError(c, common.CodeBadRequest, "tenant_id is required")
 		return
 	}
 	var request updateTenantInviteSettingRequest
 	if err := c.ShouldBindJSON(&request); err != nil || request.InviteEnabled == nil {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "invite_enabled is required")
+		common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, nil, "invite_enabled is required")
 		return
 	}
 	actorID, ok := requireAdminActorID(c)
@@ -119,7 +119,7 @@ func (h *Handler) UpdateTenantInviteSetting(c *gin.Context) {
 		writeRoleError(c, err)
 		return
 	}
-	common.SuccessWithData(c, result, "")
+	common.RespondSuccess(c, result, "")
 }
 
 // ShowDefaultTenantInviteEnabled returns the default invitation setting for new tenants.
@@ -129,7 +129,7 @@ func (h *Handler) ShowDefaultTenantInviteEnabled(c *gin.Context) {
 		writeRoleError(c, err)
 		return
 	}
-	common.SuccessWithData(c, gin.H{"invite_enabled": enabled}, "")
+	common.RespondSuccess(c, gin.H{"invite_enabled": enabled}, "")
 }
 
 type updateDefaultTenantInviteEnabledRequest struct {
@@ -140,7 +140,7 @@ type updateDefaultTenantInviteEnabledRequest struct {
 func (h *Handler) UpdateDefaultTenantInviteEnabled(c *gin.Context) {
 	var request updateDefaultTenantInviteEnabledRequest
 	if err := c.ShouldBindJSON(&request); err != nil || request.InviteEnabled == nil {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "invite_enabled is required")
+		common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, nil, "invite_enabled is required")
 		return
 	}
 	actorUserID, ok := requireAdminActorID(c)
@@ -152,7 +152,7 @@ func (h *Handler) UpdateDefaultTenantInviteEnabled(c *gin.Context) {
 		writeRoleError(c, err)
 		return
 	}
-	common.SuccessWithData(c, result, "")
+	common.RespondSuccess(c, result, "")
 }
 
 // ListPermissionLogs returns global permission audit records for system administrators.
@@ -170,7 +170,7 @@ func (h *Handler) ListPermissionLogs(c *gin.Context) {
 		return
 	}
 	if startTime != nil && endTime != nil && *startTime > *endTime {
-		common.ErrorWithCode(c, common.CodeBadRequest, "start_time must not be later than end_time")
+		common.RespondError(c, common.CodeBadRequest, "start_time must not be later than end_time")
 		return
 	}
 	filter := dao.PermissionChangeLogFilter{
@@ -192,5 +192,5 @@ func (h *Handler) ListPermissionLogs(c *gin.Context) {
 		writeRoleError(c, err)
 		return
 	}
-	common.SuccessWithData(c, result, "")
+	common.RespondSuccess(c, result, "")
 }

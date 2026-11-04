@@ -133,9 +133,11 @@ func (s *CompilationTemplateGroupService) CreateGroup(ctx context.Context, tenan
 	}
 
 	groupID := common.GenerateUUID()
+	creatorID := identityForTemplateTenant(ctx, tenantID).UserID
 	if err := dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		group := &entity.CompilationTemplateGroup{
 			ID:          groupID,
+			UserID:      creatorID,
 			TenantID:    tenantID,
 			Name:        groupName,
 			Description: strptr(req.Description),
@@ -400,6 +402,7 @@ func (s *CompilationTemplateGroupService) insertChildren(ctx context.Context, db
 		valid := string(entity.StatusValid)
 		tmpl := &entity.CompilationTemplate{
 			ID:       common.GenerateUUID(),
+			UserID:   identityForTemplateTenant(ctx, tenantID).UserID,
 			TenantID: &tenantID,
 			GroupID:  &groupID,
 			Name:     name,
@@ -524,6 +527,7 @@ func (s *CompilationTemplateGroupService) reconcileChildren(ctx context.Context,
 		valid := string(entity.StatusValid)
 		tmpl := &entity.CompilationTemplate{
 			ID:       newID,
+			UserID:   identityForTemplateTenant(ctx, tenantID).UserID,
 			TenantID: &tenantID,
 			GroupID:  &groupID,
 			Name:     newName,
@@ -552,8 +556,8 @@ func (s *CompilationTemplateGroupService) reconcileChildren(ctx context.Context,
 
 func identityForTemplateTenant(ctx context.Context, tenantID string) Identity {
 	access := Identity{UserID: tenantID, TenantID: tenantID}
-	if subject, ok := permission.SubjectFromContext(ctx); ok && strings.TrimSpace(subject.UserID) != "" {
-		access.UserID = subject.UserID
+	if userID := strings.TrimSpace(permission.UserIDFromContext(ctx)); userID != "" {
+		access.UserID = userID
 	}
 	return access
 }
