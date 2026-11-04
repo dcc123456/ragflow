@@ -556,8 +556,8 @@ func requireFeatureSharePermission(ctx context.Context, db *gorm.DB, actor *perm
 	if featureName == "" {
 		return nil
 	}
-	if err := permission.NewDatabaseChecker(db).CheckFeature(ctx,
-		permission.Subject{UserID: actor.userID, TenantID: actor.tenantID}, featureName, permission.ActionShare); err != nil {
+	ctx = permission.WithIdentity(ctx, actor.userID, actor.tenantID)
+	if err := permission.NewDatabaseChecker(db).CheckFeature(ctx, featureName, permission.ActionShare); err != nil {
 		if errors.Is(err, permission.ErrPermissionDenied) || errors.Is(err, permission.ErrMembershipNotFound) {
 			return common.NewCodedError(common.CodeForbidden, "Tenant role does not allow resource sharing")
 		}

@@ -59,9 +59,9 @@ func TestCreateAgentPersistsAuthenticatedUserAndActiveTenant(t *testing.T) {
 	db := setupResourcePermissionTestDB(t)
 	seedTenantRoleTenant(t, db, "tenant-agent")
 	seedTenantRoleMember(t, db, "agent-owner-link", "agent-owner", "tenant-agent", string(permission.RoleOwner))
-	ctx := permission.WithSubject(t.Context(), permission.Subject{UserID: "agent-owner", TenantID: "tenant-agent"})
+	ctx := permission.WithIdentity(t.Context(), "agent-owner", "tenant-agent")
 
-	row, code, err := NewAgentService().CreateAgent(ctx, "agent-owner", &CreateAgentRequest{
+	row, code, err := NewAgentService().CreateAgent(ctx, &CreateAgentRequest{
 		Title: sptr("Tenant-scoped Agent"),
 		DSL:   entity.JSONMap{},
 	})

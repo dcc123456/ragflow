@@ -49,31 +49,33 @@ func newPolicyEE(source Source) (policy, bool) {
 	return &enterprisePolicy{source: source, db: database.db}, true
 }
 
-func (p *enterprisePolicy) CheckFeature(ctx context.Context, subject Subject, feature Feature, action Action) error {
-	subject, err := p.subjectFor(ctx, subject)
+func (p *enterprisePolicy) CheckFeature(ctx context.Context, feature Feature, action Action) error {
+	var err error
+	ctx, err = p.withTenantContext(ctx)
 	if err != nil {
 		return err
 	}
 	if strings.TrimSpace(string(feature)) == "" || !validAction(action) {
 		return ErrInvalidPermission
 	}
-	membership, err := p.loadMembership(ctx, subject)
+	membership, err := p.loadMembership(ctx)
 	if err != nil {
 		return err
 	}
-	return p.checkFeatureRoles(ctx, subject.UserID, membership, feature, action)
+	return p.checkFeatureRoles(ctx, UserIDFromContext(ctx), membership, feature, action)
 }
 
-func (p *enterprisePolicy) CheckTenant(ctx context.Context, subject Subject, tenantID string, requirement TenantRequirement) error {
-	subject, err := p.subjectFor(ctx, subject)
+func (p *enterprisePolicy) CheckTenant(ctx context.Context, tenantID string, requirement TenantRequirement) error {
+	var err error
+	ctx, err = p.withTenantContext(ctx)
 	if err != nil {
 		return err
 	}
 	tenantID = strings.TrimSpace(tenantID)
-	if tenantID == "" || tenantID != subject.TenantID || !validTenantRequirement(requirement) {
+	if tenantID == "" || tenantID != TenantIDFromContext(ctx) || !validTenantRequirement(requirement) {
 		return ErrPermissionDenied
 	}
-	membership, err := p.loadMembership(ctx, subject)
+	membership, err := p.loadMembership(ctx)
 	if err != nil {
 		return err
 	}
@@ -99,11 +101,11 @@ func (p *enterprisePolicy) CheckTenant(ctx context.Context, subject Subject, ten
 	return ErrPermissionDenied
 }
 
-func (p *enterprisePolicy) CheckResource(ctx context.Context, subject Subject, ref ResourceRef, operation Operation) error {
+func (p *enterprisePolicy) CheckResource(ctx context.Context, ref ResourceRef, operation Operation) error {
 	if !validOperation(operation) {
 		return ErrInvalidPermission
 	}
-	access, err := p.ResolveAccess(ctx, subject, ref)
+	access, err := p.ResolveAccess(ctx, ref)
 	if err != nil {
 		return err
 	}
@@ -113,26 +115,27 @@ func (p *enterprisePolicy) CheckResource(ctx context.Context, subject Subject, r
 	return nil
 }
 
-func (p *enterprisePolicy) CheckDependency(ctx context.Context, subject Subject, entryRef, dependencyRef ResourceRef, entryOperation, dependencyOperation Operation) error {
-	subject, err := p.subjectFor(ctx, subject)
+func (p *enterprisePolicy) CheckDependency(ctx context.Context, entryRef, dependencyRef ResourceRef, entryOperation, dependencyOperation Operation) error {
+	var err error
+	ctx, err = p.withTenantContext(ctx)
 	if err != nil {
 		return err
 	}
 	if !validOperation(entryOperation) || !validOperation(dependencyOperation) {
 		return ErrInvalidPermission
 	}
-	if err := p.CheckResource(ctx, subject, entryRef, entryOperation); err != nil {
+	if err := p.CheckResource(ctx, entryRef, entryOperation); err != nil {
 		return err
 	}
-	if err := p.CheckResource(ctx, subject, dependencyRef, dependencyOperation); err != nil {
+	if err := p.CheckResource(ctx, dependencyRef, dependencyOperation); err != nil {
 		return err
 	}
-	ownerID, err := p.resourceOwnerUserID(ctx, subject.TenantID, entryRef)
+	ownerID, err := p.resourceOwnerUserID(ctx, TenantIDFromContext(ctx), entryRef)
 	if err != nil {
 		return err
 	}
-	ownerSubject := Subject{UserID: ownerID, TenantID: subject.TenantID}
-	if err := p.CheckResource(WithSubject(ctx, ownerSubject), ownerSubject, dependencyRef, dependencyOperation); err != nil {
+	ownerCtx := WithIdentity(ctx, ownerID, TenantIDFromContext(ctx))
+	if err := p.CheckResource(ownerCtx, dependencyRef, dependencyOperation); err != nil {
 		if errors.Is(err, ErrPermissionDenied) || errors.Is(err, ErrMembershipNotFound) || errors.Is(err, ErrResourceNotFound) {
 			return ErrPermissionDenied
 		}
@@ -141,8 +144,9 @@ func (p *enterprisePolicy) CheckDependency(ctx context.Context, subject Subject,
 	return nil
 }
 
-func (p *enterprisePolicy) ResolveAccess(ctx context.Context, subject Subject, ref ResourceRef) (Access, error) {
-	subject, err := p.subjectFor(ctx, subject)
+func (p *enterprisePolicy) ResolveAccess(ctx context.Context, ref ResourceRef) (Access, error) {
+	var err error
+	ctx, err = p.withTenantContext(ctx)
 	if err != nil {
 		return Access{}, err
 	}
@@ -150,7 +154,7 @@ func (p *enterprisePolicy) ResolveAccess(ctx context.Context, subject Subject, r
 	if !ok || !validResourceRef(ref) {
 		return Access{}, ErrInvalidPermission
 	}
-	membership, err := p.loadMembership(ctx, subject)
+	membership, err := p.loadMembership(ctx)
 	if err != nil {
 		return Access{}, err
 	}
@@ -162,7 +166,7 @@ func (p *enterprisePolicy) ResolveAccess(ctx context.Context, subject Subject, r
 		return Access{}, ErrResourceNotFound
 	}
 	resource := resources[0]
-	if resource.TenantID != subject.TenantID {
+	if resource.TenantID != TenantIDFromContext(ctx) {
 		return Access{}, ErrResourceNotFound
 	}
 	if !resource.Active {
@@ -171,7 +175,7 @@ func (p *enterprisePolicy) ResolveAccess(ctx context.Context, subject Subject, r
 	feature, hasFeature := enterpriseFeature(ref.Kind)
 	featureMask := entity.RoleActionAll
 	if hasFeature {
-		featureMask, err = p.effectiveFeatureMask(ctx, subject.UserID, membership, feature)
+		featureMask, err = p.effectiveFeatureMask(ctx, UserIDFromContext(ctx), membership, feature)
 		if err != nil {
 			return Access{}, err
 		}
@@ -192,7 +196,7 @@ func (p *enterprisePolicy) ResolveAccess(ctx context.Context, subject Subject, r
 	}
 	isTenantRootFolder := false
 	if ref.Kind == ResourceKindFolder {
-		isRoot, err := p.isTenantRootFolder(ctx, ref.ID, subject.TenantID)
+		isRoot, err := p.isTenantRootFolder(ctx, ref.ID, TenantIDFromContext(ctx))
 		if err != nil {
 			return Access{}, fmt.Errorf("permission: check tenant root folder: %w", err)
 		}
@@ -204,8 +208,8 @@ func (p *enterprisePolicy) ResolveAccess(ctx context.Context, subject Subject, r
 			}
 		}
 	}
-	if ref.Kind != ResourceKindModelProvider && !isTenantRootFolder && resource.OwnerUserID == subject.UserID {
-		hasOwnerGrant, err := p.hasResourceOwnerGrant(ctx, subject.TenantID, resourceType, resourceIDs)
+	if ref.Kind != ResourceKindModelProvider && !isTenantRootFolder && resource.OwnerUserID == UserIDFromContext(ctx) {
+		hasOwnerGrant, err := p.hasResourceOwnerGrant(ctx, TenantIDFromContext(ctx), resourceType, resourceIDs)
 		if err != nil {
 			return Access{}, err
 		}
@@ -214,12 +218,12 @@ func (p *enterprisePolicy) ResolveAccess(ctx context.Context, subject Subject, r
 			source = AccessSourceOwner
 		}
 	}
-	if ref.Kind == ResourceKindModelProvider && resource.OwnerUserID == subject.UserID {
+	if ref.Kind == ResourceKindModelProvider && resource.OwnerUserID == UserIDFromContext(ctx) {
 		resourceMask = entity.ResourcePermissionRead | entity.ResourcePermissionWrite | entity.ResourcePermissionManage | entity.ResourcePermissionOwner
 		source = AccessSourceOwner
 	}
 	operations := operationsForMasks(featureMask, resourceMask, hasFeature)
-	if ref.Kind == ResourceKindModelProvider && resource.OwnerUserID != subject.UserID {
+	if ref.Kind == ResourceKindModelProvider && resource.OwnerUserID != UserIDFromContext(ctx) {
 		operations = retainReadOperations(operations)
 	}
 	if len(operations) == 0 {
@@ -227,15 +231,16 @@ func (p *enterprisePolicy) ResolveAccess(ctx context.Context, subject Subject, r
 	}
 	return Access{
 		Resource:       ref,
-		TenantID:       subject.TenantID,
+		TenantID:       TenantIDFromContext(ctx),
 		Source:         source,
 		PermissionMask: resourceMask,
 		Operations:     operations,
 	}, nil
 }
 
-func (p *enterprisePolicy) ResolveAccesses(ctx context.Context, subject Subject, refs []ResourceRef) (map[ResourceRef]Access, error) {
-	subject, err := p.subjectFor(ctx, subject)
+func (p *enterprisePolicy) ResolveAccesses(ctx context.Context, refs []ResourceRef) (map[ResourceRef]Access, error) {
+	var err error
+	ctx, err = p.withTenantContext(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -251,12 +256,12 @@ func (p *enterprisePolicy) ResolveAccesses(ctx context.Context, subject Subject,
 		}
 	}
 	if allMCPServers {
-		return p.resolveMCPServerAccesses(ctx, subject, refs)
+		return p.resolveMCPServerAccesses(ctx, refs)
 	}
 
 	accesses := make(map[ResourceRef]Access, len(refs))
 	for _, ref := range refs {
-		access, err := p.ResolveAccess(ctx, subject, ref)
+		access, err := p.ResolveAccess(ctx, ref)
 		if err == nil {
 			accesses[ref] = access
 			continue
@@ -269,16 +274,16 @@ func (p *enterprisePolicy) ResolveAccesses(ctx context.Context, subject Subject,
 	return accesses, nil
 }
 
-func (p *enterprisePolicy) resolveMCPServerAccesses(ctx context.Context, subject Subject, refs []ResourceRef) (map[ResourceRef]Access, error) {
+func (p *enterprisePolicy) resolveMCPServerAccesses(ctx context.Context, refs []ResourceRef) (map[ResourceRef]Access, error) {
 	accesses := make(map[ResourceRef]Access, len(refs))
 	if len(refs) == 0 {
 		return accesses, nil
 	}
-	membership, err := p.loadMembership(ctx, subject)
+	membership, err := p.loadMembership(ctx)
 	if err != nil {
 		return nil, err
 	}
-	featureMask, err := p.effectiveFeatureMask(ctx, subject.UserID, membership, "mcp")
+	featureMask, err := p.effectiveFeatureMask(ctx, UserIDFromContext(ctx), membership, "mcp")
 	if err != nil {
 		return nil, err
 	}
@@ -293,7 +298,7 @@ func (p *enterprisePolicy) resolveMCPServerAccesses(ctx context.Context, subject
 	resourcesByRef := make(map[ResourceRef]Resource, len(resources))
 	resourceIDs := make([]string, 0, len(resources))
 	for _, resource := range resources {
-		if resource.Ref.Kind != ResourceKindMCPServer || resource.TenantID != subject.TenantID || !resource.Active {
+		if resource.Ref.Kind != ResourceKindMCPServer || resource.TenantID != TenantIDFromContext(ctx) || !resource.Active {
 			continue
 		}
 		resourcesByRef[resource.Ref] = resource
@@ -310,7 +315,7 @@ func (p *enterprisePolicy) resolveMCPServerAccesses(ctx context.Context, subject
 	}
 	grantQuery := p.db.WithContext(ctx).Model(&entity.Permission{}).
 		Where("tenant_id = ? AND resource_type = ? AND resource_id IN ? AND status = ?",
-			subject.TenantID, "mcp", resourceIDs, string(entity.StatusValid))
+			TenantIDFromContext(ctx), "mcp", resourceIDs, string(entity.StatusValid))
 	memberTargets := p.db.Where("member_id = ? AND (group_id IS NULL OR group_id = '')", membership.Membership.ID)
 	if len(groupIDs) > 0 {
 		memberTargets = memberTargets.Or("group_id IN ? AND (member_id IS NULL OR member_id = '')", groupIDs)
@@ -337,7 +342,7 @@ func (p *enterprisePolicy) resolveMCPServerAccesses(ctx context.Context, subject
 	var ownerGrantIDs []string
 	if err := p.db.WithContext(ctx).Model(&entity.Permission{}).
 		Where("tenant_id = ? AND resource_type = ? AND resource_id IN ? AND status = ? AND (permission & ?) <> 0",
-			subject.TenantID, "mcp", resourceIDs, string(entity.StatusValid), entity.ResourcePermissionOwner).
+			TenantIDFromContext(ctx), "mcp", resourceIDs, string(entity.StatusValid), entity.ResourcePermissionOwner).
 		Distinct("resource_id").Pluck("resource_id", &ownerGrantIDs).Error; err != nil {
 		return nil, fmt.Errorf("permission: load MCP server owner grants: %w", err)
 	}
@@ -349,7 +354,7 @@ func (p *enterprisePolicy) resolveMCPServerAccesses(ctx context.Context, subject
 	for ref, resource := range resourcesByRef {
 		resourceMask := resourceMasks[ref.ID]
 		source := accessSources[ref.ID]
-		if resource.OwnerUserID == subject.UserID {
+		if resource.OwnerUserID == UserIDFromContext(ctx) {
 			if _, exists := hasOwnerGrant[ref.ID]; !exists {
 				resourceMask |= entity.ResourcePermissionOwner
 				source = AccessSourceOwner
@@ -361,7 +366,7 @@ func (p *enterprisePolicy) resolveMCPServerAccesses(ctx context.Context, subject
 		}
 		accesses[ref] = Access{
 			Resource:       ref,
-			TenantID:       subject.TenantID,
+			TenantID:       TenantIDFromContext(ctx),
 			Source:         source,
 			PermissionMask: resourceMask,
 			Operations:     operations,
@@ -380,8 +385,9 @@ func (p *enterprisePolicy) isTenantRootFolder(ctx context.Context, folderID, ten
 	return count == 1, nil
 }
 
-func (p *enterprisePolicy) GrantResourceOwner(ctx context.Context, subject Subject, ref ResourceRef) error {
-	subject, err := p.subjectFor(ctx, subject)
+func (p *enterprisePolicy) GrantResourceOwner(ctx context.Context, ref ResourceRef) error {
+	var err error
+	ctx, err = p.withTenantContext(ctx)
 	if err != nil {
 		return err
 	}
@@ -392,11 +398,11 @@ func (p *enterprisePolicy) GrantResourceOwner(ctx context.Context, subject Subje
 	if !ok || !validResourceRef(ref) {
 		return ErrInvalidPermission
 	}
-	membership, err := p.loadMembership(ctx, subject)
+	membership, err := p.loadMembership(ctx)
 	if err != nil {
 		return err
 	}
-	if _, err := p.loadResource(ctx, subject, ref); err != nil {
+	if _, err := p.loadResource(ctx, ref); err != nil {
 		return err
 	}
 	resourceIDs, err := p.permissionResourceIDs(ctx, ref)
@@ -411,7 +417,7 @@ func (p *enterprisePolicy) GrantResourceOwner(ctx context.Context, subject Subje
 		var grants []entity.Permission
 		if err := p.db.WithContext(ctx).
 			Where("tenant_id = ? AND resource_type = ? AND resource_id = ? AND status = ? AND (permission & ?) <> 0",
-				subject.TenantID, resourceType, resourceID, status, entity.ResourcePermissionOwner).
+				TenantIDFromContext(ctx), resourceType, resourceID, status, entity.ResourcePermissionOwner).
 			Order("id ASC").Find(&grants).Error; err != nil {
 			return fmt.Errorf("permission: check existing resource owner grant: %w", err)
 		}
@@ -432,7 +438,7 @@ func (p *enterprisePolicy) GrantResourceOwner(ctx context.Context, subject Subje
 		resourceIDValue := resourceID
 		memberID := membership.Membership.ID
 		grant := entity.Permission{
-			ID: common.GenerateUUID(), MemberID: &memberID, TenantID: subject.TenantID,
+			ID: common.GenerateUUID(), MemberID: &memberID, TenantID: TenantIDFromContext(ctx),
 			ResourceType: resourceType, ResourceID: &resourceIDValue,
 			Permission: entity.ResourcePermissionOwner, Status: &status,
 		}
@@ -445,14 +451,14 @@ func (p *enterprisePolicy) GrantResourceOwner(ctx context.Context, subject Subje
 		}
 		afterData, err := json.Marshal(map[string]interface{}{
 			"permission":    entity.ResourcePermissionOwner,
-			"owner_user_id": subject.UserID,
+			"owner_user_id": UserIDFromContext(ctx),
 		})
 		if err != nil {
 			return fmt.Errorf("permission: encode owner grant audit after data: %w", err)
 		}
-		actorID, beforeValue, afterValue := subject.UserID, string(beforeData), string(afterData)
+		actorID, beforeValue, afterValue := UserIDFromContext(ctx), string(beforeData), string(afterData)
 		log := entity.PermissionChangeLog{
-			ID: common.GenerateUUID(), TenantID: subject.TenantID, OperatorID: membership.Membership.ID,
+			ID: common.GenerateUUID(), TenantID: TenantIDFromContext(ctx), OperatorID: membership.Membership.ID,
 			TargetType: "member", TargetID: membership.Membership.ID,
 			ResourceType: resourceType, ResourceID: resourceID,
 			OldPermission: 0, NewPermission: entity.ResourcePermissionOwner,
@@ -466,8 +472,9 @@ func (p *enterprisePolicy) GrantResourceOwner(ctx context.Context, subject Subje
 	return nil
 }
 
-func (p *enterprisePolicy) Scope(ctx context.Context, subject Subject, query ScopeQuery) (Scope, error) {
-	subject, err := p.subjectFor(ctx, subject)
+func (p *enterprisePolicy) Scope(ctx context.Context, query ScopeQuery) (Scope, error) {
+	var err error
+	ctx, err = p.withTenantContext(ctx)
 	if err != nil {
 		return Scope{}, err
 	}
@@ -481,25 +488,25 @@ func (p *enterprisePolicy) Scope(ctx context.Context, subject Subject, query Sco
 		return Scope{}, ErrInvalidPermission
 	}
 	if query.Parent.Kind != "" {
-		if err := p.CheckResource(ctx, subject, query.Parent, OperationRead); err != nil {
+		if err := p.CheckResource(ctx, query.Parent, OperationRead); err != nil {
 			return Scope{}, err
 		}
 	}
-	if _, err := p.loadMembership(ctx, subject); err != nil {
+	if _, err := p.loadMembership(ctx); err != nil {
 		return Scope{}, err
 	}
-	refs, err := p.source.ListResourceRefs(ctx, subject, query.Kind, query.Parent)
+	refs, err := p.source.ListResourceRefs(ctx, query.Kind, query.Parent)
 	if err != nil {
 		return Scope{}, fmt.Errorf("permission: list resource candidates: %w", err)
 	}
 	refs = uniqueRefs(refs)
-	scope := Scope{TenantID: subject.TenantID, Kind: query.Kind, Parent: query.Parent, Operation: query.Operation}
+	scope := Scope{TenantID: TenantIDFromContext(ctx), Kind: query.Kind, Parent: query.Parent, Operation: query.Operation}
 	for _, ref := range refs {
 		var checkErr error
 		if query.Entry == nil {
-			checkErr = p.CheckResource(ctx, subject, ref, query.Operation)
+			checkErr = p.CheckResource(ctx, ref, query.Operation)
 		} else {
-			checkErr = p.CheckDependency(ctx, subject, *query.Entry, ref, query.EntryOp, query.Operation)
+			checkErr = p.CheckDependency(ctx, *query.Entry, ref, query.EntryOp, query.Operation)
 		}
 		if checkErr == nil {
 			scope.ResourceIDs = append(scope.ResourceIDs, ref.ID)
@@ -518,20 +525,21 @@ func (p *enterprisePolicy) Scope(ctx context.Context, subject Subject, query Sco
 	return scope, nil
 }
 
-func (p *enterprisePolicy) FilterResources(ctx context.Context, subject Subject, refs []ResourceRef, operation Operation) ([]ResourceRef, error) {
-	subject, err := p.subjectFor(ctx, subject)
+func (p *enterprisePolicy) FilterResources(ctx context.Context, refs []ResourceRef, operation Operation) ([]ResourceRef, error) {
+	var err error
+	ctx, err = p.withTenantContext(ctx)
 	if err != nil {
 		return nil, err
 	}
 	if !validOperation(operation) {
 		return nil, ErrInvalidPermission
 	}
-	if _, err := p.loadMembership(ctx, subject); err != nil {
+	if _, err := p.loadMembership(ctx); err != nil {
 		return nil, err
 	}
 	accessible := make([]ResourceRef, 0, len(refs))
 	for _, ref := range uniqueRefs(refs) {
-		err := p.CheckResource(ctx, subject, ref, operation)
+		err := p.CheckResource(ctx, ref, operation)
 		if err == nil {
 			accessible = append(accessible, ref)
 			continue
@@ -544,30 +552,30 @@ func (p *enterprisePolicy) FilterResources(ctx context.Context, subject Subject,
 	return accessible, nil
 }
 
-func (p *enterprisePolicy) QueryScope(ctx context.Context, subject Subject, query ScopeQuery) (QueryScope, bool, error) {
+func (p *enterprisePolicy) QueryScope(ctx context.Context, query ScopeQuery) (QueryScope, bool, error) {
+	var err error
+	ctx, err = p.withTenantContext(ctx)
+	if err != nil {
+		return QueryScope{}, true, err
+	}
 	if query.Kind == ResourceKindMCPServer {
 		if query.Operation != OperationRead || query.Parent.ID != "" || query.Parent.Kind != "" || query.Entry != nil {
 			return QueryScope{}, false, nil
 		}
-		return p.mcpServerReadQueryScope(ctx, subject)
+		return p.mcpServerReadQueryScope(ctx)
 	}
 	if query.Kind != ResourceKindFile || query.Operation != OperationRead ||
 		query.Parent.Kind != ResourceKindFolder || strings.TrimSpace(query.Parent.ID) == "" || query.Entry != nil {
 		return QueryScope{}, false, nil
 	}
-	var err error
-	subject, err = p.subjectFor(ctx, subject)
+	if err := p.CheckResource(ctx, query.Parent, OperationRead); err != nil {
+		return QueryScope{}, true, err
+	}
+	membership, err := p.loadMembership(ctx)
 	if err != nil {
 		return QueryScope{}, true, err
 	}
-	if err := p.CheckResource(ctx, subject, query.Parent, OperationRead); err != nil {
-		return QueryScope{}, true, err
-	}
-	membership, err := p.loadMembership(ctx, subject)
-	if err != nil {
-		return QueryScope{}, true, err
-	}
-	featureMask, err := p.effectiveFeatureMask(ctx, subject.UserID, membership, "file")
+	featureMask, err := p.effectiveFeatureMask(ctx, UserIDFromContext(ctx), membership, "file")
 	if err != nil {
 		return QueryScope{}, true, err
 	}
@@ -584,23 +592,18 @@ func (p *enterprisePolicy) QueryScope(ctx context.Context, subject Subject, quer
 		ownerGrant := db.Table("permission AS owner_grant").Select("1").
 			Where("owner_grant.tenant_id = file.tenant_id AND owner_grant.resource_type = ? AND owner_grant.resource_id = file.id AND owner_grant.status = ? AND (owner_grant.permission & ?) <> 0",
 				"file", string(entity.StatusValid), entity.ResourcePermissionOwner)
-		return query.Where("file.tenant_id = ?", subject.TenantID).
+		return query.Where("file.tenant_id = ?", TenantIDFromContext(ctx)).
 			Where("EXISTS (?) OR ((file.created_by = ? OR (file.created_by = '' AND ?)) AND NOT EXISTS (?))",
-				grant, subject.UserID, membership.RoleValue == "owner", ownerGrant)
+				grant, UserIDFromContext(ctx), membership.RoleValue == "owner", ownerGrant)
 	}}, true, nil
 }
 
-func (p *enterprisePolicy) mcpServerReadQueryScope(ctx context.Context, subject Subject) (QueryScope, bool, error) {
-	var err error
-	subject, err = p.subjectFor(ctx, subject)
+func (p *enterprisePolicy) mcpServerReadQueryScope(ctx context.Context) (QueryScope, bool, error) {
+	membership, err := p.loadMembership(ctx)
 	if err != nil {
 		return QueryScope{}, true, err
 	}
-	membership, err := p.loadMembership(ctx, subject)
-	if err != nil {
-		return QueryScope{}, true, err
-	}
-	featureMask, err := p.effectiveFeatureMask(ctx, subject.UserID, membership, "mcp")
+	featureMask, err := p.effectiveFeatureMask(ctx, UserIDFromContext(ctx), membership, "mcp")
 	if err != nil {
 		return QueryScope{}, true, err
 	}
@@ -624,32 +627,32 @@ func (p *enterprisePolicy) mcpServerReadQueryScope(ctx context.Context, subject 
 			Where("((mcp_grant.member_id = ? AND (mcp_grant.group_id IS NULL OR mcp_grant.group_id = '')) OR ((mcp_grant.group_id IS NOT NULL AND mcp_grant.group_id <> '') AND (mcp_grant.member_id IS NULL OR mcp_grant.member_id = '') AND EXISTS (?)))",
 				memberID, groupMembership)
 		if !owner {
-			return query.Where("mcp_server.tenant_id = ?", subject.TenantID).Where("EXISTS (?)", readGrant)
+			return query.Where("mcp_server.tenant_id = ?", TenantIDFromContext(ctx)).Where("EXISTS (?)", readGrant)
 		}
 		ownerGrant := db.Table("permission AS mcp_owner_grant").
 			Select("1").
 			Where("mcp_owner_grant.tenant_id = mcp_server.tenant_id AND mcp_owner_grant.resource_type = ? AND mcp_owner_grant.resource_id = mcp_server.id AND mcp_owner_grant.status = ? AND (mcp_owner_grant.permission & ?) <> 0",
 				"mcp", string(entity.StatusValid), entity.ResourcePermissionOwner)
-		return query.Where("mcp_server.tenant_id = ?", subject.TenantID).
+		return query.Where("mcp_server.tenant_id = ?", TenantIDFromContext(ctx)).
 			Where("(EXISTS (?) OR NOT EXISTS (?))", readGrant, ownerGrant)
 	}}, true, nil
 }
 
-func (p *enterprisePolicy) loadMembership(ctx context.Context, subject Subject) (*enterpriseMembership, error) {
-	if err := validateEnterpriseSubject(subject); err != nil {
+func (p *enterprisePolicy) loadMembership(ctx context.Context) (*enterpriseMembership, error) {
+	if err := validateEnterpriseIdentity(ctx); err != nil {
 		return nil, err
 	}
-	membership, err := p.source.GetMembership(ctx, subject.UserID, subject.TenantID)
+	membership, err := p.source.GetMembership(ctx, UserIDFromContext(ctx), TenantIDFromContext(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("permission: load current Tenant membership: %w", err)
 	}
-	if membership == nil || !membership.Active || membership.UserID != subject.UserID || membership.TenantID != subject.TenantID {
+	if membership == nil || !membership.Active || membership.UserID != UserIDFromContext(ctx) || membership.TenantID != TenantIDFromContext(ctx) {
 		return nil, ErrMembershipNotFound
 	}
 	var relation entity.UserTenant
 	if err := p.db.WithContext(ctx).Select("role").
 		Where("id = ? AND user_id = ? AND tenant_id = ? AND status = ?",
-			membership.ID, subject.UserID, subject.TenantID, string(entity.StatusValid)).
+			membership.ID, UserIDFromContext(ctx), TenantIDFromContext(ctx), string(entity.StatusValid)).
 		Take(&relation).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrMembershipNotFound
@@ -657,7 +660,7 @@ func (p *enterprisePolicy) loadMembership(ctx context.Context, subject Subject) 
 		return nil, fmt.Errorf("permission: load current Tenant role: %w", err)
 	}
 	var user entity.User
-	if err := p.db.WithContext(ctx).Select("id", "role_id").Where("id = ?", subject.UserID).Take(&user).Error; err != nil {
+	if err := p.db.WithContext(ctx).Select("id", "role_id").Where("id = ?", UserIDFromContext(ctx)).Take(&user).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrUnauthenticated
 		}
@@ -666,12 +669,12 @@ func (p *enterprisePolicy) loadMembership(ctx context.Context, subject Subject) 
 	return &enterpriseMembership{Membership: membership, RoleID: user.RoleID, RoleValue: relation.Role}, nil
 }
 
-func (p *enterprisePolicy) loadResource(ctx context.Context, subject Subject, ref ResourceRef) (*Resource, error) {
+func (p *enterprisePolicy) loadResource(ctx context.Context, ref ResourceRef) (*Resource, error) {
 	resources, err := p.source.GetResources(ctx, []ResourceRef{ref})
 	if err != nil {
 		return nil, fmt.Errorf("permission: load resource: %w", err)
 	}
-	if len(resources) != 1 || resources[0].TenantID != subject.TenantID || !resources[0].Active {
+	if len(resources) != 1 || resources[0].TenantID != TenantIDFromContext(ctx) || !resources[0].Active {
 		return nil, ErrResourceNotFound
 	}
 	return &resources[0], nil
@@ -896,7 +899,7 @@ func (p *enterprisePolicy) resourceOwnerUserID(ctx context.Context, tenantID str
 			tenantID, resourceType, resourceIDs, string(entity.StatusValid), entity.ResourcePermissionOwner).
 		Order("id ASC").Take(&grant).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			resource, loadErr := p.loadResource(ctx, Subject{TenantID: tenantID}, ref)
+			resource, loadErr := p.loadResource(WithIdentity(ctx, UserIDFromContext(ctx), tenantID), ref)
 			if loadErr != nil {
 				return "", loadErr
 			}
@@ -933,54 +936,33 @@ func (p *enterprisePolicy) hasResourceOwnerGrant(ctx context.Context, tenantID, 
 	return count > 0, nil
 }
 
-// subjectFor resolves the caller's permission subject and, when the caller
-// carries only a user id, completes the tenant from that user's sole active
-// membership. Background jobs (async space cleanup, tenant deletion) act for a
-// user without a request-scoped tenant, and the community policy never needed
-// one. An ambiguous membership leaves the tenant empty so the subject stays
-// invalid rather than guessing.
-func (p *enterprisePolicy) subjectFor(ctx context.Context, subject Subject) (Subject, error) {
-	subject, err := resolveSubject(ctx, subject)
-	if err != nil {
-		return Subject{}, err
+func (p *enterprisePolicy) withTenantContext(ctx context.Context) (context.Context, error) {
+	userID := strings.TrimSpace(UserIDFromContext(ctx))
+	if userID == "" {
+		return nil, ErrUnauthenticated
 	}
-	if strings.TrimSpace(subject.TenantID) == "" {
-		tenantID, err := p.uniqueActiveTenantID(ctx, subject.UserID)
-		if err != nil {
-			return Subject{}, err
-		}
-		subject.TenantID = tenantID
-	}
-	if err := validateEnterpriseSubject(subject); err != nil {
-		return Subject{}, err
-	}
-	return subject, nil
-}
-
-// uniqueActiveTenantID returns the tenant of the user's only active membership.
-func (p *enterprisePolicy) uniqueActiveTenantID(ctx context.Context, userID string) (string, error) {
-	if strings.TrimSpace(userID) == "" {
-		return "", nil
+	if strings.TrimSpace(TenantIDFromContext(ctx)) != "" {
+		return ctx, nil
 	}
 	var tenantIDs []string
 	if err := p.db.WithContext(ctx).Model(&entity.UserTenant{}).
 		Where("user_id = ? AND status = ?", userID, string(entity.StatusValid)).
 		Pluck("tenant_id", &tenantIDs).Error; err != nil {
-		return "", fmt.Errorf("permission: load active tenants: %w", err)
+		return nil, fmt.Errorf("permission: resolve current Tenant: %w", err)
 	}
 	tenantIDs = uniqueStringValues(tenantIDs)
 	if len(tenantIDs) != 1 {
-		return "", nil
+		return nil, ErrInvalidPermission
 	}
-	return tenantIDs[0], nil
+	return WithIdentity(ctx, userID, tenantIDs[0]), nil
 }
 
-func validateEnterpriseSubject(subject Subject) error {
-	if strings.TrimSpace(subject.UserID) == "" {
+func validateEnterpriseIdentity(ctx context.Context) error {
+	if strings.TrimSpace(UserIDFromContext(ctx)) == "" {
 		return ErrUnauthenticated
 	}
-	if strings.TrimSpace(subject.TenantID) == "" {
-		return ErrInvalidSubject
+	if strings.TrimSpace(TenantIDFromContext(ctx)) == "" {
+		return ErrInvalidPermission
 	}
 	return nil
 }
@@ -1128,3 +1110,5 @@ func (role TenantRole) String() string { return string(role) }
 
 var _ policy = (*enterprisePolicy)(nil)
 var _ queryScopePolicy = (*enterprisePolicy)(nil)
+var _ accessResolverPolicy = (*enterprisePolicy)(nil)
+var _ resourceOwnerGranter = (*enterprisePolicy)(nil)

@@ -116,3 +116,9 @@ func Audit(operationLog *OperationLog, fields ...zap.Field) {
 	)
 	AuditLogger.Info("", fields...)
 }
+
+func SyncAudit() {
+	if AuditLogger != nil {
+		_ = AuditLogger.Sync()
+	}
+}
