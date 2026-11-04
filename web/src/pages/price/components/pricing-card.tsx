@@ -1,5 +1,5 @@
 import Divider from '@/components/ui/divider';
-import { nextLayoutRef } from '@/layouts/root-layout';
+import { nextLayoutRef } from '@/ee/layouts/root-layout-shell';
 import billingService from '@/services/price';
 import storagePrivate from '@/utils/authorization-private-util';
 import { formatNumberWithThousandsSeparator } from '@/utils/common-util';

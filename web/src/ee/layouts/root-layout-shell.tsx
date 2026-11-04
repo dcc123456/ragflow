@@ -4,7 +4,7 @@ export type RootLayoutChrome = {
   showHeader: boolean;
   containerRef?: React.Ref<HTMLDivElement>;
 };
-
+export const nextLayoutRef = React.createRef<HTMLDivElement>();
 /**
  * Enterprise seams for the application shell. Open source has no notification
  * banner, no billing wrapper and always shows the header, so every seam leaves
