@@ -38,8 +38,6 @@ func grantDocumentOwnerEE(ctx context.Context, tx *gorm.DB, doc *entity.Document
 		return fmt.Errorf("load document dataset Tenant: %w", err)
 	}
 	checker := permission.NewDatabaseChecker(tx)
-	return checker.GrantResourceOwner(ctx,
-		permission.Subject{UserID: doc.CreatedBy, TenantID: dataset.TenantID},
-		permission.ResourceRef{Kind: permission.ResourceKindDocument, ID: doc.ID},
-	)
+	ctx = permission.WithIdentity(ctx, doc.CreatedBy, dataset.TenantID)
+	return checker.GrantResourceOwner(ctx, permission.ResourceRef{Kind: permission.ResourceKindDocument, ID: doc.ID})
 }

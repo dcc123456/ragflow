@@ -25,9 +25,9 @@ import (
 )
 
 func (h *StatsHandler) GetModelStats(c *gin.Context) {
-	common.ErrorWithCode(c, common.CodeNotImplemented, "GetModelStats not implemented")
+	common.RespondError(c, common.CodeNotImplemented, "GetModelStats not implemented")
 }
 
 func (h *StatsHandler) GetGroupStats(c *gin.Context) {
-	common.ErrorWithCode(c, common.CodeNotImplemented, "GetGroupStats not implemented")
+	common.RespondError(c, common.CodeNotImplemented, "GetGroupStats not implemented")
 }

@@ -32,36 +32,36 @@ import (
 func (h *TenantHandler) SwitchTenant(c *gin.Context) {
 	user, code, message := GetUser(c)
 	if code != common.CodeSuccess {
-		common.ResponseWithHttpCodeData(c, http.StatusUnauthorized, code, nil, message)
+		common.Respond(c, http.StatusUnauthorized, code, nil, message)
 		return
 	}
 	tenantID := c.Param("tenant_id")
 	if tenantID == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "tenant_id is required")
+		common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, nil, "tenant_id is required")
 		return
 	}
 	if user.AccessToken == nil || *user.AccessToken == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusUnauthorized, common.CodeUnauthorized, nil, "User access token is missing")
+		common.Respond(c, http.StatusUnauthorized, common.CodeUnauthorized, nil, "User access token is missing")
 		return
 	}
 	if _, err := dao.NewUserTenantDAO().FilterByUserIDAndTenantID(c.Request.Context(), dao.DB, user.ID, tenantID); err != nil {
-		common.ResponseWithHttpCodeData(c, http.StatusForbidden, common.CodeForbidden, nil, "User is not an active member of this tenant")
+		common.Respond(c, http.StatusForbidden, common.CodeForbidden, nil, "User is not an active member of this tenant")
 		return
 	}
 
 	secretKey, err := server.GetSecretKey(c.Request.Context(), kvrocks.Get())
 	if err != nil {
-		common.ResponseWithHttpCodeData(c, http.StatusInternalServerError, common.CodeServerError, nil, "Failed to get token signing key")
+		common.Respond(c, http.StatusInternalServerError, common.CodeServerError, nil, "Failed to get token signing key")
 		return
 	}
 	authToken, err := common.DumpAccessToken(*user.AccessToken, tenantID, secretKey)
 	if err != nil {
-		common.ResponseWithHttpCodeData(c, http.StatusInternalServerError, common.CodeServerError, nil, "Failed to generate authorization token")
+		common.Respond(c, http.StatusInternalServerError, common.CodeServerError, nil, "Failed to generate authorization token")
 		return
 	}
 
 	c.Header("Authorization", authToken)
 	c.Header("Access-Control-Expose-Headers", "Authorization")
 	//setOAuthAuthCookie(c, authToken)
-	common.SuccessWithData(c, gin.H{"tenant_id": tenantID}, "Tenant switched")
+	common.RespondSuccess(c, gin.H{"tenant_id": tenantID}, "Tenant switched")
 }

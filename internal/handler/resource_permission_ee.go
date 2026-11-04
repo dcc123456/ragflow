@@ -32,14 +32,14 @@ func (h *TenantHandler) UpdateResourcePermissions(c *gin.Context) {
 	}
 	var request service.ResourcePermissionUpdateRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
-		common.ResponseWithCodeData(c, common.CodeBadRequest, nil, "Invalid resource permission request")
+		common.Respond(c, 0, common.CodeBadRequest, nil, "Invalid resource permission request")
 		return
 	}
 	if err := h.tenantService.UpdateResourcePermissions(c.Request.Context(), userID, tenantID, request); err != nil {
 		writeResourcePermissionError(c, err)
 		return
 	}
-	common.SuccessWithData(c, true, "")
+	common.RespondSuccess(c, true, "")
 }
 
 func (h *TenantHandler) TransferResourceOwnership(c *gin.Context) {
@@ -49,14 +49,14 @@ func (h *TenantHandler) TransferResourceOwnership(c *gin.Context) {
 	}
 	var request service.ResourceOwnershipTransferRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
-		common.ResponseWithCodeData(c, common.CodeBadRequest, nil, "Invalid resource ownership transfer request")
+		common.Respond(c, 0, common.CodeBadRequest, nil, "Invalid resource ownership transfer request")
 		return
 	}
 	if err := h.tenantService.TransferResourceOwnership(c.Request.Context(), userID, tenantID, request); err != nil {
 		writeResourcePermissionError(c, err)
 		return
 	}
-	common.SuccessWithData(c, true, "")
+	common.RespondSuccess(c, true, "")
 }
 
 func (h *TenantHandler) ListResourcePermissions(c *gin.Context) {
@@ -66,7 +66,7 @@ func (h *TenantHandler) ListResourcePermissions(c *gin.Context) {
 	}
 	var request service.ResourcePermissionListRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
-		common.ResponseWithCodeData(c, common.CodeBadRequest, nil, "Invalid resource permission list request")
+		common.Respond(c, 0, common.CodeBadRequest, nil, "Invalid resource permission list request")
 		return
 	}
 	permissions, err := h.tenantService.ListResourcePermissions(c.Request.Context(), userID, tenantID, request)
@@ -74,7 +74,7 @@ func (h *TenantHandler) ListResourcePermissions(c *gin.Context) {
 		writeResourcePermissionError(c, err)
 		return
 	}
-	common.SuccessWithData(c, permissions, "")
+	common.RespondSuccess(c, permissions, "")
 }
 
 func (h *TenantHandler) ListResourcePermissionsByTarget(c *gin.Context) {
@@ -84,7 +84,7 @@ func (h *TenantHandler) ListResourcePermissionsByTarget(c *gin.Context) {
 	}
 	var request service.ResourcePermissionTargetListRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
-		common.ResponseWithCodeData(c, common.CodeBadRequest, nil, "Invalid permission target request")
+		common.Respond(c, 0, common.CodeBadRequest, nil, "Invalid permission target request")
 		return
 	}
 	permissions, err := h.tenantService.ListResourcePermissionsByTarget(c.Request.Context(), userID, tenantID, request)
@@ -92,14 +92,14 @@ func (h *TenantHandler) ListResourcePermissionsByTarget(c *gin.Context) {
 		writeResourcePermissionError(c, err)
 		return
 	}
-	common.SuccessWithData(c, permissions, "")
+	common.RespondSuccess(c, permissions, "")
 }
 
 func writeResourcePermissionError(c *gin.Context, err error) {
 	var coded *common.CodedError
 	if errors.As(err, &coded) {
-		common.ResponseWithCodeData(c, coded.Code, nil, coded.Message)
+		common.Respond(c, 0, coded.Code, nil, coded.Message)
 		return
 	}
-	common.ResponseWithCodeData(c, common.CodeServerError, nil, err.Error())
+	common.Respond(c, 0, common.CodeServerError, nil, err.Error())
 }

@@ -174,7 +174,8 @@ func TestTenantRoleManagementUsesTenantPermissionAndStoresMembershipRoleID(t *te
 	if err != nil || memberRole["role_id"] != role.ID {
 		t.Fatalf("GetTenantMemberRole() = (%#v, %v), want role ID %d", memberRole, err, role.ID)
 	}
-	if err := permission.NewDatabaseChecker(db).CheckTenant(t.Context(), permission.Subject{UserID: "member-user", TenantID: "tenant-1"}, "tenant-1", permission.TenantMember); err != nil {
+	ctx := permission.WithIdentity(t.Context(), "member-user", "tenant-1")
+	if err := permission.NewDatabaseChecker(db).CheckTenant(ctx, "tenant-1", permission.TenantMember); err != nil {
 		t.Fatalf("role-id membership should still count as a Tenant member: %v", err)
 	}
 

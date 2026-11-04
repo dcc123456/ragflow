@@ -47,7 +47,7 @@ func (h *Handler) ListRoles(c *gin.Context) {
 		roles = []map[string]interface{}{}
 	}
 
-	common.SuccessWithData(c, roles, "")
+	common.RespondSuccess(c, roles, "")
 }
 
 // CreateRoleHTTPRequest create role request
@@ -60,7 +60,7 @@ type CreateRoleHTTPRequest struct {
 func (h *Handler) CreateRole(c *gin.Context) {
 	var req CreateRoleHTTPRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		common.ErrorWithCode(c, common.CodeBadRequest, "Role name is required")
+		common.RespondError(c, common.CodeBadRequest, "Role name is required")
 		return
 	}
 
@@ -71,14 +71,14 @@ func (h *Handler) CreateRole(c *gin.Context) {
 		return
 	}
 
-	common.SuccessWithData(c, role, "")
+	common.RespondSuccess(c, role, "")
 }
 
 // ShowRole handle show role
 func (h *Handler) ShowRole(c *gin.Context) {
 	roleName := c.Param("role_name")
 	if roleName == "" {
-		common.ErrorWithCode(c, common.CodeBadRequest, "Role name is required")
+		common.RespondError(c, common.CodeBadRequest, "Role name is required")
 		return
 	}
 
@@ -89,7 +89,7 @@ func (h *Handler) ShowRole(c *gin.Context) {
 		return
 	}
 
-	common.SuccessWithData(c, role, "")
+	common.RespondSuccess(c, role, "")
 }
 
 // UpdateRoleHTTPRequest update role request
@@ -101,13 +101,13 @@ type UpdateRoleHTTPRequest struct {
 func (h *Handler) UpdateRole(c *gin.Context) {
 	roleName := c.Param("role_name")
 	if roleName == "" {
-		common.ErrorWithCode(c, common.CodeBadRequest, "Role name is required")
+		common.RespondError(c, common.CodeBadRequest, "Role name is required")
 		return
 	}
 
 	var req UpdateRoleHTTPRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		common.ErrorWithCode(c, common.CodeBadRequest, "Role description is required")
+		common.RespondError(c, common.CodeBadRequest, "Role description is required")
 		return
 	}
 
@@ -118,14 +118,14 @@ func (h *Handler) UpdateRole(c *gin.Context) {
 		return
 	}
 
-	common.SuccessWithData(c, role, "")
+	common.RespondSuccess(c, role, "")
 }
 
 // DropRole handle drop role
 func (h *Handler) DropRole(c *gin.Context) {
 	roleName := c.Param("role_name")
 	if roleName == "" {
-		common.ErrorWithCode(c, common.CodeBadRequest, "Role name is required")
+		common.RespondError(c, common.CodeBadRequest, "Role name is required")
 		return
 	}
 
@@ -136,14 +136,14 @@ func (h *Handler) DropRole(c *gin.Context) {
 		return
 	}
 
-	common.SuccessWithData(c, role, "")
+	common.RespondSuccess(c, role, "")
 }
 
 // ShowRolePermission handle get role permission
 func (h *Handler) ShowRolePermission(c *gin.Context) {
 	roleName := c.Param("role_name")
 	if roleName == "" {
-		common.ErrorWithCode(c, common.CodeBadRequest, "Role name is required")
+		common.RespondError(c, common.CodeBadRequest, "Role name is required")
 		return
 	}
 
@@ -154,7 +154,7 @@ func (h *Handler) ShowRolePermission(c *gin.Context) {
 		return
 	}
 
-	common.SuccessWithData(c, permissions, "")
+	common.RespondSuccess(c, permissions, "")
 }
 
 // GrantRolePermissionHTTPRequest grant role permission request
@@ -167,7 +167,7 @@ type GrantRolePermissionHTTPRequest struct {
 func (h *Handler) GrantRolePermission(c *gin.Context) {
 	roleName := c.Param("role_name")
 	if roleName == "" {
-		common.ErrorWithCode(c, common.CodeBadRequest, "Role name is required")
+		common.RespondError(c, common.CodeBadRequest, "Role name is required")
 		return
 	}
 	actorUserID, ok := requireAdminActorID(c)
@@ -177,7 +177,7 @@ func (h *Handler) GrantRolePermission(c *gin.Context) {
 
 	var req GrantRolePermissionHTTPRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		common.ErrorWithCode(c, common.CodeBadRequest, "Permission is required")
+		common.RespondError(c, common.CodeBadRequest, "Permission is required")
 		return
 	}
 
@@ -188,7 +188,7 @@ func (h *Handler) GrantRolePermission(c *gin.Context) {
 		return
 	}
 
-	common.SuccessWithData(c, result, "")
+	common.RespondSuccess(c, result, "")
 }
 
 // RevokeRolePermissionHTTPRequest revoke role permission request
@@ -201,7 +201,7 @@ type RevokeRolePermissionHTTPRequest struct {
 func (h *Handler) RevokeRolePermission(c *gin.Context) {
 	roleName := c.Param("role_name")
 	if roleName == "" {
-		common.ErrorWithCode(c, common.CodeBadRequest, "Role name is required")
+		common.RespondError(c, common.CodeBadRequest, "Role name is required")
 		return
 	}
 	actorUserID, ok := requireAdminActorID(c)
@@ -211,7 +211,7 @@ func (h *Handler) RevokeRolePermission(c *gin.Context) {
 
 	var req RevokeRolePermissionHTTPRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		common.ErrorWithCode(c, common.CodeBadRequest, "Permission is required")
+		common.RespondError(c, common.CodeBadRequest, "Permission is required")
 		return
 	}
 
@@ -222,7 +222,7 @@ func (h *Handler) RevokeRolePermission(c *gin.Context) {
 		return
 	}
 
-	common.SuccessWithData(c, result, "")
+	common.RespondSuccess(c, result, "")
 }
 
 // ListResources handle list role resources
@@ -231,14 +231,14 @@ func (h *Handler) ListResources(c *gin.Context) {
 	resources, err := h.service.ListResources(ctx)
 	if err != nil {
 		if errors.Is(err, common.ErrUserNotFound) {
-			common.ErrorWithCode(c, common.CodeNotFound, "Role not found")
+			common.RespondError(c, common.CodeNotFound, "Role not found")
 			return
 		}
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, resources, "")
+	common.RespondSuccess(c, resources, "")
 }
 
 // ListRolesWithPermission handle list roles with permission
@@ -250,13 +250,13 @@ func (h *Handler) ListRolesWithPermission(c *gin.Context) {
 		return
 	}
 
-	common.SuccessWithData(c, roles, "")
+	common.RespondSuccess(c, roles, "")
 }
 
 func (h *Handler) ShowRoleDefaultModels(c *gin.Context) {
 	roleName := c.Param("role_name")
 	if roleName == "" {
-		common.ErrorWithCode(c, common.CodeBadRequest, "Role name is required")
+		common.RespondError(c, common.CodeBadRequest, "Role name is required")
 		return
 	}
 
@@ -266,7 +266,7 @@ func (h *Handler) ShowRoleDefaultModels(c *gin.Context) {
 		writeRoleError(c, err)
 		return
 	}
-	common.SuccessWithData(c, result, "Role default model set successfully")
+	common.RespondSuccess(c, result, "Role default model set successfully")
 }
 
 type SetRoleDefaultModelRequest struct {
@@ -277,13 +277,13 @@ type SetRoleDefaultModelRequest struct {
 func (h *Handler) SetRoleDefaultModel(c *gin.Context) {
 	roleName := c.Param("role_name")
 	if roleName == "" {
-		common.ErrorWithCode(c, common.CodeBadRequest, "Role name is required")
+		common.RespondError(c, common.CodeBadRequest, "Role name is required")
 		return
 	}
 
 	var request SetRoleDefaultModelRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Invalid request body: "+err.Error())
+		common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Invalid request body: "+err.Error())
 		return
 	}
 
@@ -293,7 +293,7 @@ func (h *Handler) SetRoleDefaultModel(c *gin.Context) {
 		writeRoleError(c, err)
 		return
 	}
-	common.SuccessWithData(c, result, "Role default model set successfully")
+	common.RespondSuccess(c, result, "Role default model set successfully")
 }
 
 type ResetRoleDefaultModelRequest struct {
@@ -303,13 +303,13 @@ type ResetRoleDefaultModelRequest struct {
 func (h *Handler) ResetRoleDefaultModel(c *gin.Context) {
 	roleName := c.Param("role_name")
 	if roleName == "" {
-		common.ErrorWithCode(c, common.CodeBadRequest, "Role name is required")
+		common.RespondError(c, common.CodeBadRequest, "Role name is required")
 		return
 	}
 
 	var request ResetRoleDefaultModelRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Invalid request body: "+err.Error())
+		common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Invalid request body: "+err.Error())
 		return
 	}
 
@@ -319,25 +319,25 @@ func (h *Handler) ResetRoleDefaultModel(c *gin.Context) {
 		writeRoleError(c, err)
 		return
 	}
-	common.SuccessWithData(c, result, "Role default model set successfully")
+	common.RespondSuccess(c, result, "Role default model set successfully")
 }
 
 func writeRoleError(c *gin.Context, err error) {
 	var coded *common.CodedError
 	if errors.As(err, &coded) {
-		common.ErrorWithCode(c, coded.Code, coded.Message)
+		common.RespondError(c, coded.Code, coded.Message)
 		return
 	}
-	common.ErrorWithCode(c, common.CodeServerError, err.Error())
+	common.RespondError(c, common.CodeServerError, err.Error())
 }
 
 func writeAdminModelError(c *gin.Context, err error) {
 	var coded *common.CodedError
 	if errors.As(err, &coded) {
-		common.ErrorWithCode(c, coded.Code, coded.Message)
+		common.RespondError(c, coded.Code, coded.Message)
 		return
 	}
-	common.ErrorWithCode(c, common.CodeServerError, err.Error())
+	common.RespondError(c, common.CodeServerError, err.Error())
 }
 
 func (h *Handler) ListModelProviders(c *gin.Context) {
@@ -348,7 +348,7 @@ func (h *Handler) ListModelProviders(c *gin.Context) {
 		return
 	}
 
-	common.SuccessWithData(c, result, "List model providers successfully")
+	common.RespondSuccess(c, result, "List model providers successfully")
 }
 
 func (h *Handler) ListSystemAddedModels(c *gin.Context) {
@@ -358,7 +358,7 @@ func (h *Handler) ListSystemAddedModels(c *gin.Context) {
 		return
 	}
 
-	common.SuccessWithData(c, result, "success")
+	common.RespondSuccess(c, result, "success")
 }
 
 type AddProviderRequest struct {
@@ -368,7 +368,7 @@ type AddProviderRequest struct {
 func (h *Handler) AddModelProvider(c *gin.Context) {
 	var req AddProviderRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		common.ResponseWithCodeData(c, common.CodeBadRequest, false, err.Error())
+		common.Respond(c, 0, common.CodeBadRequest, false, err.Error())
 		return
 	}
 
@@ -379,28 +379,28 @@ func (h *Handler) AddModelProvider(c *gin.Context) {
 		return
 	}
 
-	common.SuccessWithData(c, result, "Model provider added successfully")
+	common.RespondSuccess(c, result, "Model provider added successfully")
 }
 
 func (h *Handler) ShowProvider(c *gin.Context) {
 	providerName := c.Param("provider_name")
 	if providerName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
+		common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
 		return
 	}
 
 	provider, err := dao.GetModelProviderManager().GetProviderByName(providerName)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeNotFound, err.Error())
+		common.RespondError(c, common.CodeNotFound, err.Error())
 		return
 	}
-	common.SuccessWithData(c, provider, "success")
+	common.RespondSuccess(c, provider, "success")
 }
 
 func (h *Handler) DeleteModelProvider(c *gin.Context) {
 	providerName := strings.TrimSpace(c.Param("provider_name"))
 	if providerName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, 400, nil, "Provider name is required")
+		common.Respond(c, http.StatusBadRequest, 400, nil, "Provider name is required")
 		return
 	}
 
@@ -411,13 +411,13 @@ func (h *Handler) DeleteModelProvider(c *gin.Context) {
 		return
 	}
 
-	common.SuccessWithMessage(c, "success")
+	common.RespondSuccess(c, nil, "success")
 }
 
 func (h *Handler) ListModels(c *gin.Context) {
 	providerName := c.Param("provider_name")
 	if providerName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
+		common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
 		return
 	}
 	models, err := apihandler.FetchProviderModels(c.Request.Context(), providerName, c.Query("api_key"), c.Query("base_url"), c.Query("region"))
@@ -426,32 +426,32 @@ func (h *Handler) ListModels(c *gin.Context) {
 		return
 	}
 
-	common.SuccessWithData(c, models, "success")
+	common.RespondSuccess(c, models, "success")
 }
 
 func (h *Handler) ShowProviderModel(c *gin.Context) {
 	providerName := c.Param("provider_name")
 	if providerName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
+		common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
 		return
 	}
 	modelName := c.Param("model_name")
 	if modelName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Model name is required")
+		common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Model name is required")
 		return
 	}
 	model, err := dao.GetModelProviderManager().GetModelByName(providerName, modelName)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeNotFound, err.Error())
+		common.RespondError(c, common.CodeNotFound, err.Error())
 		return
 	}
-	common.SuccessWithData(c, model, "success")
+	common.RespondSuccess(c, model, "success")
 }
 
 func (h *Handler) ListModelInstances(c *gin.Context) {
 	providerName := c.Param("provider_name")
 	if providerName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
+		common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
 		return
 	}
 
@@ -462,18 +462,18 @@ func (h *Handler) ListModelInstances(c *gin.Context) {
 		return
 	}
 
-	common.SuccessWithData(c, result, "Model instances listed successfully")
+	common.RespondSuccess(c, result, "Model instances listed successfully")
 }
 
 func (h *Handler) ShowProviderInstance(c *gin.Context) {
 	providerName := c.Param("provider_name")
 	if providerName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
+		common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
 		return
 	}
 	instanceName := c.Param("instance_name")
 	if instanceName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Instance name is required")
+		common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Instance name is required")
 		return
 	}
 	ctx := c.Request.Context()
@@ -483,18 +483,18 @@ func (h *Handler) ShowProviderInstance(c *gin.Context) {
 		return
 	}
 
-	common.SuccessWithData(c, result, "Model instance shown successfully")
+	common.RespondSuccess(c, result, "Model instance shown successfully")
 }
 
 func (h *Handler) ShowProviderInstanceBalance(c *gin.Context) {
 	providerName := c.Param("provider_name")
 	if providerName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
+		common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
 		return
 	}
 	instanceName := c.Param("instance_name")
 	if instanceName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Instance name is required")
+		common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Instance name is required")
 		return
 	}
 	ctx := c.Request.Context()
@@ -504,18 +504,18 @@ func (h *Handler) ShowProviderInstanceBalance(c *gin.Context) {
 		return
 	}
 
-	common.SuccessWithData(c, result, "Model instance balance shown successfully")
+	common.RespondSuccess(c, result, "Model instance balance shown successfully")
 }
 
 func (h *Handler) CheckInstanceConnection(c *gin.Context) {
 	providerName := c.Param("provider_name")
 	if providerName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
+		common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
 		return
 	}
 	instanceName := c.Param("instance_name")
 	if instanceName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Instance name is required")
+		common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Instance name is required")
 		return
 	}
 	ctx := c.Request.Context()
@@ -525,19 +525,19 @@ func (h *Handler) CheckInstanceConnection(c *gin.Context) {
 		return
 	}
 
-	common.SuccessWithMessage(c, "success")
+	common.RespondSuccess(c, nil, "success")
 }
 
 func (h *Handler) CheckProviderConnection(c *gin.Context) {
 	providerName := c.Param("provider_name")
 	if providerName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
+		common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
 		return
 	}
 
 	var req servicepkg.CheckConnectionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, err.Error())
+		common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, nil, err.Error())
 		return
 	}
 
@@ -548,25 +548,25 @@ func (h *Handler) CheckProviderConnection(c *gin.Context) {
 		return
 	}
 
-	common.SuccessWithMessage(c, "success")
+	common.RespondSuccess(c, nil, "success")
 }
 
 func (h *Handler) AlterProviderInstance(c *gin.Context) {
 	providerName := c.Param("provider_name")
 	if providerName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
+		common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
 		return
 	}
 
 	instanceName := c.Param("instance_name")
 	if instanceName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Instance name is required")
+		common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Instance name is required")
 		return
 	}
 
 	var req servicepkg.AlterProviderInstanceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		common.ErrorWithCode(c, common.CodeBadRequest, err.Error())
+		common.RespondError(c, common.CodeBadRequest, err.Error())
 		return
 	}
 
@@ -577,18 +577,18 @@ func (h *Handler) AlterProviderInstance(c *gin.Context) {
 		return
 	}
 
-	common.SuccessWithMessage(c, "success")
+	common.RespondSuccess(c, nil, "success")
 }
 
 func (h *Handler) AddModelInstance(c *gin.Context) {
 	providerName := c.Param("provider_name")
 	if providerName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
+		common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
 		return
 	}
 	var req servicepkg.CreateProviderInstanceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		common.ErrorWithCode(c, common.CodeBadRequest, err.Error())
+		common.RespondError(c, common.CodeBadRequest, err.Error())
 		return
 	}
 
@@ -599,19 +599,19 @@ func (h *Handler) AddModelInstance(c *gin.Context) {
 		return
 	}
 
-	common.SuccessWithMessage(c, "success")
+	common.RespondSuccess(c, nil, "success")
 }
 
 func (h *Handler) DeleteModelInstance(c *gin.Context) {
 	providerName := c.Param("provider_name")
 	if providerName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
+		common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
 		return
 	}
 
 	var req servicepkg.DropProviderInstanceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		common.ErrorWithCode(c, common.CodeBadRequest, err.Error())
+		common.RespondError(c, common.CodeBadRequest, err.Error())
 		return
 	}
 
@@ -622,19 +622,19 @@ func (h *Handler) DeleteModelInstance(c *gin.Context) {
 		return
 	}
 
-	common.SuccessWithMessage(c, "success")
+	common.RespondSuccess(c, nil, "success")
 }
 
 func (h *Handler) ListInstanceModels(c *gin.Context) {
 	providerName := c.Param("provider_name")
 	if providerName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
+		common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
 		return
 	}
 
 	instanceName := c.Param("instance_name")
 	if instanceName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Instance name is required")
+		common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Instance name is required")
 		return
 	}
 
@@ -645,32 +645,32 @@ func (h *Handler) ListInstanceModels(c *gin.Context) {
 		return
 	}
 
-	common.SuccessWithData(c, result, "Model status updated successfully")
+	common.RespondSuccess(c, result, "Model status updated successfully")
 }
 
 func (h *Handler) AlterModel(c *gin.Context) {
 	providerName := c.Param("provider_name")
 	if providerName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
+		common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
 		return
 	}
 
 	instanceName := c.Param("instance_name")
 	if instanceName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Instance name is required")
+		common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Instance name is required")
 		return
 	}
 
 	var req servicepkg.AlterModelRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		common.ErrorWithCode(c, common.CodeBadRequest, err.Error())
+		common.RespondError(c, common.CodeBadRequest, err.Error())
 		return
 	}
 
 	modelName := strings.TrimPrefix(c.Param("model_name"), "/")
 	modelName = strings.TrimSpace(modelName)
 	if modelName == "" && strings.TrimSpace(req.ModelID) == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "model_name or model_id is required")
+		common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, nil, "model_name or model_id is required")
 		return
 	}
 
@@ -681,29 +681,29 @@ func (h *Handler) AlterModel(c *gin.Context) {
 		return
 	}
 
-	common.SuccessWithMessage(c, "success")
+	common.RespondSuccess(c, nil, "success")
 }
 
 func (h *Handler) AddModel(c *gin.Context) {
 	var req servicepkg.AddModelRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		common.ResponseWithCodeData(c, common.CodeBadRequest, false, err.Error())
+		common.Respond(c, 0, common.CodeBadRequest, false, err.Error())
 		return
 	}
 
 	req.ProviderName = c.Param("provider_name")
 	if req.ProviderName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
+		common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
 		return
 	}
 
 	req.InstanceName = c.Param("instance_name")
 	if req.InstanceName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Instance name is required")
+		common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Instance name is required")
 		return
 	}
 	if strings.TrimSpace(req.ModelName) == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Model name is required")
+		common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Model name is required")
 		return
 	}
 
@@ -713,29 +713,29 @@ func (h *Handler) AddModel(c *gin.Context) {
 		return
 	}
 
-	common.SuccessWithMessage(c, "success")
+	common.RespondSuccess(c, nil, "success")
 }
 
 func (h *Handler) DeleteModels(c *gin.Context) {
 	providerName := c.Param("provider_name")
 	if providerName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
+		common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
 		return
 	}
 
 	instanceName := c.Param("instance_name")
 	if instanceName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Instance name is required")
+		common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Instance name is required")
 		return
 	}
 
 	var req servicepkg.DropInstanceModelRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		common.ErrorWithCode(c, common.CodeBadRequest, err.Error())
+		common.RespondError(c, common.CodeBadRequest, err.Error())
 		return
 	}
 	if len(req.ModelNames) == 0 {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "model_name is required")
+		common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, nil, "model_name is required")
 		return
 	}
 
@@ -746,7 +746,7 @@ func (h *Handler) DeleteModels(c *gin.Context) {
 		return
 	}
 
-	common.SuccessWithMessage(c, "success")
+	common.RespondSuccess(c, nil, "success")
 }
 
 // GetSystemFingerprint handle get system fingerprint
@@ -754,11 +754,11 @@ func (h *Handler) GetSystemFingerprint(c *gin.Context) {
 	ctx := c.Request.Context()
 	fingerprint, err := h.service.GetSystemFingerprint(ctx)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, fingerprint, "success")
+	common.RespondSuccess(c, fingerprint, "success")
 }
 
 type SetSystemLicenseRequest struct {
@@ -770,17 +770,17 @@ func (h *Handler) SetSystemLicense(c *gin.Context) {
 	var req SetSystemLicenseRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		println("JSON bind error: %v (type: %T)", err, err)
-		common.ErrorWithCode(c, common.CodeBadRequest, err.Error())
+		common.RespondError(c, common.CodeBadRequest, err.Error())
 		return
 	}
 	ctx := c.Request.Context()
 
 	result, err := h.service.SetSystemLicense(ctx, req.License)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
-	common.SuccessWithData(c, result, "System license set successfully")
+	common.RespondSuccess(c, result, "System license set successfully")
 }
 
 // ShowSystemLicense to get system license
@@ -791,7 +791,7 @@ func (h *Handler) ShowSystemLicense(c *gin.Context) {
 	}
 	checkFlag, err := strconv.ParseBool(check)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeBadRequest, err.Error())
+		common.RespondError(c, common.CodeBadRequest, err.Error())
 		return
 	}
 	ctx := c.Request.Context()
@@ -800,7 +800,7 @@ func (h *Handler) ShowSystemLicense(c *gin.Context) {
 	if checkFlag {
 		result, err = h.service.CheckSystemLicense(ctx)
 		if err != nil {
-			common.ErrorWithCode(c, common.CodeServerError, err.Error())
+			common.RespondError(c, common.CodeServerError, err.Error())
 			return
 		}
 	} else {
@@ -810,19 +810,19 @@ func (h *Handler) ShowSystemLicense(c *gin.Context) {
 			// Verify license
 			result, err = h.service.VerifyLicense(ctx, license)
 			if err != nil {
-				common.ErrorWithCode(c, common.CodeServerError, err.Error())
+				common.RespondError(c, common.CodeServerError, err.Error())
 				return
 			}
 		} else {
 			// Show license
 			result, err = h.service.ShowSystemLicense(ctx)
 			if err != nil {
-				common.ErrorWithCode(c, common.CodeServerError, err.Error())
+				common.RespondError(c, common.CodeServerError, err.Error())
 				return
 			}
 		}
 	}
-	common.SuccessWithData(c, result, "success")
+	common.RespondSuccess(c, result, "success")
 }
 
 type SetSystemLicenseConfigRequest struct {
@@ -834,16 +834,16 @@ func (h *Handler) UpdateSystemLicenseConfig(c *gin.Context) {
 	var req SetSystemLicenseConfigRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		println("JSON bind error: %v (type: %T)", err, err)
-		common.ErrorWithCode(c, common.CodeBadRequest, err.Error())
+		common.RespondError(c, common.CodeBadRequest, err.Error())
 		return
 	}
 	ctx := c.Request.Context()
 	err := h.service.UpdateSystemLicenseConfig(ctx, req.TimeRecordSaveInterval, req.TimeRecordTaskDuration)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
-	common.SuccessNoData(c, "success")
+	common.RespondSuccess(c, nil, "success")
 }
 
 type SetSoftFingerprintRequest struct {
@@ -854,18 +854,18 @@ func (h *Handler) SetSoftFingerprint(c *gin.Context) {
 	var req SetSoftFingerprintRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		println("JSON bind error: %v (type: %T)", err, err)
-		common.ErrorWithCode(c, common.CodeBadRequest, err.Error())
+		common.RespondError(c, common.CodeBadRequest, err.Error())
 		return
 	}
 	ctx := c.Request.Context()
 
 	err := h.service.SetSoftFingerprint(ctx, req.SoftFingerprint)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessNoData(c, "SUCCESS")
+	common.RespondSuccess(c, nil, "SUCCESS")
 }
 
 func (h *Handler) ShowSoftFingerprint(c *gin.Context) {
@@ -873,11 +873,11 @@ func (h *Handler) ShowSoftFingerprint(c *gin.Context) {
 
 	softFingerprint, err := h.service.GetSoftFingerprint(ctx)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, softFingerprint, "")
+	common.RespondSuccess(c, softFingerprint, "")
 }
 
 func (h *Handler) DeleteSoftFingerprint(c *gin.Context) {
@@ -885,11 +885,11 @@ func (h *Handler) DeleteSoftFingerprint(c *gin.Context) {
 
 	err := h.service.DeleteSoftFingerprint(ctx)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessNoData(c, "SUCCESS")
+	common.RespondSuccess(c, nil, "SUCCESS")
 }
 
 type ShowUserActivityRequest struct {
@@ -902,7 +902,7 @@ func (h *Handler) ShowUserActivity(c *gin.Context) {
 	var req ShowUserActivityRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		println("JSON bind error: %v (type: %T)", err, err)
-		common.ErrorWithCode(c, common.CodeBadRequest, err.Error())
+		common.RespondError(c, common.CodeBadRequest, err.Error())
 		return
 	}
 	ctx := c.Request.Context()
@@ -910,14 +910,14 @@ func (h *Handler) ShowUserActivity(c *gin.Context) {
 	userActivity, err := h.service.ShowUserActivity(ctx, req.Email, req.Days)
 	if err != nil {
 		if errors.Is(err, common.ErrUserNotFound) {
-			common.ErrorWithCode(c, common.CodeNotFound, "User not found")
+			common.RespondError(c, common.CodeNotFound, "User not found")
 			return
 		}
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, userActivity, "")
+	common.RespondSuccess(c, userActivity, "")
 }
 
 type ShowUserDatasetSummaryRequest struct {
@@ -929,7 +929,7 @@ func (h *Handler) ShowUserDatasetSummary(c *gin.Context) {
 	var req ShowUserDatasetSummaryRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		println("JSON bind error: %v (type: %T)", err, err)
-		common.ErrorWithCode(c, common.CodeBadRequest, err.Error())
+		common.RespondError(c, common.CodeBadRequest, err.Error())
 		return
 	}
 
@@ -942,14 +942,14 @@ func (h *Handler) ShowUserDatasetSummary(c *gin.Context) {
 	userDatasetSummary, err := h.service.ShowUserDatasetSummary(ctx, username, req.Dataset)
 	if err != nil {
 		if errors.Is(err, common.ErrUserNotFound) {
-			common.ErrorWithCode(c, common.CodeNotFound, "User not found")
+			common.RespondError(c, common.CodeNotFound, "User not found")
 			return
 		}
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, userDatasetSummary, "")
+	common.RespondSuccess(c, userDatasetSummary, "")
 }
 
 // ShowUserSummary handle show user summary
@@ -963,14 +963,14 @@ func (h *Handler) ShowUserSummary(c *gin.Context) {
 	userSummary, err := h.service.ShowUserSummary(ctx, username)
 	if err != nil {
 		if errors.Is(err, common.ErrUserNotFound) {
-			common.ErrorWithCode(c, common.CodeNotFound, "User not found")
+			common.RespondError(c, common.CodeNotFound, "User not found")
 			return
 		}
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, userSummary, "")
+	common.RespondSuccess(c, userSummary, "")
 }
 
 // ShowUserStorage handle show user storage
@@ -985,14 +985,14 @@ func (h *Handler) ShowUserStorage(c *gin.Context) {
 	userStorage, err := h.service.ShowUserStorage(ctx, username)
 	if err != nil {
 		if errors.Is(err, common.ErrUserNotFound) {
-			common.ErrorWithCode(c, common.CodeNotFound, "User not found")
+			common.RespondError(c, common.CodeNotFound, "User not found")
 			return
 		}
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, userStorage, "")
+	common.RespondSuccess(c, userStorage, "")
 }
 
 // ShowUserQuota handle show user quota
@@ -1006,14 +1006,14 @@ func (h *Handler) ShowUserQuota(c *gin.Context) {
 	userQuota, err := h.service.ShowUserQuota(ctx, username)
 	if err != nil {
 		if errors.Is(err, common.ErrUserNotFound) {
-			common.ErrorWithCode(c, common.CodeNotFound, "User not found")
+			common.RespondError(c, common.CodeNotFound, "User not found")
 			return
 		}
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, userQuota, "")
+	common.RespondSuccess(c, userQuota, "")
 }
 
 // ShowUserIndex handle show user index
@@ -1028,14 +1028,14 @@ func (h *Handler) ShowUserIndex(c *gin.Context) {
 	userIndex, err := h.service.ShowUserIndex(ctx, username)
 	if err != nil {
 		if errors.Is(err, common.ErrUserNotFound) {
-			common.ErrorWithCode(c, common.CodeNotFound, "User not found")
+			common.RespondError(c, common.CodeNotFound, "User not found")
 			return
 		}
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, userIndex, "")
+	common.RespondSuccess(c, userIndex, "")
 }
 
 // UpdateUserRoleHTTPRequest update user role request
@@ -1052,7 +1052,7 @@ func (h *Handler) UpdateUserRole(c *gin.Context) {
 
 	var req UpdateUserRoleHTTPRequest
 	if err = c.ShouldBindJSON(&req); err != nil {
-		common.ErrorWithCode(c, common.CodeBadRequest, "Role name is required")
+		common.RespondError(c, common.CodeBadRequest, "Role name is required")
 		return
 	}
 	actorUserID, ok := requireAdminActorID(c)
@@ -1064,14 +1064,14 @@ func (h *Handler) UpdateUserRole(c *gin.Context) {
 	result, err := h.service.UpdateUserRole(ctx, actorUserID, username, req.RoleName)
 	if err != nil {
 		if errors.Is(err, common.ErrUserNotFound) {
-			common.ErrorWithCode(c, common.CodeNotFound, "User not found")
+			common.RespondError(c, common.CodeNotFound, "User not found")
 			return
 		}
 		writeRoleError(c, err)
 		return
 	}
 
-	common.SuccessWithData(c, result, "")
+	common.RespondSuccess(c, result, "")
 }
 
 // ShowUserPermission handle show user permission
@@ -1085,11 +1085,11 @@ func (h *Handler) ShowUserPermission(c *gin.Context) {
 
 	permissions, err := h.service.ShowUserPermission(ctx, username)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, permissions, "")
+	common.RespondSuccess(c, permissions, "")
 }
 
 func parseAdminListOrder(query url.Values, defaultColumn string) (dao.OrderTerm, error) {
@@ -1123,17 +1123,17 @@ func (h *Handler) ListUserDatasets(c *gin.Context) {
 	}
 	page, err := strconv.Atoi(c.DefaultQuery("page", "1"))
 	if err != nil || page < 1 || page > 1_000_000 {
-		common.ErrorWithCode(c, common.CodeBadRequest, "page must be between 1 and 1000000")
+		common.RespondError(c, common.CodeBadRequest, "page must be between 1 and 1000000")
 		return
 	}
 	pageSize, err := strconv.Atoi(c.DefaultQuery("page_size", "10"))
 	if err != nil || pageSize < 1 || pageSize > 100 {
-		common.ErrorWithCode(c, common.CodeBadRequest, "page_size must be between 1 and 100")
+		common.RespondError(c, common.CodeBadRequest, "page_size must be between 1 and 100")
 		return
 	}
 	order, err := parseAdminListOrder(c.Request.URL.Query(), "create_time")
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeBadRequest, err.Error())
+		common.RespondError(c, common.CodeBadRequest, err.Error())
 		return
 	}
 	ctx := c.Request.Context()
@@ -1141,14 +1141,14 @@ func (h *Handler) ListUserDatasets(c *gin.Context) {
 	datasets, total, err := h.service.ListUserDatasets(ctx, username, page, pageSize, order)
 	if err != nil {
 		if errors.Is(err, common.ErrUserNotFound) {
-			common.ErrorWithCode(c, common.CodeNotFound, "User not found")
+			common.RespondError(c, common.CodeNotFound, "User not found")
 			return
 		}
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithDataAndTotal(c, datasets, total, "success")
+	common.RespondSuccessList(c, datasets, "success", total)
 }
 
 // ListUserAgents lists agents or pipelines created by the target user.
@@ -1161,26 +1161,26 @@ func (h *Handler) ListUserAgents(c *gin.Context) {
 	}
 	canvasCategory := strings.TrimSpace(c.Query("canvas_category"))
 	if canvasCategory == "" {
-		common.ErrorWithCode(c, common.CodeBadRequest, "canvas_category is required")
+		common.RespondError(c, common.CodeBadRequest, "canvas_category is required")
 		return
 	}
 	if canvasCategory != "agent_canvas" && canvasCategory != "dataflow_canvas" {
-		common.ErrorWithCode(c, common.CodeBadRequest, "canvas_category must be agent_canvas or dataflow_canvas")
+		common.RespondError(c, common.CodeBadRequest, "canvas_category must be agent_canvas or dataflow_canvas")
 		return
 	}
 	page, err := strconv.Atoi(c.DefaultQuery("page", "1"))
 	if err != nil || page < 1 || page > 1_000_000 {
-		common.ErrorWithCode(c, common.CodeBadRequest, "page must be between 1 and 1000000")
+		common.RespondError(c, common.CodeBadRequest, "page must be between 1 and 1000000")
 		return
 	}
 	pageSize, err := strconv.Atoi(c.DefaultQuery("page_size", "10"))
 	if err != nil || pageSize < 1 || pageSize > 100 {
-		common.ErrorWithCode(c, common.CodeBadRequest, "page_size must be between 1 and 100")
+		common.RespondError(c, common.CodeBadRequest, "page_size must be between 1 and 100")
 		return
 	}
 	order, err := parseAdminListOrder(c.Request.URL.Query(), "update_time")
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeBadRequest, err.Error())
+		common.RespondError(c, common.CodeBadRequest, err.Error())
 		return
 	}
 	ctx := c.Request.Context()
@@ -1188,14 +1188,14 @@ func (h *Handler) ListUserAgents(c *gin.Context) {
 	agents, total, err := h.service.ListUserAgents(ctx, username, canvasCategory, page, pageSize, order)
 	if err != nil {
 		if errors.Is(err, common.ErrUserNotFound) {
-			common.ErrorWithCode(c, common.CodeNotFound, "User not found")
+			common.RespondError(c, common.CodeNotFound, "User not found")
 			return
 		}
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithDataAndTotal(c, agents, total, "success")
+	common.RespondSuccessList(c, agents, "success", total)
 }
 
 // ListUserChats handle show user chats
@@ -1208,11 +1208,11 @@ func (h *Handler) ListUserChats(c *gin.Context) {
 
 	chats, err := h.service.ListUserChats(ctx, username)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, chats, "")
+	common.RespondSuccess(c, chats, "")
 }
 
 // ListUserSearches handle show user searches
@@ -1225,11 +1225,11 @@ func (h *Handler) ListUserSearches(c *gin.Context) {
 
 	searches, err := h.service.ListUserSearches(ctx, username)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, searches, "")
+	common.RespondSuccess(c, searches, "")
 }
 
 // ListUserModels handle show user models
@@ -1242,11 +1242,11 @@ func (h *Handler) ListUserModels(c *gin.Context) {
 
 	models, err := h.service.ListUserModels(ctx, username)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, models, "")
+	common.RespondSuccess(c, models, "")
 }
 
 // ListUserFiles handle show user files
@@ -1259,11 +1259,11 @@ func (h *Handler) ListUserFiles(c *gin.Context) {
 
 	files, err := h.service.ListUserFiles(ctx, username)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, files, "")
+	common.RespondSuccess(c, files, "")
 }
 
 // ListUserProviders handle show user providers
@@ -1276,11 +1276,11 @@ func (h *Handler) ListUserProviders(c *gin.Context) {
 
 	providers, err := h.service.ListUserProviders(ctx, username)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, providers, "")
+	common.RespondSuccess(c, providers, "")
 }
 
 // ListUserProviderInstances handle show user provider instances
@@ -1292,18 +1292,18 @@ func (h *Handler) ListUserProviderInstances(c *gin.Context) {
 
 	providerName := c.Param("provider_name")
 	if providerName == "" {
-		common.ErrorWithCode(c, common.CodeBadRequest, "Provider name is required")
+		common.RespondError(c, common.CodeBadRequest, "Provider name is required")
 		return
 	}
 	ctx := c.Request.Context()
 
 	instances, err := h.service.ListUserProviderInstances(ctx, userName, providerName)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, instances, "")
+	common.RespondSuccess(c, instances, "")
 }
 
 // ListUserProviderInstanceModels handle show user provider instance models
@@ -1315,24 +1315,24 @@ func (h *Handler) ListUserProviderInstanceModels(c *gin.Context) {
 
 	providerName := c.Param("provider_name")
 	if providerName == "" {
-		common.ErrorWithCode(c, common.CodeBadRequest, "Provider name is required")
+		common.RespondError(c, common.CodeBadRequest, "Provider name is required")
 		return
 	}
 
 	instanceName := c.Param("instance_name")
 	if instanceName == "" {
-		common.ErrorWithCode(c, common.CodeBadRequest, "Instance name is required")
+		common.RespondError(c, common.CodeBadRequest, "Instance name is required")
 		return
 	}
 	ctx := c.Request.Context()
 
 	models, err := h.service.ListUserProviderInstanceModels(ctx, userName, providerName, instanceName)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, models, "")
+	common.RespondSuccess(c, models, "")
 }
 
 // ListUserDefaultModels handle show user default models
@@ -1345,11 +1345,11 @@ func (h *Handler) ListUserDefaultModels(c *gin.Context) {
 
 	models, err := h.service.ListUserDefaultModels(ctx, userName)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, models, "")
+	common.RespondSuccess(c, models, "")
 }
 
 // ShowUsersSummary handle show users summary
@@ -1358,11 +1358,11 @@ func (h *Handler) ShowUsersSummary(c *gin.Context) {
 
 	usersSummary, err := h.service.ShowUsersSummary(ctx)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, usersSummary, "")
+	common.RespondSuccess(c, usersSummary, "")
 }
 
 type ShowUsersActivityRequest struct {
@@ -1375,18 +1375,18 @@ func (h *Handler) ShowUsersActivity(c *gin.Context) {
 	var req ShowUsersActivityRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		println("JSON bind error: %v (type: %T)", err, err)
-		common.ErrorWithCode(c, common.CodeBadRequest, err.Error())
+		common.RespondError(c, common.CodeBadRequest, err.Error())
 		return
 	}
 	ctx := c.Request.Context()
 
 	usersActivity, err := h.service.ShowUsersActivity(ctx, req.Days, req.Window)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, usersActivity, "")
+	common.RespondSuccess(c, usersActivity, "")
 }
 
 type ListUsersReportsRequest struct {
@@ -1400,7 +1400,7 @@ func (h *Handler) ListUsersReports(c *gin.Context) {
 	var req ListUsersReportsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		println("JSON bind error: %v (type: %T)", err, err)
-		common.ErrorWithCode(c, common.CodeBadRequest, err.Error())
+		common.RespondError(c, common.CodeBadRequest, err.Error())
 		return
 	}
 
@@ -1410,7 +1410,7 @@ func (h *Handler) ListUsersReports(c *gin.Context) {
 	if pageIndexStr != "" {
 		pageIndex, err = strconv.Atoi(pageIndexStr)
 		if err != nil {
-			common.ErrorWithCode(c, common.CodeBadRequest, "Page index must be an integer")
+			common.RespondError(c, common.CodeBadRequest, "Page index must be an integer")
 			return
 		}
 	}
@@ -1419,7 +1419,7 @@ func (h *Handler) ListUsersReports(c *gin.Context) {
 	if pageSizeStr != "" {
 		pageSize, err = strconv.Atoi(pageSizeStr)
 		if err != nil {
-			common.ErrorWithCode(c, common.CodeBadRequest, "Page size must be an integer")
+			common.RespondError(c, common.CodeBadRequest, "Page size must be an integer")
 			return
 		}
 	}
@@ -1427,11 +1427,11 @@ func (h *Handler) ListUsersReports(c *gin.Context) {
 
 	usersReports, err := h.service.ListUsersReports(ctx, pageIndex, pageSize, req.Status, req.Plan, req.Days)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, usersReports, "")
+	common.RespondSuccess(c, usersReports, "")
 }
 
 // ListUsersStorage handle show users storage
@@ -1443,7 +1443,7 @@ func (h *Handler) ListUsersStorage(c *gin.Context) {
 	if pageIndexStr != "" {
 		pageIndex, err = strconv.Atoi(pageIndexStr)
 		if err != nil {
-			common.ErrorWithCode(c, common.CodeBadRequest, "Page index must be an integer")
+			common.RespondError(c, common.CodeBadRequest, "Page index must be an integer")
 			return
 		}
 	}
@@ -1452,7 +1452,7 @@ func (h *Handler) ListUsersStorage(c *gin.Context) {
 	if pageSizeStr != "" {
 		pageSize, err = strconv.Atoi(pageSizeStr)
 		if err != nil {
-			common.ErrorWithCode(c, common.CodeBadRequest, "Page size must be an integer")
+			common.RespondError(c, common.CodeBadRequest, "Page size must be an integer")
 			return
 		}
 	}
@@ -1461,18 +1461,18 @@ func (h *Handler) ListUsersStorage(c *gin.Context) {
 	if topStr != "" {
 		top, err = strconv.Atoi(topStr)
 		if err != nil {
-			common.ErrorWithCode(c, common.CodeBadRequest, "Top must be an integer")
+			common.RespondError(c, common.CodeBadRequest, "Top must be an integer")
 		}
 	}
 	ctx := c.Request.Context()
 
 	usersStorage, err := h.service.ListUsersStorage(ctx, pageIndex, pageSize, top)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, usersStorage, "")
+	common.RespondSuccess(c, usersStorage, "")
 }
 
 // ListUsersDocuments handle show users documents
@@ -1484,7 +1484,7 @@ func (h *Handler) ListUsersDocuments(c *gin.Context) {
 	if pageIndexStr != "" {
 		pageIndex, err = strconv.Atoi(pageIndexStr)
 		if err != nil {
-			common.ErrorWithCode(c, common.CodeBadRequest, "Page index must be an integer")
+			common.RespondError(c, common.CodeBadRequest, "Page index must be an integer")
 			return
 		}
 	}
@@ -1493,7 +1493,7 @@ func (h *Handler) ListUsersDocuments(c *gin.Context) {
 	if pageSizeStr != "" {
 		pageSize, err = strconv.Atoi(pageSizeStr)
 		if err != nil {
-			common.ErrorWithCode(c, common.CodeBadRequest, "Page size must be an integer")
+			common.RespondError(c, common.CodeBadRequest, "Page size must be an integer")
 			return
 		}
 	}
@@ -1502,18 +1502,18 @@ func (h *Handler) ListUsersDocuments(c *gin.Context) {
 	if topStr != "" {
 		top, err = strconv.Atoi(topStr)
 		if err != nil {
-			common.ErrorWithCode(c, common.CodeBadRequest, "Top must be an integer")
+			common.RespondError(c, common.CodeBadRequest, "Top must be an integer")
 		}
 	}
 	ctx := c.Request.Context()
 
 	usersDocuments, err := h.service.ListUsersDocuments(ctx, pageIndex, pageSize, top)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, usersDocuments, "")
+	common.RespondSuccess(c, usersDocuments, "")
 }
 
 // ListUsersIndex handle show users index
@@ -1525,7 +1525,7 @@ func (h *Handler) ListUsersIndex(c *gin.Context) {
 	if pageIndexStr != "" {
 		pageIndex, err = strconv.Atoi(pageIndexStr)
 		if err != nil {
-			common.ErrorWithCode(c, common.CodeBadRequest, "Page index must be an integer")
+			common.RespondError(c, common.CodeBadRequest, "Page index must be an integer")
 			return
 		}
 	}
@@ -1534,7 +1534,7 @@ func (h *Handler) ListUsersIndex(c *gin.Context) {
 	if pageSizeStr != "" {
 		pageSize, err = strconv.Atoi(pageSizeStr)
 		if err != nil {
-			common.ErrorWithCode(c, common.CodeBadRequest, "Page size must be an integer")
+			common.RespondError(c, common.CodeBadRequest, "Page size must be an integer")
 			return
 		}
 	}
@@ -1543,18 +1543,18 @@ func (h *Handler) ListUsersIndex(c *gin.Context) {
 	if topStr != "" {
 		top, err = strconv.Atoi(topStr)
 		if err != nil {
-			common.ErrorWithCode(c, common.CodeBadRequest, "Top must be an integer")
+			common.RespondError(c, common.CodeBadRequest, "Top must be an integer")
 		}
 	}
 	ctx := c.Request.Context()
 
 	usersIndex, err := h.service.ListUsersIndex(ctx, pageIndex, pageSize, top)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, usersIndex, "")
+	common.RespondSuccess(c, usersIndex, "")
 }
 
 type ListUsersQuotaRequest struct {
@@ -1568,7 +1568,7 @@ func (h *Handler) ListUsersQuota(c *gin.Context) {
 	var request ListUsersQuotaRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
 		println("JSON bind error: %v (type: %T)", err, err)
-		common.ErrorWithCode(c, common.CodeBadRequest, err.Error())
+		common.RespondError(c, common.CodeBadRequest, err.Error())
 		return
 	}
 
@@ -1578,7 +1578,7 @@ func (h *Handler) ListUsersQuota(c *gin.Context) {
 	if pageIndexStr != "" {
 		pageIndex, err = strconv.Atoi(pageIndexStr)
 		if err != nil {
-			common.ErrorWithCode(c, common.CodeBadRequest, "Page index must be an integer")
+			common.RespondError(c, common.CodeBadRequest, "Page index must be an integer")
 			return
 		}
 	}
@@ -1587,7 +1587,7 @@ func (h *Handler) ListUsersQuota(c *gin.Context) {
 	if pageSizeStr != "" {
 		pageSize, err = strconv.Atoi(pageSizeStr)
 		if err != nil {
-			common.ErrorWithCode(c, common.CodeBadRequest, "Page size must be an integer")
+			common.RespondError(c, common.CodeBadRequest, "Page size must be an integer")
 			return
 		}
 	}
@@ -1596,18 +1596,18 @@ func (h *Handler) ListUsersQuota(c *gin.Context) {
 	if topStr != "" {
 		top, err = strconv.Atoi(topStr)
 		if err != nil {
-			common.ErrorWithCode(c, common.CodeBadRequest, "Top must be an integer")
+			common.RespondError(c, common.CodeBadRequest, "Top must be an integer")
 		}
 	}
 	ctx := c.Request.Context()
 
 	usersQuota, err := h.service.ListUsersQuota(ctx, pageIndex, pageSize, top, request.QuotaThreshold, request.Plan, request.Days)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, usersQuota, "")
+	common.RespondSuccess(c, usersQuota, "")
 }
 
 // ShowUsersPlanSummary handle show users plan summary
@@ -1615,11 +1615,11 @@ func (h *Handler) ShowUsersPlanSummary(c *gin.Context) {
 	ctx := c.Request.Context()
 	usersPlanSummary, err := h.service.ShowUsersPlanSummary(ctx)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, usersPlanSummary, "")
+	common.RespondSuccess(c, usersPlanSummary, "")
 }
 
 // ShowUsersPlan handle show users plan
@@ -1630,18 +1630,18 @@ func (h *Handler) ShowUsersPlan(c *gin.Context) {
 		var err error
 		quota, err = strconv.Atoi(quotaStr)
 		if err != nil {
-			common.ErrorWithCode(c, common.CodeBadRequest, "Quota must be an integer")
+			common.RespondError(c, common.CodeBadRequest, "Quota must be an integer")
 			return
 		}
 	}
 	ctx := c.Request.Context()
 	usersPlanQuota, err := h.service.ShowUsersPlanQuota(ctx, quota)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, usersPlanQuota, "")
+	common.RespondSuccess(c, usersPlanQuota, "")
 }
 
 // ShowUsersQuotaSummary handle show users quota summary
@@ -1649,11 +1649,11 @@ func (h *Handler) ShowUsersQuotaSummary(c *gin.Context) {
 	ctx := c.Request.Context()
 	usersQuotaSummary, err := h.service.ShowUsersQuotaSummary(ctx)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, usersQuotaSummary, "")
+	common.RespondSuccess(c, usersQuotaSummary, "")
 }
 
 // ShowIngestionTasksSummary handle show ingestion tasks summary
@@ -1661,31 +1661,31 @@ func (h *Handler) ShowIngestionTasksSummary(c *gin.Context) {
 	ctx := c.Request.Context()
 	ingestionTasksSummary, err := h.service.ShowIngestionTasksSummary(ctx)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, ingestionTasksSummary, "")
+	common.RespondSuccess(c, ingestionTasksSummary, "")
 }
 
 // ListIngestionTasks handles the admin ingestion task list.
 func (h *Handler) ListIngestionTasks(c *gin.Context) {
 	filter, err := parseAdminIngestionTaskFilter(c.Request.URL.Query())
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeBadRequest, err.Error())
+		common.RespondError(c, common.CodeBadRequest, err.Error())
 		return
 	}
 	tasks, total, err := h.service.ListIngestionTasks(c.Request.Context(), filter)
 	if err != nil {
 		var coded *common.CodedError
 		if errors.As(err, &coded) {
-			common.ErrorWithCode(c, coded.Code, coded.Message)
+			common.RespondError(c, coded.Code, coded.Message)
 		} else {
-			common.ErrorWithCode(c, common.CodeServerError, err.Error())
+			common.RespondError(c, common.CodeServerError, err.Error())
 		}
 		return
 	}
-	common.SuccessWithDataAndTotal(c, tasks, total, "")
+	common.RespondSuccessList(c, tasks, "", total)
 }
 
 func parseAdminIngestionTaskFilter(query url.Values) (dao.AdminIngestionTaskFilter, error) {
@@ -1729,20 +1729,20 @@ func parseAdminIngestionTaskFilter(query url.Values) (dao.AdminIngestionTaskFilt
 func (h *Handler) RemoveIngestionTasks(c *gin.Context) {
 	result, err := h.service.RemoveIngestionTasks(c.Request.Context())
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
-	common.SuccessWithData(c, result, "")
+	common.RespondSuccess(c, result, "")
 }
 
 // StopIngestionTasks requires the enterprise edition.
 func (h *Handler) StopIngestionTasks(c *gin.Context) {
 	result, err := h.service.StopIngestionTasks(c.Request.Context())
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
-	common.SuccessWithData(c, result, "")
+	common.RespondSuccess(c, result, "")
 }
 
 // ShowDataSummary handle show data summary
@@ -1750,11 +1750,11 @@ func (h *Handler) ShowDataSummary(c *gin.Context) {
 	ctx := c.Request.Context()
 	dataSummary, err := h.service.ShowDataSummary(ctx)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, dataSummary, "")
+	common.RespondSuccess(c, dataSummary, "")
 }
 
 // ShowDataOrphan handle show data orphan
@@ -1762,11 +1762,11 @@ func (h *Handler) ShowDataOrphan(c *gin.Context) {
 	ctx := c.Request.Context()
 	dataOrphan, err := h.service.ShowDataOrphan(ctx)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, dataOrphan, "")
+	common.RespondSuccess(c, dataOrphan, "")
 }
 
 // ShowDataStorage handle show data storage
@@ -1774,11 +1774,11 @@ func (h *Handler) ShowDataStorage(c *gin.Context) {
 	ctx := c.Request.Context()
 	dataStorage, err := h.service.ShowDataStorage(ctx)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, dataStorage, "")
+	common.RespondSuccess(c, dataStorage, "")
 }
 
 // ShowDataIndex handle show data index
@@ -1786,11 +1786,11 @@ func (h *Handler) ShowDataIndex(c *gin.Context) {
 	ctx := c.Request.Context()
 	dataIndex, err := h.service.ShowDataIndex(ctx)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, dataIndex, "")
+	common.RespondSuccess(c, dataIndex, "")
 }
 
 type PurgeOrphanDataRequest struct {
@@ -1802,17 +1802,17 @@ func (h *Handler) PurgeOrphanData(c *gin.Context) {
 	var request PurgeOrphanDataRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
 		println("JSON bind error: %v (type: %T)", err, err)
-		common.ErrorWithCode(c, common.CodeBadRequest, err.Error())
+		common.RespondError(c, common.CodeBadRequest, err.Error())
 		return
 	}
 	ctx := c.Request.Context()
 	result, err := h.service.PurgeOrphanData(ctx, request.Preview)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, result, "Orphan data purged successfully")
+	common.RespondSuccess(c, result, "Orphan data purged successfully")
 }
 
 type PurgeUserDataRequest struct {
@@ -1824,7 +1824,7 @@ func (h *Handler) PurgeUserData(c *gin.Context) {
 	var request PurgeUserDataRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
 		println("JSON bind error: %v (type: %T)", err, err)
-		common.ErrorWithCode(c, common.CodeBadRequest, err.Error())
+		common.RespondError(c, common.CodeBadRequest, err.Error())
 		return
 	}
 	username, err := getUserName(c)
@@ -1835,14 +1835,14 @@ func (h *Handler) PurgeUserData(c *gin.Context) {
 	result, err := h.service.PurgeUserData(ctx, username, request.Preview)
 	if err != nil {
 		if errors.Is(err, common.ErrUserNotFound) {
-			common.ErrorWithCode(c, common.CodeNotFound, "User not found")
+			common.RespondError(c, common.CodeNotFound, "User not found")
 			return
 		}
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, result, "")
+	common.RespondSuccess(c, result, "")
 }
 
 type PurgeUsersDataRequest struct {
@@ -1857,21 +1857,21 @@ func (h *Handler) PurgeUsersData(c *gin.Context) {
 	var request PurgeUsersDataRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
 		println("JSON bind error: %v (type: %T)", err, err)
-		common.ErrorWithCode(c, common.CodeBadRequest, err.Error())
+		common.RespondError(c, common.CodeBadRequest, err.Error())
 		return
 	}
 	ctx := c.Request.Context()
 	result, err := h.service.PurgeUsersData(ctx, request.Preview, request.Days, request.Plan, request.UserStatus)
 	if err != nil {
 		if errors.Is(err, common.ErrUserNotFound) {
-			common.ErrorWithCode(c, common.CodeNotFound, "User not found")
+			common.RespondError(c, common.CodeNotFound, "User not found")
 			return
 		}
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, result, "")
+	common.RespondSuccess(c, result, "")
 }
 
 // GenerateUserAPIKey handle create tenant API key
@@ -1885,11 +1885,11 @@ func (h *Handler) GenerateUserAPIKey(c *gin.Context) {
 
 	apiKey, err := h.service.GenerateUserAPIKey(ctx, username)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, apiKey, "API key generated successfully")
+	common.RespondSuccess(c, apiKey, "API key generated successfully")
 }
 
 // DeleteUserAPIKey handle delete user API key
@@ -1900,7 +1900,7 @@ func (h *Handler) DeleteUserAPIKey(c *gin.Context) {
 	}
 	key := c.Param("key")
 	if key == "" {
-		common.ErrorWithCode(c, common.CodeBadRequest, "Username and key are required")
+		common.RespondError(c, common.CodeBadRequest, "Username and key are required")
 		return
 	}
 
@@ -1908,11 +1908,11 @@ func (h *Handler) DeleteUserAPIKey(c *gin.Context) {
 
 	result, err := h.service.DeleteUserAPIKey(ctx, username, key)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, result, "API key deleted successfully")
+	common.RespondSuccess(c, result, "API key deleted successfully")
 }
 
 // ListUserAPIKeys handle list user API keys
@@ -1926,11 +1926,11 @@ func (h *Handler) ListUserAPIKeys(c *gin.Context) {
 
 	result, err := h.service.ListUserAPIKeys(ctx, username)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, result, "API keys listed successfully")
+	common.RespondSuccess(c, result, "API keys listed successfully")
 }
 
 // DownloadSensitiveWords handle download sensitive words
@@ -1938,40 +1938,40 @@ func (h *Handler) DownloadSensitiveWords(c *gin.Context) {
 	ctx := c.Request.Context()
 	result, err := h.service.DownloadSensitiveWords(ctx)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, result, "Sensitive words downloaded successfully")
+	common.RespondSuccess(c, result, "Sensitive words downloaded successfully")
 }
 
 // UploadSensitiveWords handle upload sensitive words
 func (h *Handler) UploadSensitiveWords(c *gin.Context) {
 	form, err := c.MultipartForm()
 	if err != nil || form == nil || len(form.File["file"]) == 0 {
-		common.ResponseWithCodeData(c, common.CodeArgumentError, nil, "No file part!")
+		common.Respond(c, 0, common.CodeArgumentError, nil, "No file part!")
 		return
 	}
 	files := form.File["file"]
 	for _, fh := range files {
 		if fh == nil || fh.Filename == "" {
-			common.ResponseWithCodeData(c, common.CodeArgumentError, nil, "No file or filename is empty")
+			common.Respond(c, 0, common.CodeArgumentError, nil, "No file or filename is empty")
 			return
 		}
 	}
 	if len(files) != 1 {
-		common.ResponseWithCodeData(c, common.CodeArgumentError, nil, "Only one file is allowed")
+		common.Respond(c, 0, common.CodeArgumentError, nil, "Only one file is allowed")
 		return
 	}
 	file := files[0]
 	ctx := c.Request.Context()
 	result, err := h.service.UploadSensitiveWords(ctx, file)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, result, "Sensitive words uploaded successfully")
+	common.RespondSuccess(c, result, "Sensitive words uploaded successfully")
 }
 
 type BindVerificationEmailRequest struct {
@@ -1989,22 +1989,22 @@ func (h *Handler) BindVerificationEmail(c *gin.Context) {
 	var request BindVerificationEmailRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
 		println("JSON bind error: %v (type: %T)", err, err)
-		common.ErrorWithCode(c, common.CodeBadRequest, err.Error())
+		common.RespondError(c, common.CodeBadRequest, err.Error())
 		return
 	}
 	if request.Email == "" || request.Host == "" || request.Username == "" || request.Password == "" {
-		common.ErrorWithCode(c, common.CodeBadRequest, "Email, host, username, and password are required")
+		common.RespondError(c, common.CodeBadRequest, "Email, host, username, and password are required")
 		return
 	}
 	ctx := c.Request.Context()
 
 	result, err := h.service.BindVerificationEmail(ctx, request.Email, request.Host, request.Port, request.Username, request.Password, request.UseTLS, request.UseSSL)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, result, "Verification email bound successfully")
+	common.RespondSuccess(c, result, "Verification email bound successfully")
 }
 
 // ShowVerificationEmail handle show verification email
@@ -2012,11 +2012,11 @@ func (h *Handler) ShowVerificationEmail(c *gin.Context) {
 	ctx := c.Request.Context()
 	result, err := h.service.ShowVerificationEmail(ctx)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, result, "Verification email shown successfully")
+	common.RespondSuccess(c, result, "Verification email shown successfully")
 }
 
 // ShowWhiteList handle show white list
@@ -2024,11 +2024,11 @@ func (h *Handler) ShowWhiteList(c *gin.Context) {
 	ctx := c.Request.Context()
 	result, err := h.service.ShowWhiteList(ctx)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, result, "White list shown successfully")
+	common.RespondSuccess(c, result, "White list shown successfully")
 }
 
 type AddWhiteListRequest struct {
@@ -2039,51 +2039,51 @@ type AddWhiteListRequest struct {
 func (h *Handler) AddWhiteList(c *gin.Context) {
 	var request AddWhiteListRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
-		common.ErrorWithCode(c, common.CodeBadRequest, err.Error())
+		common.RespondError(c, common.CodeBadRequest, err.Error())
 		return
 	}
 	if request.Email == "" {
-		common.ErrorWithCode(c, common.CodeBadRequest, "Email is required")
+		common.RespondError(c, common.CodeBadRequest, "Email is required")
 		return
 	}
 	ctx := c.Request.Context()
 
 	result, err := h.service.AddWhiteList(ctx, request.Email)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, result, "White list added successfully")
+	common.RespondSuccess(c, result, "White list added successfully")
 }
 
 // BatchAddWhiteList handle batch add white list
 func (h *Handler) BatchAddWhiteList(c *gin.Context) {
 	form, err := c.MultipartForm()
 	if err != nil || form == nil || len(form.File["file"]) == 0 {
-		common.ResponseWithCodeData(c, common.CodeArgumentError, nil, "No file part!")
+		common.Respond(c, 0, common.CodeArgumentError, nil, "No file part!")
 		return
 	}
 	files := form.File["file"]
 	for _, fh := range files {
 		if fh == nil || fh.Filename == "" {
-			common.ResponseWithCodeData(c, common.CodeArgumentError, nil, "No file or filename is empty")
+			common.Respond(c, 0, common.CodeArgumentError, nil, "No file or filename is empty")
 			return
 		}
 	}
 	if len(files) != 1 {
-		common.ResponseWithCodeData(c, common.CodeArgumentError, nil, "Only one file is allowed")
+		common.Respond(c, 0, common.CodeArgumentError, nil, "Only one file is allowed")
 		return
 	}
 	ctx := c.Request.Context()
 	file := files[0]
 	result, err := h.service.BatchAddWhiteList(ctx, file)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, result, "Batch add white list successfully")
+	common.RespondSuccess(c, result, "Batch add white list successfully")
 }
 
 // UpdateWhiteList handle update white list
@@ -2092,22 +2092,22 @@ func (h *Handler) UpdateWhiteList(c *gin.Context) {
 
 	var request AddWhiteListRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
-		common.ErrorWithCode(c, common.CodeBadRequest, err.Error())
+		common.RespondError(c, common.CodeBadRequest, err.Error())
 		return
 	}
 	if request.Email == "" {
-		common.ErrorWithCode(c, common.CodeBadRequest, "Email is required")
+		common.RespondError(c, common.CodeBadRequest, "Email is required")
 		return
 	}
 	ctx := c.Request.Context()
 
 	result, err := h.service.UpdateWhiteList(ctx, id, request.Email)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, result, "White list updated successfully")
+	common.RespondSuccess(c, result, "White list updated successfully")
 }
 
 // DeleteWhiteList handle delete white list
@@ -2115,18 +2115,18 @@ func (h *Handler) DeleteWhiteList(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeBadRequest, "Invalid id")
+		common.RespondError(c, common.CodeBadRequest, "Invalid id")
 		return
 	}
 	ctx := c.Request.Context()
 
 	result, err := h.service.DeleteWhiteList(ctx, id)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, result, "White list updated successfully")
+	common.RespondSuccess(c, result, "White list updated successfully")
 }
 
 type BatchDeleteWhiteListRequest struct {
@@ -2137,22 +2137,22 @@ type BatchDeleteWhiteListRequest struct {
 func (h *Handler) BatchDeleteWhiteList(c *gin.Context) {
 	var request BatchDeleteWhiteListRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
-		common.ErrorWithCode(c, common.CodeBadRequest, err.Error())
+		common.RespondError(c, common.CodeBadRequest, err.Error())
 		return
 	}
 	if len(request.Ids) == 0 {
-		common.ErrorWithCode(c, common.CodeBadRequest, "Ids are required")
+		common.RespondError(c, common.CodeBadRequest, "Ids are required")
 		return
 	}
 	ctx := c.Request.Context()
 
 	result, err := h.service.BatchDeleteWhiteList(ctx, request.Ids)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		common.RespondError(c, common.CodeServerError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, result, "Batch delete white list successfully")
+	common.RespondSuccess(c, result, "Batch delete white list successfully")
 }
 
 // GetTokenStats returns API token statistics for the current user's tenant.
@@ -2160,7 +2160,7 @@ func (h *Handler) GetTokenStats(c *gin.Context) {
 
 	userName := c.Query("user_name")
 	if userName == "" {
-		common.ErrorWithCode(c, common.CodeBadRequest, "User name is required")
+		common.RespondError(c, common.CodeBadRequest, "User name is required")
 		return
 	}
 
@@ -2180,11 +2180,11 @@ func (h *Handler) GetTokenStats(c *gin.Context) {
 	ctx := c.Request.Context()
 	stats, err := h.service.GetTokenStats(ctx, userName, fromDate, toDate, granularity)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeDataError, err.Error())
+		common.RespondError(c, common.CodeDataError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, stats, "success")
+	common.RespondSuccess(c, stats, "success")
 }
 
 // GetTokenUsersStats returns API token statistics summary for the current user's tenant.
@@ -2199,18 +2199,18 @@ func (h *Handler) GetTokenUsersStats(c *gin.Context) {
 	topStr := c.Query("top")
 	top, err := strconv.Atoi(topStr)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeBadRequest, "Invalid top")
+		common.RespondError(c, common.CodeBadRequest, "Invalid top")
 		return
 	}
 	ctx := c.Request.Context()
 
 	stats, err := h.service.GetTokenUsersStats(ctx, fromDate, toDate, top)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeDataError, err.Error())
+		common.RespondError(c, common.CodeDataError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, stats, "success")
+	common.RespondSuccess(c, stats, "success")
 }
 
 // GetTokenStatsSummary returns API token statistics summary for the current user's tenant.
@@ -2225,17 +2225,17 @@ func (h *Handler) GetTokenStatsSummary(c *gin.Context) {
 
 	stats, err := h.service.GetTokenStatsSummary(ctx, fromDate, toDate)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeDataError, err.Error())
+		common.RespondError(c, common.CodeDataError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, stats, "success")
+	common.RespondSuccess(c, stats, "success")
 }
 
 func (h *Handler) ListLogs(c *gin.Context) {
 	userName := c.Query("user_name")
 	if userName == "" {
-		common.ErrorWithCode(c, common.CodeBadRequest, "User name is required")
+		common.RespondError(c, common.CodeBadRequest, "User name is required")
 		return
 	}
 	days := c.Query("days")
@@ -2244,15 +2244,15 @@ func (h *Handler) ListLogs(c *gin.Context) {
 	}
 	daysInt, err := strconv.Atoi(days)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeBadRequest, "Invalid days")
+		common.RespondError(c, common.CodeBadRequest, "Invalid days")
 		return
 	}
 	ctx := c.Request.Context()
 	stats, err := h.service.ListLogs(ctx, userName, daysInt)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeDataError, err.Error())
+		common.RespondError(c, common.CodeDataError, err.Error())
 		return
 	}
 
-	common.SuccessWithData(c, stats, "success")
+	common.RespondSuccess(c, stats, "success")
 }

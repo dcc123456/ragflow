@@ -38,7 +38,7 @@ func (h *TenantHandler) ListGroups(c *gin.Context) {
 		writeGroupError(c, err)
 		return
 	}
-	common.SuccessWithData(c, gin.H{"groups": groups}, "")
+	common.RespondSuccess(c, gin.H{"groups": groups}, "")
 }
 
 func (h *TenantHandler) CreateGroup(c *gin.Context) {
@@ -48,7 +48,7 @@ func (h *TenantHandler) CreateGroup(c *gin.Context) {
 	}
 	var request service.CreateGroupRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
-		common.ErrorWithCode(c, common.CodeBadRequest, "Invalid group request")
+		common.RespondError(c, common.CodeBadRequest, "Invalid group request")
 		return
 	}
 	group, err := service.NewGroupService().CreateGroup(c.Request.Context(), userID, tenantID, request)
@@ -56,7 +56,7 @@ func (h *TenantHandler) CreateGroup(c *gin.Context) {
 		writeGroupError(c, err)
 		return
 	}
-	common.SuccessWithData(c, group, "")
+	common.RespondSuccess(c, group, "")
 }
 
 func (h *TenantHandler) GetGroup(c *gin.Context) {
@@ -69,7 +69,7 @@ func (h *TenantHandler) GetGroup(c *gin.Context) {
 		writeGroupError(c, err)
 		return
 	}
-	common.SuccessWithData(c, group, "")
+	common.RespondSuccess(c, group, "")
 }
 
 func (h *TenantHandler) UpdateGroup(c *gin.Context) {
@@ -79,7 +79,7 @@ func (h *TenantHandler) UpdateGroup(c *gin.Context) {
 	}
 	var request service.UpdateGroupRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
-		common.ErrorWithCode(c, common.CodeBadRequest, "Invalid group request")
+		common.RespondError(c, common.CodeBadRequest, "Invalid group request")
 		return
 	}
 	group, err := service.NewGroupService().UpdateGroup(c.Request.Context(), userID, tenantID, strings.TrimSpace(c.Param("group_id")), request)
@@ -87,7 +87,7 @@ func (h *TenantHandler) UpdateGroup(c *gin.Context) {
 		writeGroupError(c, err)
 		return
 	}
-	common.SuccessWithData(c, group, "")
+	common.RespondSuccess(c, group, "")
 }
 
 func (h *TenantHandler) MoveGroup(c *gin.Context) {
@@ -99,7 +99,7 @@ func (h *TenantHandler) MoveGroup(c *gin.Context) {
 		ParentID *string `json:"parent_id"`
 	}
 	if err := c.ShouldBindJSON(&request); err != nil {
-		common.ErrorWithCode(c, common.CodeBadRequest, "Invalid group parent request")
+		common.RespondError(c, common.CodeBadRequest, "Invalid group parent request")
 		return
 	}
 	group, err := service.NewGroupService().MoveGroup(c.Request.Context(), userID, tenantID, strings.TrimSpace(c.Param("group_id")), request.ParentID)
@@ -107,7 +107,7 @@ func (h *TenantHandler) MoveGroup(c *gin.Context) {
 		writeGroupError(c, err)
 		return
 	}
-	common.SuccessWithData(c, group, "")
+	common.RespondSuccess(c, group, "")
 }
 
 func (h *TenantHandler) DeleteGroup(c *gin.Context) {
@@ -119,7 +119,7 @@ func (h *TenantHandler) DeleteGroup(c *gin.Context) {
 		writeGroupError(c, err)
 		return
 	}
-	common.SuccessWithData(c, gin.H{"success": true}, "")
+	common.RespondSuccess(c, gin.H{"success": true}, "")
 }
 
 func (h *TenantHandler) ListGroupMembers(c *gin.Context) {
@@ -132,7 +132,7 @@ func (h *TenantHandler) ListGroupMembers(c *gin.Context) {
 		writeGroupError(c, err)
 		return
 	}
-	common.SuccessWithData(c, gin.H{"members": members}, "")
+	common.RespondSuccess(c, gin.H{"members": members}, "")
 }
 
 func (h *TenantHandler) InviteGroupMember(c *gin.Context) {
@@ -144,7 +144,7 @@ func (h *TenantHandler) InviteGroupMember(c *gin.Context) {
 		UserID string `json:"user_id" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&request); err != nil {
-		common.ErrorWithCode(c, common.CodeBadRequest, "user_id is required")
+		common.RespondError(c, common.CodeBadRequest, "user_id is required")
 		return
 	}
 	member, err := service.NewGroupService().InviteGroupMember(c.Request.Context(), userID, tenantID, strings.TrimSpace(c.Param("group_id")), request.UserID)
@@ -152,7 +152,7 @@ func (h *TenantHandler) InviteGroupMember(c *gin.Context) {
 		writeGroupError(c, err)
 		return
 	}
-	common.SuccessWithData(c, member, "")
+	common.RespondSuccess(c, member, "")
 }
 
 func (h *TenantHandler) RemoveGroupMember(c *gin.Context) {
@@ -164,7 +164,7 @@ func (h *TenantHandler) RemoveGroupMember(c *gin.Context) {
 		writeGroupError(c, err)
 		return
 	}
-	common.SuccessWithData(c, gin.H{"success": true}, "")
+	common.RespondSuccess(c, gin.H{"success": true}, "")
 }
 
 func (h *TenantHandler) SetGroupMemberPermissions(c *gin.Context) {
@@ -174,7 +174,7 @@ func (h *TenantHandler) SetGroupMemberPermissions(c *gin.Context) {
 	}
 	var request service.SetGroupMemberPermissionsRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
-		common.ErrorWithCode(c, common.CodeBadRequest, "Invalid group member permission request")
+		common.RespondError(c, common.CodeBadRequest, "Invalid group member permission request")
 		return
 	}
 	member, err := service.NewGroupService().SetGroupMemberPermissions(c.Request.Context(), userID, tenantID,
@@ -183,7 +183,7 @@ func (h *TenantHandler) SetGroupMemberPermissions(c *gin.Context) {
 		writeGroupError(c, err)
 		return
 	}
-	common.SuccessWithData(c, member, "")
+	common.RespondSuccess(c, member, "")
 }
 
 func (h *TenantHandler) TransferGroupOwnership(c *gin.Context) {
@@ -195,7 +195,7 @@ func (h *TenantHandler) TransferGroupOwnership(c *gin.Context) {
 		UserID string `json:"user_id" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&request); err != nil {
-		common.ErrorWithCode(c, common.CodeBadRequest, "user_id is required")
+		common.RespondError(c, common.CodeBadRequest, "user_id is required")
 		return
 	}
 	group, err := service.NewGroupService().TransferGroupOwnership(c.Request.Context(), userID, tenantID,
@@ -204,7 +204,7 @@ func (h *TenantHandler) TransferGroupOwnership(c *gin.Context) {
 		writeGroupError(c, err)
 		return
 	}
-	common.SuccessWithData(c, group, "")
+	common.RespondSuccess(c, group, "")
 }
 
 func (h *TenantHandler) ListGroupInvitations(c *gin.Context) {
@@ -217,7 +217,7 @@ func (h *TenantHandler) ListGroupInvitations(c *gin.Context) {
 		writeGroupError(c, err)
 		return
 	}
-	common.SuccessWithData(c, gin.H{"invitations": invitations}, "")
+	common.RespondSuccess(c, gin.H{"invitations": invitations}, "")
 }
 
 func (h *TenantHandler) RespondToGroupInvitation(c *gin.Context) {
@@ -229,7 +229,7 @@ func (h *TenantHandler) RespondToGroupInvitation(c *gin.Context) {
 		Accept *bool `json:"accept" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&request); err != nil || request.Accept == nil {
-		common.ErrorWithCode(c, common.CodeBadRequest, "accept is required")
+		common.RespondError(c, common.CodeBadRequest, "accept is required")
 		return
 	}
 	if err := service.NewGroupService().RespondToGroupInvitation(c.Request.Context(), userID, tenantID,
@@ -237,14 +237,14 @@ func (h *TenantHandler) RespondToGroupInvitation(c *gin.Context) {
 		writeGroupError(c, err)
 		return
 	}
-	common.SuccessWithData(c, gin.H{"success": true}, "")
+	common.RespondSuccess(c, gin.H{"success": true}, "")
 }
 
 func writeGroupError(c *gin.Context, err error) {
 	var coded *common.CodedError
 	if errors.As(err, &coded) {
-		common.ErrorWithCode(c, coded.Code, coded.Message)
+		common.RespondError(c, coded.Code, coded.Message)
 		return
 	}
-	common.ErrorWithCode(c, common.CodeServerError, err.Error())
+	common.RespondError(c, common.CodeServerError, err.Error())
 }

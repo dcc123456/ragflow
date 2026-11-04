@@ -80,11 +80,11 @@ func TestCheckDocumentAccessAcceptsDirectDocumentGrantAndDatasetGrant(t *testing
 	}).Error; err != nil {
 		t.Fatalf("share document: %v", err)
 	}
-	subject := permission.Subject{UserID: "member-user", TenantID: tenantID}
-	if err := CheckDocumentAccess(t.Context(), subject, docID, kbID, permission.OperationRead); err != nil {
+	ctx := permission.WithIdentity(t.Context(), "member-user", tenantID)
+	if err := CheckDocumentAccess(ctx, docID, kbID, permission.OperationRead); err != nil {
 		t.Fatalf("direct document read grant was rejected: %v", err)
 	}
-	if err := CheckDocumentAccess(t.Context(), subject, docID, kbID, permission.OperationUpdate); err == nil {
+	if err := CheckDocumentAccess(ctx, docID, kbID, permission.OperationUpdate); err == nil {
 		t.Fatal("read-only document grant allowed update")
 	}
 
@@ -95,7 +95,7 @@ func TestCheckDocumentAccessAcceptsDirectDocumentGrantAndDatasetGrant(t *testing
 	}).Error; err != nil {
 		t.Fatalf("share dataset: %v", err)
 	}
-	if err := CheckDocumentAccess(t.Context(), subject, docID, kbID, permission.OperationRead); err != nil {
+	if err := CheckDocumentAccess(ctx, docID, kbID, permission.OperationRead); err != nil {
 		t.Fatalf("dataset read grant did not cover its document: %v", err)
 	}
 }

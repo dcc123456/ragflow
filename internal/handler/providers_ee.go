@@ -31,7 +31,7 @@ type CreateModelGroupRequest struct {
 func (h *ProviderHandler) CreateModelGroup(c *gin.Context) {
 	var req CreateModelGroupRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		common.ErrorWithCode(c, common.CodeBadRequest, "Group name is required")
+		common.RespondError(c, common.CodeBadRequest, "Group name is required")
 		return
 	}
 
@@ -41,11 +41,11 @@ func (h *ProviderHandler) CreateModelGroup(c *gin.Context) {
 
 	err := h.modelProviderService.CreateModelGroup(ctx, userID, req.Name)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeDataError, err.Error())
+		common.RespondError(c, common.CodeDataError, err.Error())
 		return
 	}
 
-	common.SuccessNoData(c, "success")
+	common.RespondSuccess(c, nil, "success")
 }
 
 func (h *ProviderHandler) DeleteModelGroup(c *gin.Context) {
@@ -57,11 +57,11 @@ func (h *ProviderHandler) DeleteModelGroup(c *gin.Context) {
 
 	err := h.modelProviderService.DeleteModelGroup(ctx, userID, groupName)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeDataError, err.Error())
+		common.RespondError(c, common.CodeDataError, err.Error())
 		return
 	}
 
-	common.SuccessNoData(c, "success")
+	common.RespondSuccess(c, nil, "success")
 }
 
 func (h *ProviderHandler) ShowModelGroup(c *gin.Context) {
@@ -72,19 +72,19 @@ func (h *ProviderHandler) ShowModelGroup(c *gin.Context) {
 		// list model groups
 		groups, err := h.modelProviderService.ListModelGroup(ctx, userID)
 		if err != nil {
-			common.ErrorWithCode(c, common.CodeDataError, err.Error())
+			common.RespondError(c, common.CodeDataError, err.Error())
 			return
 		}
-		common.SuccessWithData(c, groups, "success")
+		common.RespondSuccess(c, groups, "success")
 		return
 	}
 
 	models, err := h.modelProviderService.ShowModelGroup(ctx, userID, groupName)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeDataError, err.Error())
+		common.RespondError(c, common.CodeDataError, err.Error())
 		return
 	}
-	common.SuccessWithData(c, models, "success")
+	common.RespondSuccess(c, models, "success")
 	return
 }
 
@@ -96,7 +96,7 @@ type AddModelToGroupRequest struct {
 func (h *ProviderHandler) AddModelToGroup(c *gin.Context) {
 	var req AddModelToGroupRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		common.ErrorWithCode(c, common.CodeBadRequest, "Group name is required")
+		common.RespondError(c, common.CodeBadRequest, "Group name is required")
 		return
 	}
 
@@ -107,23 +107,23 @@ func (h *ProviderHandler) AddModelToGroup(c *gin.Context) {
 	if req.CompositeModelName == "" {
 		err := h.modelProviderService.AddModelToGroupByID(ctx, userID, req.ModelID, groupName)
 		if err != nil {
-			common.ErrorWithCode(c, common.CodeDataError, err.Error())
+			common.RespondError(c, common.CodeDataError, err.Error())
 			return
 		}
 	} else {
 		modelName, instanceName, providerName, err := common.ParseCompositeModelName(req.CompositeModelName)
 		if err != nil {
-			common.ErrorWithCode(c, common.CodeBadRequest, err.Error())
+			common.RespondError(c, common.CodeBadRequest, err.Error())
 			return
 		}
 		err = h.modelProviderService.AddModelToGroupByName(ctx, userID, providerName, instanceName, modelName, groupName)
 		if err != nil {
-			common.ErrorWithCode(c, common.CodeDataError, err.Error())
+			common.RespondError(c, common.CodeDataError, err.Error())
 			return
 		}
 	}
 
-	common.SuccessNoData(c, "success")
+	common.RespondSuccess(c, nil, "success")
 }
 
 type DeleteModelToGroupRequest struct {
@@ -135,7 +135,7 @@ func (h *ProviderHandler) RemoveModelFromGroup(c *gin.Context) {
 
 	var req DeleteModelToGroupRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		common.ErrorWithCode(c, common.CodeBadRequest, "Group name is required")
+		common.RespondError(c, common.CodeBadRequest, "Group name is required")
 		return
 	}
 
@@ -145,22 +145,22 @@ func (h *ProviderHandler) RemoveModelFromGroup(c *gin.Context) {
 	if req.CompositeModelName == "" {
 		err := h.modelProviderService.RemoveModelFromGroupByID(ctx, req.ModelID)
 		if err != nil {
-			common.ErrorWithCode(c, common.CodeDataError, err.Error())
+			common.RespondError(c, common.CodeDataError, err.Error())
 			return
 		}
 	} else {
 		userID := c.GetString("user_id")
 		modelName, instanceName, providerName, err := common.ParseCompositeModelName(req.CompositeModelName)
 		if err != nil {
-			common.ErrorWithCode(c, common.CodeBadRequest, err.Error())
+			common.RespondError(c, common.CodeBadRequest, err.Error())
 			return
 		}
 		err = h.modelProviderService.RemoveModelFromGroupByName(ctx, userID, providerName, instanceName, modelName, groupName)
 		if err != nil {
-			common.ErrorWithCode(c, common.CodeDataError, err.Error())
+			common.RespondError(c, common.CodeDataError, err.Error())
 			return
 		}
 	}
 
-	common.SuccessNoData(c, "success")
+	common.RespondSuccess(c, nil, "success")
 }

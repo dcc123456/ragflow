@@ -28,8 +28,8 @@ func prepareAgentCreation(ctx context.Context, userID string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := permission.NewDatabaseChecker(dao.DB).CheckFeature(ctx,
-		permission.Subject{UserID: userID, TenantID: tenantID}, "agent", permission.ActionWrite); err != nil {
+	ctx = permission.WithIdentity(ctx, userID, tenantID)
+	if err := permission.NewDatabaseChecker(dao.DB).CheckFeature(ctx, "agent", permission.ActionWrite); err != nil {
 		return "", err
 	}
 	return tenantID, nil

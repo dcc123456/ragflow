@@ -183,8 +183,8 @@ func (s *GroupService) CreateGroup(ctx context.Context, userID, tenantID string,
 		if err != nil {
 			return err
 		}
-		if err := permission.NewDatabaseChecker(tx).CheckFeature(ctx,
-			permission.Subject{UserID: userID, TenantID: tenantID}, "group", permission.ActionWrite); err != nil {
+		featureCtx := permission.WithIdentity(ctx, userID, tenantID)
+		if err := permission.NewDatabaseChecker(tx).CheckFeature(featureCtx, "group", permission.ActionWrite); err != nil {
 			if errors.Is(err, permission.ErrPermissionDenied) {
 				return common.NewCodedError(common.CodeForbidden, "Tenant role does not allow group creation")
 			}
@@ -328,8 +328,8 @@ func loadGroupAccess(ctx context.Context, db *gorm.DB, userID, tenantID string) 
 }
 
 func requireGroupFeature(ctx context.Context, db *gorm.DB, userID, tenantID string, action permission.Action) error {
-	err := permission.NewDatabaseChecker(db).CheckFeature(ctx,
-		permission.Subject{UserID: userID, TenantID: tenantID}, "group", action)
+	ctx = permission.WithIdentity(ctx, userID, tenantID)
+	err := permission.NewDatabaseChecker(db).CheckFeature(ctx, "group", action)
 	if errors.Is(err, permission.ErrPermissionDenied) || errors.Is(err, permission.ErrMembershipNotFound) {
 		return common.NewCodedError(common.CodeForbidden, "Tenant role does not allow group access")
 	}
