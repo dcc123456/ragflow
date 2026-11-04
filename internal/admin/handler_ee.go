@@ -368,7 +368,7 @@ type AddProviderRequest struct {
 func (h *Handler) AddModelProvider(c *gin.Context) {
 	var req AddProviderRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		common.Respond(c, 0, common.CodeBadRequest, false, err.Error())
+		common.RespondError(c, common.CodeBadRequest, err.Error())
 		return
 	}
 
@@ -687,7 +687,7 @@ func (h *Handler) AlterModel(c *gin.Context) {
 func (h *Handler) AddModel(c *gin.Context) {
 	var req servicepkg.AddModelRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		common.Respond(c, 0, common.CodeBadRequest, false, err.Error())
+		common.RespondError(c, common.CodeBadRequest, err.Error())
 		return
 	}
 
@@ -1949,18 +1949,18 @@ func (h *Handler) DownloadSensitiveWords(c *gin.Context) {
 func (h *Handler) UploadSensitiveWords(c *gin.Context) {
 	form, err := c.MultipartForm()
 	if err != nil || form == nil || len(form.File["file"]) == 0 {
-		common.Respond(c, 0, common.CodeArgumentError, nil, "No file part!")
+		common.RespondError(c, common.CodeArgumentError, "No file part!")
 		return
 	}
 	files := form.File["file"]
 	for _, fh := range files {
 		if fh == nil || fh.Filename == "" {
-			common.Respond(c, 0, common.CodeArgumentError, nil, "No file or filename is empty")
+			common.RespondError(c, common.CodeArgumentError, "No file or filename is empty")
 			return
 		}
 	}
 	if len(files) != 1 {
-		common.Respond(c, 0, common.CodeArgumentError, nil, "Only one file is allowed")
+		common.RespondError(c, common.CodeArgumentError, "Only one file is allowed")
 		return
 	}
 	file := files[0]
@@ -2061,18 +2061,18 @@ func (h *Handler) AddWhiteList(c *gin.Context) {
 func (h *Handler) BatchAddWhiteList(c *gin.Context) {
 	form, err := c.MultipartForm()
 	if err != nil || form == nil || len(form.File["file"]) == 0 {
-		common.Respond(c, 0, common.CodeArgumentError, nil, "No file part!")
+		common.RespondError(c, common.CodeArgumentError, "No file part!")
 		return
 	}
 	files := form.File["file"]
 	for _, fh := range files {
 		if fh == nil || fh.Filename == "" {
-			common.Respond(c, 0, common.CodeArgumentError, nil, "No file or filename is empty")
+			common.RespondError(c, common.CodeArgumentError, "No file or filename is empty")
 			return
 		}
 	}
 	if len(files) != 1 {
-		common.Respond(c, 0, common.CodeArgumentError, nil, "Only one file is allowed")
+		common.RespondError(c, common.CodeArgumentError, "Only one file is allowed")
 		return
 	}
 	ctx := c.Request.Context()

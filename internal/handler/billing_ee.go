@@ -49,7 +49,7 @@ func NewBillingHandler() *BillingHandler {
 func billingServiceOrDisabled(c *gin.Context) (*billing.Service, bool) {
 	service := billing.Get()
 	if service == nil || !service.Enabled() {
-		common.Respond(c, 0, common.CodeDataError, false, "Billing is disabled.")
+		common.RespondError(c, common.CodeDataError, "Billing is disabled.")
 		return nil, false
 	}
 	return service, true
@@ -66,7 +66,7 @@ func billingTenant(c *gin.Context) (string, bool) {
 		tenantID = user.ID
 	}
 	if tenantID != user.ID {
-		common.Respond(c, 0, common.CodeAuthenticationError, false, "no authorization")
+		common.RespondError(c, common.CodeAuthenticationError, "no authorization")
 		return "", false
 	}
 	return tenantID, true
@@ -453,7 +453,7 @@ func (h *BillingHandler) CheckoutSubscription(c *gin.Context) {
 	}
 	var req billingCheckoutRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		common.Respond(c, 0, common.CodeArgumentError, nil, err.Error())
+		common.RespondError(c, common.CodeArgumentError, err.Error())
 		return
 	}
 	user, _, _ := GetUser(c)
@@ -473,7 +473,7 @@ func (h *BillingHandler) CheckoutSubscription(c *gin.Context) {
 		return
 	}
 	if req.SubscriptionPriceID == "" {
-		common.Respond(c, 0, common.CodeArgumentError, nil, "subscription_price_id is required")
+		common.RespondError(c, common.CodeArgumentError, "subscription_price_id is required")
 		return
 	}
 	subscription, _ := service.Subscription(ctx, tenantID)
@@ -510,7 +510,7 @@ func (h *BillingHandler) AddonCheckout(c *gin.Context) {
 	}
 	var req billingCheckoutRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		common.Respond(c, 0, common.CodeArgumentError, nil, err.Error())
+		common.RespondError(c, common.CodeArgumentError, err.Error())
 		return
 	}
 	tenantID, ok := billingRequestTenant(c, req.TenantID)
@@ -536,7 +536,7 @@ func (h *BillingHandler) PreviewSubscription(c *gin.Context) {
 		NewPriceID string `json:"new_price_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		common.Respond(c, 0, common.CodeArgumentError, nil, err.Error())
+		common.RespondError(c, common.CodeArgumentError, err.Error())
 		return
 	}
 	tenantID, ok := billingRequestTenant(c, req.TenantID)
@@ -544,7 +544,7 @@ func (h *BillingHandler) PreviewSubscription(c *gin.Context) {
 		return
 	}
 	if req.NewPriceID == "" {
-		common.Respond(c, 0, common.CodeArgumentError, nil, "new_price_id is required")
+		common.RespondError(c, common.CodeArgumentError, "new_price_id is required")
 		return
 	}
 	result, err := service.PreviewPlanChange(c.Request.Context(), tenantID, req.NewPriceID)
@@ -569,7 +569,7 @@ func (h *BillingHandler) SetStorageTarget(c *gin.Context) {
 		SessionCancelURL   string `json:"session_cancel_url"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		common.Respond(c, 0, common.CodeArgumentError, nil, err.Error())
+		common.RespondError(c, common.CodeArgumentError, err.Error())
 		return
 	}
 	tenantID, ok := billingRequestTenant(c, req.TenantID)
@@ -618,7 +618,7 @@ func (h *BillingHandler) PortalSession(c *gin.Context) {
 		ReturnURL string `json:"return_url"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		common.Respond(c, 0, common.CodeArgumentError, nil, err.Error())
+		common.RespondError(c, common.CodeArgumentError, err.Error())
 		return
 	}
 	tenantID, ok := billingRequestTenant(c, req.TenantID)
@@ -646,7 +646,7 @@ func (h *BillingHandler) PointsCheckout(c *gin.Context) {
 		SessionCancelURL  string           `json:"session_cancel_url"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		common.Respond(c, 0, common.CodeArgumentError, nil, err.Error())
+		common.RespondError(c, common.CodeArgumentError, err.Error())
 		return
 	}
 	tenantID, ok := billingRequestTenant(c, req.TenantID)
@@ -711,7 +711,7 @@ func billingRequestTenant(c *gin.Context, requested string) (string, bool) {
 		tenantID = user.ID
 	}
 	if tenantID != user.ID {
-		common.Respond(c, 0, common.CodeAuthenticationError, false, "no authorization")
+		common.RespondError(c, common.CodeAuthenticationError, "no authorization")
 		return "", false
 	}
 	return tenantID, true
@@ -766,7 +766,7 @@ func billingEnforceApps(c *gin.Context, tenantID string) bool {
 	}
 	var insufficient *billing.InsufficientResourceError
 	if errors.As(err, &insufficient) {
-		common.Respond(c, 0, common.CodeBillingAppsInsufficient, nil, err.Error(), common.ResponseOptions{Detail: gin.H{
+		common.RespondError(c, common.CodeBillingAppsInsufficient, err.Error(), common.ResponseOptions{Detail: gin.H{
 			"resource": "apps", "current": insufficient.Current, "limit": insufficient.Limit,
 		}})
 		return false
@@ -787,7 +787,7 @@ func billingEnforceStorage(c *gin.Context, tenantID string, size int64) bool {
 	}
 	var insufficient *billing.InsufficientResourceError
 	if errors.As(err, &insufficient) {
-		common.Respond(c, 0, common.CodeBillingStorageInsufficient, nil, err.Error(), common.ResponseOptions{Detail: gin.H{
+		common.RespondError(c, common.CodeBillingStorageInsufficient, err.Error(), common.ResponseOptions{Detail: gin.H{
 			"resource": "storage", "current": insufficient.Current, "limit": insufficient.Limit,
 		}})
 		return false

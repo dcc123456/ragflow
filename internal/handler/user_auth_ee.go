@@ -47,7 +47,7 @@ func isOAuthLoginNoRoute(c *gin.Context) bool {
 func (h *UserHandler) GetLoginChannels(c *gin.Context) {
 	channels, code, err := h.userService.GetLoginChannels()
 	if err != nil {
-		common.Respond(c, 0, code, []interface{}{}, "Load channels failure, error: "+err.Error())
+		common.RespondError(c, code, "Load channels failure, error: "+err.Error())
 		return
 	}
 
@@ -67,7 +67,7 @@ func (h *UserHandler) OAuthCallback(c *gin.Context) {
 		// server_error_response, which replies HTTP 200 with code 100 and
 		// the exception's repr() as the message (no short error code).
 		if errors.Is(err, service.ErrOAuthInvalidChannel) {
-			common.Respond(c, 0, common.CodeExceptionError, nil, fmt.Sprintf("ValueError('Invalid channel name: %s')", channel))
+			common.RespondError(c, common.CodeExceptionError, fmt.Sprintf("ValueError('Invalid channel name: %s')", channel))
 			return
 		}
 		common.Respond(c, http.StatusInternalServerError, code, nil, err.Error())
@@ -119,7 +119,7 @@ func (h *UserHandler) OAuthLogin(c *gin.Context) {
 		// server_error_response, which replies HTTP 200 with code 100 and
 		// the exception's repr() as the message (no short error code).
 		if errors.Is(err, service.ErrOAuthInvalidChannel) {
-			common.Respond(c, 0, common.CodeExceptionError, nil, fmt.Sprintf("ValueError('Invalid channel name: %s')", channel))
+			common.RespondError(c, common.CodeExceptionError, fmt.Sprintf("ValueError('Invalid channel name: %s')", channel))
 			return
 		}
 		common.Respond(c, http.StatusInternalServerError, code, nil, err.Error())
@@ -297,7 +297,7 @@ func (h *UserHandler) ForgotCaptcha(c *gin.Context) {
 	ctx := c.Request.Context()
 	captchaID, captchaImage, errCode, err := h.userService.ForgotIssueCaptcha(ctx, req.Email)
 	if err != nil {
-		common.Respond(c, 0, errCode, false, err.Error())
+		common.RespondError(c, errCode, err.Error())
 		return
 	}
 	common.RespondSuccess(c, gin.H{
@@ -323,13 +323,13 @@ type forgotSendOTPRequest struct {
 func (h *UserHandler) ForgotSendOTP(c *gin.Context) {
 	var req forgotSendOTPRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		common.Respond(c, 0, common.CodeArgumentError, false, err.Error())
+		common.RespondError(c, common.CodeArgumentError, err.Error())
 		return
 	}
 	ctx := c.Request.Context()
 	errCode, err := h.userService.ForgotSendOTP(ctx, req.Email, req.CaptchaID, req.Captcha)
 	if err != nil {
-		common.Respond(c, 0, errCode, false, err.Error())
+		common.RespondError(c, errCode, err.Error())
 		return
 	}
 	common.RespondSuccess(c, true, "verification passed, email sent")
@@ -352,13 +352,13 @@ type forgotVerifyOTPRequest struct {
 func (h *UserHandler) ForgotVerifyOTP(c *gin.Context) {
 	var req forgotVerifyOTPRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		common.Respond(c, 0, common.CodeArgumentError, false, err.Error())
+		common.RespondError(c, common.CodeArgumentError, err.Error())
 		return
 	}
 	ctx := c.Request.Context()
 	errCode, err := h.userService.ForgotVerifyOTP(ctx, req.Email, req.OTP)
 	if err != nil {
-		common.Respond(c, 0, errCode, false, err.Error())
+		common.RespondError(c, errCode, err.Error())
 		return
 	}
 	c.JSON(200, gin.H{"code": common.CodeSuccess,
@@ -379,24 +379,24 @@ func (h *UserHandler) ForgotResetPassword(c *gin.Context) {
 	ctx := c.Request.Context()
 	var req service.ForgotResetPasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		common.Respond(c, 0, common.CodeArgumentError, false, err.Error())
+		common.RespondError(c, common.CodeArgumentError, err.Error())
 		return
 	}
 
 	user, code, err := h.userService.ForgotResetPassword(ctx, &req)
 	if err != nil {
-		common.Respond(c, 0, code, false, err.Error())
+		common.RespondError(c, code, err.Error())
 		return
 	}
 
 	secretKey, err := server.GetSecretKey(ctx, kvrocks.Get())
 	if err != nil {
-		common.Respond(c, 0, common.CodeServerError, false, fmt.Sprintf("Failed to get secret key: %s", err.Error()))
+		common.RespondError(c, common.CodeServerError, fmt.Sprintf("Failed to get secret key: %s", err.Error()))
 		return
 	}
 	authToken, err := issueUserAccessToken(user, secretKey)
 	if err != nil {
-		common.Respond(c, 0, common.CodeServerError, false, "Failed to generate auth token")
+		common.RespondError(c, common.CodeServerError, "Failed to generate auth token")
 		return
 	}
 	c.Header("Authorization", authToken)

@@ -27,7 +27,7 @@ func (h *Handler) GetIngestionMessages(c *gin.Context) {
 	if rawLimit := c.Query("limit"); rawLimit != "" {
 		parsed, err := strconv.Atoi(rawLimit)
 		if err != nil || parsed <= 0 {
-			common.Respond(c, 0, common.CodeArgumentError, nil, "limit must be a positive integer")
+			common.RespondError(c, common.CodeArgumentError, "limit must be a positive integer")
 			return
 		}
 		limit = parsed
@@ -55,7 +55,7 @@ func adminIngestionEventCursor(c *gin.Context, name string) (*int, bool) {
 	}
 	value, err := strconv.Atoi(raw)
 	if err != nil || value <= 0 {
-		common.Respond(c, 0, common.CodeArgumentError, nil, name+" must be a positive integer")
+		common.RespondError(c, common.CodeArgumentError, name+" must be a positive integer")
 		return nil, false
 	}
 	return &value, true
