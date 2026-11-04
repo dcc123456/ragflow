@@ -60,12 +60,7 @@ import agentService, {
 } from '@/services/agent-service';
 import { buildMessageListWithUuid } from '@/utils/chat';
 import { markListItemsDeleted } from '@/utils/list-deletion-util';
-import {
-  useMutation,
-  useQueries,
-  useQuery,
-  useQueryClient,
-} from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDebounce } from 'ahooks';
 import { get, isEmpty, set } from 'lodash';
 import { useCallback, useState } from 'react';
@@ -75,6 +70,7 @@ import {
   useHandleSearchChange,
 } from './logic-hooks';
 import { useSessionList } from './use-session-list';
+import { PipelineVersionKeys } from './use-pipeline-version-request';
 
 export const enum AgentApiAction {
   FetchAgentListByPage = 'fetchAgentListByPage',
@@ -151,6 +147,8 @@ export const AgentKeys = {
     [AgentApiAction.FetchInputForm, agentId, componentId] as const,
   versionList: (agentId?: string) =>
     [AgentApiAction.FetchVersionList, agentId] as const,
+  canvasVersionList: (canvasId?: string) =>
+    ['canvasVersionList', canvasId] as const,
   version: (agentId?: string, versionId?: string) =>
     [AgentApiAction.FetchVersion, agentId, versionId] as const,
 };
@@ -333,6 +331,9 @@ export const useUpdateAgentSetting = () => {
         queryClient.invalidateQueries({
           queryKey: AgentKeys.list(),
         });
+        queryClient.invalidateQueries({
+          queryKey: PipelineVersionKeys.catalog(),
+        });
       }
       return ret?.data?.code;
     },
@@ -354,6 +355,9 @@ export const useDeleteAgent = () => {
       if (data.code === 0) {
         queryClient.invalidateQueries({
           queryKey: AgentKeys.list(),
+        });
+        queryClient.invalidateQueries({
+          queryKey: PipelineVersionKeys.catalog(),
         });
         queryClient.invalidateQueries({
           queryKey: AgentKeys.filters(),
@@ -484,9 +488,9 @@ export const useResetAgent = () => {
 };
 
 // Every create flow (blank, template, JSON import, built-in pipeline copy)
-// navigates to the new canvas on success, and the list-page queries refetch on
-// remount (gcTime: 0) — so creation intentionally invalidates nothing.
+// navigates to the new canvas; invalidate the cached metadata catalog too.
 export const useCreateAgent = (showMessage: boolean = true) => {
+  const queryClient = useQueryClient();
   const {
     data,
     isPending: loading,
@@ -500,8 +504,11 @@ export const useCreateAgent = (showMessage: boolean = true) => {
       canvas_category?: string;
     }) => {
       const { data = {} } = await agentService.createAgent(params);
-      if (data.code === 0 && showMessage) {
-        message.success(i18n.t('message.created'));
+      if (data.code === 0) {
+        queryClient.invalidateQueries({
+          queryKey: PipelineVersionKeys.catalog(),
+        });
+        if (showMessage) message.success(i18n.t('message.created'));
       }
       return data;
     },
@@ -550,6 +557,11 @@ export const useSaveAgent = (
       if (data.code === 0) {
         if (showMessage) {
           message.success(i18n.t('message.modified'));
+        }
+        if (!params.autosave || params.release) {
+          queryClient.invalidateQueries({
+            queryKey: PipelineVersionKeys.catalog(),
+          });
         }
         // Every save can prune the oldest unpublished versions server-side,
         // so the version history list must refetch even when autosave skips
@@ -790,33 +802,15 @@ export interface ICanvasVersionRow {
   alias?: string;
 }
 
-// Shared query key/options for a canvas's published version list. The raw
-// 'canvasVersionList' key predates the AgentKeys factory; both the single- and
-// multi-canvas hooks must keep using it verbatim so the version delete/alias
-// mutations below invalidate every observer.
-const canvasVersionListQuery = (canvasId: string) => ({
-  queryKey: ['canvasVersionList', canvasId] as const,
-  queryFn: async (): Promise<ICanvasVersionRow[]> => {
-    const { data } = await agentService.fetchVersionList(canvasId);
-    return data?.data ?? [];
-  },
-});
-
-// useFetchCanvasVersionList lists the published versions of an arbitrary canvas
-// (dataflow or agent) by id. Unlike useFetchVersionList it takes the canvas id
-// explicitly (not from route params) so the document pipeline dialog can load
-// versions for the currently selected dataflow canvas. It must not set
-// initialData: the key is shared with useFetchCanvasVersions, whose consumers
-// rely on isSuccess to tell "loaded and empty" from "still loading" — an
-// initialData [] would report success while the real fetch is in flight and a
-// pinned version would briefly look deleted.
+// Lists versions for document status displays. Parser selection uses the
+// lightweight catalog instead. No initialData so pending and empty differ.
 export const useFetchCanvasVersionList = (canvasId?: string) => {
   const {
     data,
     isFetching: loading,
     isError,
   } = useQuery({
-    queryKey: ['canvasVersionList', canvasId],
+    queryKey: AgentKeys.canvasVersionList(canvasId),
     gcTime: 0,
     enabled: !!canvasId,
     queryFn: async (): Promise<ICanvasVersionRow[]> => {
@@ -827,21 +821,6 @@ export const useFetchCanvasVersionList = (canvasId?: string) => {
   });
 
   return { data, loading, isError };
-};
-
-// useFetchCanvasVersions lazily loads the published versions of several
-// canvases at once (the parser tree select fetches a canvas's versions only
-// when the user expands it). `isSuccess` distinguishes "loaded and empty" from
-// "still loading" — kept truthful by neither version-list hook setting
-// initialData (see useFetchCanvasVersionList). The returned array aligns
-// index-by-index with `canvasIds`.
-export const useFetchCanvasVersions = (canvasIds: string[]) => {
-  return useQueries({
-    queries: canvasIds.map((canvasId) => ({
-      ...canvasVersionListQuery(canvasId),
-      gcTime: 0,
-    })),
-  });
 };
 
 // useDeleteVersion removes a single canvas version (design section 7/B2). The
@@ -869,15 +848,15 @@ export const useDeleteVersion = () => {
       return data?.code === 0;
     },
     onSuccess: (_result, variables) => {
-      // Invalidate both version-list caches so the deleted version disappears
-      // without a manual refresh: the version dialog reads
-      // AgentKeys.versionList (canvas id from route params) and the document
-      // pipeline dialog reads the canvasVersionList key.
+      // Refresh version history, document status, and the parser catalog.
       queryClient.invalidateQueries({
         queryKey: AgentKeys.versionList(variables.canvasId),
       });
       queryClient.invalidateQueries({
-        queryKey: ['canvasVersionList', variables.canvasId],
+        queryKey: AgentKeys.canvasVersionList(variables.canvasId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: PipelineVersionKeys.catalog(),
       });
     },
   });
@@ -908,6 +887,9 @@ export const useApplyVersion = () => {
         queryKey: AgentKeys.versionList(canvasId),
       });
       queryClient.invalidateQueries({ queryKey: AgentKeys.detail(canvasId) });
+      queryClient.invalidateQueries({
+        queryKey: PipelineVersionKeys.catalog(),
+      });
     },
   });
 
@@ -941,7 +923,10 @@ export const useUpdateVersion = () => {
         queryKey: AgentKeys.versionList(variables.canvasId),
       });
       queryClient.invalidateQueries({
-        queryKey: ['canvasVersionList', variables.canvasId],
+        queryKey: AgentKeys.canvasVersionList(variables.canvasId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: PipelineVersionKeys.catalog(),
       });
     },
   });

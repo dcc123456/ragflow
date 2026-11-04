@@ -140,7 +140,7 @@ function MessageItem({
   );
 
   const renderContent = useCallback(() => {
-    if (!messageContent && !(item.data || (sendLoading && !isShare))) {
+    if (!messageContent && !(item.data || sendLoading)) {
       return null;
     }
 
@@ -159,7 +159,7 @@ function MessageItem({
         {hasCustomChildren ? (
           children
         ) : sendLoading && isEmpty(messageContent) ? (
-          <>{!isShare && <LoadingDots className="text-text-secondary" />}</>
+          <LoadingDots className="text-text-secondary" />
         ) : (
           <MarkdownContent
             loading={loading}
@@ -175,7 +175,7 @@ function MessageItem({
     children,
     clickDocumentButton,
     isAssistant,
-    isShare,
+    isUser,
     item.data,
     loading,
     messageContent,
