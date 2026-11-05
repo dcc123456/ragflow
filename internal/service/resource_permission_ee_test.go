@@ -17,6 +17,7 @@
 package service
 
 import (
+	"context"
 	"testing"
 
 	"ragflow/internal/common"
@@ -27,6 +28,11 @@ import (
 
 	"gorm.io/gorm"
 )
+
+func resourcePermissionTestContext(t *testing.T) context.Context {
+	t.Helper()
+	return permission.WithIdentity(t.Context(), "owner", "tenant-permission")
+}
 
 func setupResourcePermissionTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
@@ -102,7 +108,7 @@ func TestResourceSharingRequiresSystemRoleShareAction(t *testing.T) {
 		t.Fatalf("assign limited system role: %v", err)
 	}
 	grant := entity.ResourcePermissionRead
-	err := NewTenantService().UpdateResourcePermissions(t.Context(), "owner", "tenant-permission", ResourcePermissionUpdateRequest{
+	err := NewTenantService().UpdateResourcePermissions(resourcePermissionTestContext(t), "owner", "tenant-permission", ResourcePermissionUpdateRequest{
 		ResourceType: "kb", ResourceIDs: []string{"dataset-ceiling"}, Permission: &grant, MemberList: []string{"reader-link"},
 	})
 	if err == nil {
@@ -137,7 +143,7 @@ func TestResourcePermissionListingIgnoresFeatureRoleLimits(t *testing.T) {
 		t.Fatalf("seed resource permission: %v", err)
 	}
 
-	grants, err := NewTenantService().ListResourcePermissions(t.Context(), "owner", "tenant-permission", ResourcePermissionListRequest{
+	grants, err := NewTenantService().ListResourcePermissions(resourcePermissionTestContext(t), "owner", "tenant-permission", ResourcePermissionListRequest{
 		ResourceType: "kb", ResourceIDs: []string{resourceID},
 	})
 	if err != nil {
@@ -157,7 +163,7 @@ func TestFileResourcePermissionsUseTheUnifiedAPI(t *testing.T) {
 		t.Fatalf("seed file: %v", err)
 	}
 	grant := entity.ResourcePermissionRead
-	if err := NewTenantService().UpdateResourcePermissions(t.Context(), "owner", "tenant-permission", ResourcePermissionUpdateRequest{
+	if err := NewTenantService().UpdateResourcePermissions(resourcePermissionTestContext(t), "owner", "tenant-permission", ResourcePermissionUpdateRequest{
 		ResourceType: "file", ResourceIDs: []string{"file-1"}, Permission: &grant, MemberList: []string{"reader-link"},
 	}); err != nil {
 		t.Fatalf("grant file resource permission: %v", err)
@@ -175,12 +181,12 @@ func TestFileResourcePermissionsUseTheUnifiedAPI(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatalf("seed child folder: %v", err)
 	}
-	if err := NewTenantService().UpdateResourcePermissions(t.Context(), "owner", "tenant-permission", ResourcePermissionUpdateRequest{
+	if err := NewTenantService().UpdateResourcePermissions(resourcePermissionTestContext(t), "owner", "tenant-permission", ResourcePermissionUpdateRequest{
 		ResourceType: "Folder", ResourceIDs: []string{"folder-2"}, Permission: &grant, MemberList: []string{"reader-link"},
 	}); err != nil {
 		t.Fatalf("grant child folder permission with mixed-case type: %v", err)
 	}
-	items, err := NewTenantService().ListResourcePermissionsByTarget(t.Context(), "owner", "tenant-permission", ResourcePermissionTargetListRequest{
+	items, err := NewTenantService().ListResourcePermissionsByTarget(resourcePermissionTestContext(t), "owner", "tenant-permission", ResourcePermissionTargetListRequest{
 		TargetID: "reader-link", TargetType: "member",
 	})
 	if err != nil {
@@ -246,7 +252,7 @@ func TestUpdateAndListResourcePermissions(t *testing.T) {
 		TenantID: "tenant-permission", ResourceType: "kb", ResourceIDs: []string{"dataset-1"},
 		Permission: &permission, MemberList: []string{"reader-link"}, GroupList: []string{"group-1"},
 	}
-	if err := NewTenantService().UpdateResourcePermissions(t.Context(), "owner", "tenant-permission", request); err != nil {
+	if err := NewTenantService().UpdateResourcePermissions(resourcePermissionTestContext(t), "owner", "tenant-permission", request); err != nil {
 		t.Fatalf("update resource permissions: %v", err)
 	}
 
@@ -263,7 +269,7 @@ func TestUpdateAndListResourcePermissions(t *testing.T) {
 		}
 	}
 
-	listed, err := NewTenantService().ListResourcePermissions(t.Context(), "owner", "tenant-permission", ResourcePermissionListRequest{
+	listed, err := NewTenantService().ListResourcePermissions(resourcePermissionTestContext(t), "owner", "tenant-permission", ResourcePermissionListRequest{
 		TenantID: "tenant-permission", ResourceType: "kb", ResourceIDs: []string{"dataset-1"},
 	})
 	if err != nil {
@@ -273,7 +279,7 @@ func TestUpdateAndListResourcePermissions(t *testing.T) {
 		t.Fatalf("listed target count = %d, want 2", len(listed))
 	}
 
-	byTarget, err := NewTenantService().ListResourcePermissionsByTarget(t.Context(), "owner", "tenant-permission", ResourcePermissionTargetListRequest{
+	byTarget, err := NewTenantService().ListResourcePermissionsByTarget(resourcePermissionTestContext(t), "owner", "tenant-permission", ResourcePermissionTargetListRequest{
 		TenantID: "tenant-permission", TargetID: "reader-link", TargetType: "member",
 	})
 	if err != nil {
@@ -287,7 +293,7 @@ func TestUpdateAndListResourcePermissions(t *testing.T) {
 	request.Permission = &permission
 	request.GroupList = nil
 	request.MemberList = []string{"reader-link"}
-	if err := NewTenantService().UpdateResourcePermissions(t.Context(), "owner", "tenant-permission", request); err != nil {
+	if err := NewTenantService().UpdateResourcePermissions(resourcePermissionTestContext(t), "owner", "tenant-permission", request); err != nil {
 		t.Fatalf("revoke resource permission: %v", err)
 	}
 	var activeGrantCount int64
@@ -330,7 +336,7 @@ func TestModelProviderPermissionExpandsToExistingInstances(t *testing.T) {
 		t.Fatalf("seed model instances: %v", err)
 	}
 	permission := entity.ResourcePermissionRead | entity.ResourcePermissionWrite
-	if err := NewTenantService().UpdateResourcePermissions(t.Context(), "owner", "tenant-permission", ResourcePermissionUpdateRequest{
+	if err := NewTenantService().UpdateResourcePermissions(resourcePermissionTestContext(t), "owner", "tenant-permission", ResourcePermissionUpdateRequest{
 		ResourceType: "llm", ResourceIDs: []string{"DeepSeek"}, Permission: &permission, MemberList: []string{"reader-link"},
 	}); err != nil {
 		t.Fatalf("grant provider permissions: %v", err)
@@ -353,7 +359,7 @@ func TestResourceOwnershipTransferKeepsOneOwnerAndAuditsIt(t *testing.T) {
 	db := setupResourcePermissionTestDB(t)
 	seedResourcePermissionTenant(t, db)
 	seedPermissionDataset(t, db, "dataset-owner", "owner")
-	if err := NewTenantService().TransferResourceOwnership(t.Context(), "owner", "tenant-permission", ResourceOwnershipTransferRequest{
+	if err := NewTenantService().TransferResourceOwnership(resourcePermissionTestContext(t), "owner", "tenant-permission", ResourceOwnershipTransferRequest{
 		ResourceType: "kb", ResourceID: "dataset-owner", UserID: "reader",
 	}); err != nil {
 		t.Fatalf("transfer resource ownership: %v", err)
@@ -415,13 +421,13 @@ func TestResourcePermissionUpdateRejectsChangingActorAndOwner(t *testing.T) {
 	read := entity.ResourcePermissionRead
 	service := NewTenantService()
 
-	err := service.UpdateResourcePermissions(t.Context(), "owner", "tenant-permission", ResourcePermissionUpdateRequest{
+	err := service.UpdateResourcePermissions(resourcePermissionTestContext(t), "owner", "tenant-permission", ResourcePermissionUpdateRequest{
 		ResourceType: "kb", ResourceIDs: []string{"dataset-self"}, Permission: &read, MemberList: []string{"owner-link"},
 	})
 	if err == nil {
 		t.Fatal("UpdateResourcePermissions allowed changing the actor's own permission")
 	}
-	if err := service.UpdateResourcePermissions(t.Context(), "owner", "tenant-permission", ResourcePermissionUpdateRequest{
+	if err := service.UpdateResourcePermissions(resourcePermissionTestContext(t), "owner", "tenant-permission", ResourcePermissionUpdateRequest{
 		ResourceType: "kb", ResourceIDs: []string{"dataset-self"}, Permission: &read, MemberList: []string{"reader-link"},
 	}); err == nil {
 		t.Fatal("UpdateResourcePermissions allowed changing an owner grant through the generic API")
@@ -431,7 +437,7 @@ func TestResourcePermissionUpdateRejectsChangingActorAndOwner(t *testing.T) {
 		t.Fatalf("second owner permission after generic update = %d, error %v, want one row", afterRejectedUpdate, err)
 	}
 	owner := entity.ResourcePermissionOwner
-	if err := service.UpdateResourcePermissions(t.Context(), "owner", "tenant-permission", ResourcePermissionUpdateRequest{
+	if err := service.UpdateResourcePermissions(resourcePermissionTestContext(t), "owner", "tenant-permission", ResourcePermissionUpdateRequest{
 		ResourceType: "kb", ResourceIDs: []string{"dataset-self"}, Permission: &owner, MemberList: []string{"reader-link"},
 	}); err == nil {
 		t.Fatal("UpdateResourcePermissions allowed ownership transfer through the generic API")
@@ -463,7 +469,7 @@ func TestResourcePermissionUpdateAllowsGroupContainingActor(t *testing.T) {
 		t.Fatalf("seed group membership: %v", err)
 	}
 	read := entity.ResourcePermissionRead
-	err := NewTenantService().UpdateResourcePermissions(t.Context(), "owner", "tenant-permission", ResourcePermissionUpdateRequest{
+	err := NewTenantService().UpdateResourcePermissions(resourcePermissionTestContext(t), "owner", "tenant-permission", ResourcePermissionUpdateRequest{
 		ResourceType: "kb", ResourceIDs: []string{"dataset-group-self"}, Permission: &read, GroupList: []string{"owners-group"},
 	})
 	if err != nil {
@@ -490,7 +496,7 @@ func TestResourcePermissionUpdateAllowsGroupOwnedByActor(t *testing.T) {
 		t.Fatalf("seed group: %v", err)
 	}
 	read := entity.ResourcePermissionRead
-	err := NewTenantService().UpdateResourcePermissions(t.Context(), "owner", "tenant-permission", ResourcePermissionUpdateRequest{
+	err := NewTenantService().UpdateResourcePermissions(resourcePermissionTestContext(t), "owner", "tenant-permission", ResourcePermissionUpdateRequest{
 		ResourceType: "kb", ResourceIDs: []string{"dataset-group-owner-self"}, Permission: &read, GroupList: []string{"owned-group"},
 	})
 	if err != nil {
@@ -509,7 +515,7 @@ func TestResourceOwnershipTransferRejectsSelf(t *testing.T) {
 	db := setupResourcePermissionTestDB(t)
 	seedResourcePermissionTenant(t, db)
 	seedPermissionDataset(t, db, "dataset-self-transfer", "owner")
-	err := NewTenantService().TransferResourceOwnership(t.Context(), "owner", "tenant-permission", ResourceOwnershipTransferRequest{
+	err := NewTenantService().TransferResourceOwnership(resourcePermissionTestContext(t), "owner", "tenant-permission", ResourceOwnershipTransferRequest{
 		ResourceType: "kb", ResourceID: "dataset-self-transfer", UserID: "owner",
 	})
 	if err == nil {
@@ -529,7 +535,7 @@ func TestResourcePermissionRejectsTargetOutsideTenant(t *testing.T) {
 	seedResourcePermissionTenant(t, db)
 	seedPermissionDataset(t, db, "dataset-1", "owner")
 	permission := entity.ResourcePermissionRead
-	err := NewTenantService().UpdateResourcePermissions(t.Context(), "owner", "tenant-permission", ResourcePermissionUpdateRequest{
+	err := NewTenantService().UpdateResourcePermissions(resourcePermissionTestContext(t), "owner", "tenant-permission", ResourcePermissionUpdateRequest{
 		ResourceType: "kb", ResourceIDs: []string{"dataset-1"}, Permission: &permission, MemberList: []string{"missing-member"},
 	})
 	if err == nil {
@@ -573,7 +579,7 @@ func TestListResourcePermissionsByTargetIncludesGroupAndTenantResources(t *testi
 		t.Fatalf("seed special-resource grants: %v", err)
 	}
 
-	items, err := NewTenantService().ListResourcePermissionsByTarget(t.Context(), "owner", tenantID, ResourcePermissionTargetListRequest{
+	items, err := NewTenantService().ListResourcePermissionsByTarget(resourcePermissionTestContext(t), "owner", tenantID, ResourcePermissionTargetListRequest{
 		TargetID: memberID, TargetType: "member",
 	})
 	if err != nil {

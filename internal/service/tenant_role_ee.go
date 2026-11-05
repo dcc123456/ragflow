@@ -31,6 +31,7 @@ import (
 	"ragflow/internal/common"
 	"ragflow/internal/dao"
 	"ragflow/internal/entity"
+	"ragflow/internal/permission"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -146,7 +147,7 @@ type TenantPermissionLogListResult struct {
 // ListTenantRoles returns only the roles owned by tenantID.
 func (s *TenantService) ListTenantRoles(ctx context.Context, userID, tenantID, keyword string, page, pageSize int) (*TenantRoleListResult, error) {
 	db := dao.DB.WithContext(ctx)
-	if _, _, err := tenantMemberPermission(ctx, db, userID, tenantID, 0); err != nil {
+	if _, _, err := tenantMemberPermission(ctx, db, permission.TenantIDFromContext(ctx), 0); err != nil {
 		return nil, err
 	}
 	page, pageSize = normalizeTenantRolePagination(page, pageSize)
@@ -181,7 +182,7 @@ func (s *TenantService) CreateTenantRole(ctx context.Context, userID, tenantID, 
 	}
 	var created entity.Role
 	err = dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if _, _, err := tenantMemberPermission(ctx, tx, userID, tenantID, entity.TenantPermissionManageRoles); err != nil {
+		if _, _, err := tenantMemberPermission(ctx, tx, permission.TenantIDFromContext(ctx), entity.TenantPermissionManageRoles); err != nil {
 			return err
 		}
 		if err := lockTenantRoleContainer(tx, tenantID); err != nil {
@@ -196,7 +197,7 @@ func (s *TenantService) CreateTenantRole(ctx context.Context, userID, tenantID, 
 			return fmt.Errorf("create Tenant role: %w", err)
 		}
 		roleID := strconv.FormatInt(int64(created.ID), 10)
-		return recordTenantPermissionChange(tx, tenantID, userID, "role.created", "role", roleID, "role", roleID, "create", 0, 0, nil, tenantRoleAuditValue(&created))
+		return recordTenantPermissionChange(ctx, tx, permission.TenantIDFromContext(ctx), "role.created", "role", roleID, "role", roleID, "create", 0, 0, nil, tenantRoleAuditValue(&created))
 	})
 	if err != nil {
 		return nil, err
@@ -207,7 +208,7 @@ func (s *TenantService) CreateTenantRole(ctx context.Context, userID, tenantID, 
 // GetTenantRole returns one role after checking that it belongs to tenantID.
 func (s *TenantService) GetTenantRole(ctx context.Context, userID, tenantID string, roleID int32) (*TenantRoleItem, error) {
 	db := dao.DB.WithContext(ctx)
-	if _, _, err := tenantMemberPermission(ctx, db, userID, tenantID, 0); err != nil {
+	if _, _, err := tenantMemberPermission(ctx, db, permission.TenantIDFromContext(ctx), 0); err != nil {
 		return nil, err
 	}
 	role, err := findTenantRole(db, tenantID, roleID, false)
@@ -228,7 +229,7 @@ func (s *TenantService) UpdateTenantRole(ctx context.Context, userID, tenantID s
 	}
 	var updated entity.Role
 	err := dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if _, _, err := tenantMemberPermission(ctx, tx, userID, tenantID, entity.TenantPermissionManageRoles); err != nil {
+		if _, _, err := tenantMemberPermission(ctx, tx, permission.TenantIDFromContext(ctx), entity.TenantPermissionManageRoles); err != nil {
 			return err
 		}
 		if err := lockTenantRoleContainer(tx, tenantID); err != nil {
@@ -260,7 +261,7 @@ func (s *TenantService) UpdateTenantRole(ctx context.Context, userID, tenantID s
 			return fmt.Errorf("reload Tenant role: %w", err)
 		}
 		roleIDString := strconv.FormatInt(int64(role.ID), 10)
-		return recordTenantPermissionChange(tx, tenantID, userID, "role.updated", "role", roleIDString, "role", roleIDString, "update", 0, 0, before, tenantRoleAuditValue(&updated))
+		return recordTenantPermissionChange(ctx, tx, permission.TenantIDFromContext(ctx), "role.updated", "role", roleIDString, "role", roleIDString, "update", 0, 0, before, tenantRoleAuditValue(&updated))
 	})
 	if err != nil {
 		return nil, err
@@ -275,7 +276,7 @@ func (s *TenantService) UpdateTenantRole(ctx context.Context, userID, tenantID s
 // DeleteTenantRole deletes an unused role and its permission rows.
 func (s *TenantService) DeleteTenantRole(ctx context.Context, userID, tenantID string, roleID int32) error {
 	return dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if _, _, err := tenantMemberPermission(ctx, tx, userID, tenantID, entity.TenantPermissionManageRoles); err != nil {
+		if _, _, err := tenantMemberPermission(ctx, tx, permission.TenantIDFromContext(ctx), entity.TenantPermissionManageRoles); err != nil {
 			return err
 		}
 		var tenant entity.Tenant
@@ -306,13 +307,13 @@ func (s *TenantService) DeleteTenantRole(ctx context.Context, userID, tenantID s
 		if err := tx.Where("id = ? AND tenant_id = ?", roleID, tenantID).Delete(&entity.Role{}).Error; err != nil {
 			return fmt.Errorf("delete Tenant role: %w", err)
 		}
-		return recordTenantPermissionChange(tx, tenantID, userID, "role.deleted", "role", roleValue, "role", roleValue, "delete", 0, 0, tenantRoleAuditValue(role), map[string]interface{}{"deleted": true})
+		return recordTenantPermissionChange(ctx, tx, permission.TenantIDFromContext(ctx), "role.deleted", "role", roleValue, "role", roleValue, "delete", 0, 0, tenantRoleAuditValue(role), map[string]interface{}{"deleted": true})
 	})
 }
 
 // ListTenantRoleResources returns supported feature types and actions.
 func (s *TenantService) ListTenantRoleResources(ctx context.Context, userID, tenantID string) (map[string]interface{}, error) {
-	if _, _, err := tenantMemberPermission(ctx, dao.DB.WithContext(ctx), userID, tenantID, 0); err != nil {
+	if _, _, err := tenantMemberPermission(ctx, dao.DB.WithContext(ctx), permission.TenantIDFromContext(ctx), 0); err != nil {
 		return nil, err
 	}
 	resources := make([]map[string]interface{}, 0, len(tenantRoleResourceNames))
@@ -325,7 +326,7 @@ func (s *TenantService) ListTenantRoleResources(ctx context.Context, userID, ten
 // GetTenantRolePermissions returns the complete permission matrix for a role.
 func (s *TenantService) GetTenantRolePermissions(ctx context.Context, userID, tenantID string, roleID int32) (*TenantRolePermissionsResult, error) {
 	db := dao.DB.WithContext(ctx)
-	if _, _, err := tenantMemberPermission(ctx, db, userID, tenantID, 0); err != nil {
+	if _, _, err := tenantMemberPermission(ctx, db, permission.TenantIDFromContext(ctx), 0); err != nil {
 		return nil, err
 	}
 	role, err := findTenantRole(db, tenantID, roleID, false)
@@ -351,7 +352,7 @@ func (s *TenantService) SetTenantRolePermissions(ctx context.Context, userID, te
 	}
 	var role entity.Role
 	err = dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if _, _, err := tenantMemberPermission(ctx, tx, userID, tenantID, entity.TenantPermissionManageRoles); err != nil {
+		if _, _, err := tenantMemberPermission(ctx, tx, permission.TenantIDFromContext(ctx), entity.TenantPermissionManageRoles); err != nil {
 			return err
 		}
 		rolePtr, err := findTenantRole(tx, tenantID, roleID, true)
@@ -390,7 +391,7 @@ func (s *TenantService) SetTenantRolePermissions(ctx context.Context, userID, te
 			}
 			beforeData := map[string]interface{}{"role_id": roleID, "resource_type": resource, "permission": beforeMask}
 			afterData := map[string]interface{}{"role_id": roleID, "resource_type": resource, "permission": afterMask}
-			if err := recordTenantPermissionChange(tx, tenantID, userID, "role.permissions.updated", "role", roleIDString, "role_permission", roleIDString, "update", beforeMask, afterMask, beforeData, afterData); err != nil {
+			if err := recordTenantPermissionChange(ctx, tx, permission.TenantIDFromContext(ctx), "role.permissions.updated", "role", roleIDString, "role_permission", roleIDString, "update", beforeMask, afterMask, beforeData, afterData); err != nil {
 				return err
 			}
 		}
@@ -409,7 +410,7 @@ func (s *TenantService) SetTenantRolePermissions(ctx context.Context, userID, te
 // GetTenantDefaultRole returns the role assigned to new Tenant members.
 func (s *TenantService) GetTenantDefaultRole(ctx context.Context, userID, tenantID string) (*TenantDefaultRoleResult, error) {
 	db := dao.DB.WithContext(ctx)
-	if _, _, err := tenantMemberPermission(ctx, db, userID, tenantID, 0); err != nil {
+	if _, _, err := tenantMemberPermission(ctx, db, permission.TenantIDFromContext(ctx), 0); err != nil {
 		return nil, err
 	}
 	var tenant entity.Tenant
@@ -431,7 +432,7 @@ func (s *TenantService) GetTenantDefaultRole(ctx context.Context, userID, tenant
 func (s *TenantService) SetTenantDefaultRole(ctx context.Context, userID, tenantID string, roleID *int32) (*TenantDefaultRoleResult, error) {
 	var result TenantDefaultRoleResult
 	err := dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if _, _, err := tenantMemberPermission(ctx, tx, userID, tenantID, entity.TenantPermissionManageRoles); err != nil {
+		if _, _, err := tenantMemberPermission(ctx, tx, permission.TenantIDFromContext(ctx), entity.TenantPermissionManageRoles); err != nil {
 			return err
 		}
 		var tenant entity.Tenant
@@ -450,7 +451,7 @@ func (s *TenantService) SetTenantDefaultRole(ctx context.Context, userID, tenant
 			if err := tx.Model(&entity.Tenant{}).Where("id = ?", tenantID).Update("role_id", roleID).Error; err != nil {
 				return fmt.Errorf("update Tenant default role: %w", err)
 			}
-			if err := recordTenantPermissionChange(tx, tenantID, userID, "tenant.default_role.updated", "tenant", tenantID, "tenant", tenantID, "update", rolePointerValue(beforeID), rolePointerValue(roleID),
+			if err := recordTenantPermissionChange(ctx, tx, permission.TenantIDFromContext(ctx), "tenant.default_role.updated", "tenant", tenantID, "tenant", tenantID, "update", rolePointerValue(beforeID), rolePointerValue(roleID),
 				map[string]interface{}{"role_id": beforeID}, map[string]interface{}{"role_id": roleID}); err != nil {
 				return err
 			}
@@ -467,7 +468,7 @@ func (s *TenantService) SetTenantDefaultRole(ctx context.Context, userID, tenant
 // ListTenantManagementPermissions returns active user and group grants on the Tenant resource.
 func (s *TenantService) ListTenantManagementPermissions(ctx context.Context, userID, tenantID string) (*TenantManagementGrantListResult, error) {
 	db := dao.DB.WithContext(ctx)
-	if _, _, err := tenantMemberPermission(ctx, db, userID, tenantID, entity.TenantPermissionManageRoles); err != nil {
+	if _, _, err := tenantMemberPermission(ctx, db, permission.TenantIDFromContext(ctx), entity.TenantPermissionManageRoles); err != nil {
 		return nil, err
 	}
 	var rows []entity.Permission
@@ -544,7 +545,7 @@ func (s *TenantService) SetTenantManagementPermissions(ctx context.Context, user
 	}
 	var result *TenantManagementGrant
 	err = dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if _, _, err := tenantMemberPermission(ctx, tx, userID, tenantID, entity.TenantPermissionOwner); err != nil {
+		if _, _, err := tenantMemberPermission(ctx, tx, permission.TenantIDFromContext(ctx), entity.TenantPermissionOwner); err != nil {
 			return err
 		}
 		var tenant entity.Tenant
@@ -631,7 +632,7 @@ func (s *TenantService) SetTenantManagementPermissions(ctx context.Context, user
 		if oldMask != newMask {
 			beforeData := tenantManagementGrantAuditValue(targetUserID, group, oldMask)
 			afterData := tenantManagementGrantAuditValue(targetUserID, group, newMask)
-			if err := recordTenantPermissionChange(tx, tenantID, userID, "tenant.management_permission.updated", targetType, targetID, "tenant", tenantID, "update", oldMask, newMask, beforeData, afterData); err != nil {
+			if err := recordTenantPermissionChange(ctx, tx, permission.TenantIDFromContext(ctx), "tenant.management_permission.updated", targetType, targetID, "tenant", tenantID, "update", oldMask, newMask, beforeData, afterData); err != nil {
 				return err
 			}
 		}
@@ -644,7 +645,7 @@ func (s *TenantService) SetTenantManagementPermissions(ctx context.Context, user
 // GetTenantMemberRole returns the role assigned to a member of tenantID.
 func (s *TenantService) GetTenantMemberRole(ctx context.Context, userID, tenantID, targetUserID string) (map[string]interface{}, error) {
 	db := dao.DB.WithContext(ctx)
-	if _, _, err := tenantMemberPermission(ctx, db, userID, tenantID, entity.TenantPermissionManageRoles); err != nil {
+	if _, _, err := tenantMemberPermission(ctx, db, permission.TenantIDFromContext(ctx), entity.TenantPermissionManageRoles); err != nil {
 		return nil, err
 	}
 	membership, err := findTenantMembership(db, tenantID, targetUserID, false)
@@ -673,7 +674,7 @@ func (s *TenantService) GetTenantMemberRole(ctx context.Context, userID, tenantI
 func (s *TenantService) SetTenantMemberRole(ctx context.Context, userID, tenantID, targetUserID string, roleID int32) (map[string]interface{}, error) {
 	var result map[string]interface{}
 	err := dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if _, _, err := tenantMemberPermission(ctx, tx, userID, tenantID, entity.TenantPermissionManageRoles); err != nil {
+		if _, _, err := tenantMemberPermission(ctx, tx, permission.TenantIDFromContext(ctx), entity.TenantPermissionManageRoles); err != nil {
 			return err
 		}
 		role, err := findTenantRole(tx, tenantID, roleID, true)
@@ -698,7 +699,7 @@ func (s *TenantService) SetTenantMemberRole(ctx context.Context, userID, tenantI
 			if err := tx.Model(&entity.UserTenant{}).Where("id = ? AND tenant_id = ?", membership.ID, tenantID).Update("role", newRole).Error; err != nil {
 				return fmt.Errorf("assign Tenant role to member: %w", err)
 			}
-			if err := recordTenantPermissionChange(tx, tenantID, userID, "tenant.member_role.updated", "user", targetUserID, "tenant_role", strconv.FormatInt(int64(role.ID), 10), "update", 0, 0, before, after); err != nil {
+			if err := recordTenantPermissionChange(ctx, tx, permission.TenantIDFromContext(ctx), "tenant.member_role.updated", "user", targetUserID, "tenant_role", strconv.FormatInt(int64(role.ID), 10), "update", 0, 0, before, after); err != nil {
 				return err
 			}
 		}
@@ -711,7 +712,7 @@ func (s *TenantService) SetTenantMemberRole(ctx context.Context, userID, tenantI
 // GetTenantMyPermissions returns the caller's feature role and Tenant management permissions.
 func (s *TenantService) GetTenantMyPermissions(ctx context.Context, userID, tenantID string) (map[string]interface{}, error) {
 	db := dao.DB.WithContext(ctx)
-	membership, mask, err := tenantMemberPermission(ctx, db, userID, tenantID, 0)
+	membership, mask, err := tenantMemberPermission(ctx, db, permission.TenantIDFromContext(ctx), 0)
 	if err != nil {
 		return nil, err
 	}
@@ -754,7 +755,7 @@ func (s *TenantService) GetTenantMyPermissions(ctx context.Context, userID, tena
 
 // ListTenantPermissionLogs returns audit rows scoped to the active Tenant.
 func (s *TenantService) ListTenantPermissionLogs(ctx context.Context, userID, tenantID string, filter dao.PermissionChangeLogFilter, page, pageSize int) (*TenantPermissionLogListResult, error) {
-	_, mask, err := tenantMemberPermission(ctx, dao.DB.WithContext(ctx), userID, tenantID, 0)
+	_, mask, err := tenantMemberPermission(ctx, dao.DB.WithContext(ctx), permission.TenantIDFromContext(ctx), 0)
 	if err != nil {
 		return nil, err
 	}
@@ -771,38 +772,34 @@ func (s *TenantService) ListTenantPermissionLogs(ctx context.Context, userID, te
 	return &TenantPermissionLogListResult{Logs: logs, Total: total, Page: page, PageSize: pageSize}, nil
 }
 
-func tenantMemberPermissionEE(ctx context.Context, db *gorm.DB, userID, tenantID string, required int32) (*entity.UserTenant, int32, bool, error) {
-	membership, mask, err := enterpriseTenantMemberPermission(ctx, db, userID, tenantID, required)
-	return membership, mask, true, err
-}
-
-func enterpriseTenantMemberPermission(ctx context.Context, db *gorm.DB, userID, tenantID string, required int32) (*entity.UserTenant, int32, error) {
-	userID = strings.TrimSpace(userID)
-	tenantID = strings.TrimSpace(tenantID)
+func tenantMemberPermissionEE(ctx context.Context, db *gorm.DB, _ string, required int32) (*entity.UserTenant, int32, bool, error) {
+	userID := strings.TrimSpace(permission.UserIDFromContext(ctx))
+	tenantID := strings.TrimSpace(permission.TenantIDFromContext(ctx))
 	if userID == "" {
-		return nil, 0, common.NewCodedError(common.CodeUnauthorized, "User is required")
+		return nil, 0, true, common.NewCodedError(common.CodeUnauthorized, "User is required")
 	}
 	if tenantID == "" {
-		return nil, 0, common.NewCodedError(common.CodeBadRequest, "Current Tenant context is required")
+		return nil, 0, true, common.NewCodedError(common.CodeBadRequest, "Current Tenant context is required")
 	}
 	membership, err := findTenantMembership(db, tenantID, userID, false)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, true, err
 	}
 	if membership.Role == "owner" {
-		return membership, entity.TenantPermissionManageMembers | entity.TenantPermissionManageRoles | entity.TenantPermissionOwner, nil
+		mask := entity.TenantPermissionManageMembers | entity.TenantPermissionManageRoles | entity.TenantPermissionOwner
+		return membership, mask, true, nil
 	}
 	mask, err := tenantPermissionMask(ctx, db, membership)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, true, err
 	}
 	if mask&entity.TenantPermissionOwner != 0 {
 		mask |= entity.TenantPermissionManageMembers | entity.TenantPermissionManageRoles
 	}
 	if required != 0 && mask&required != required {
-		return nil, mask, common.NewCodedError(common.CodeForbidden, "Tenant permission denied")
+		return nil, mask, true, common.NewCodedError(common.CodeForbidden, "Tenant permission denied")
 	}
-	return membership, mask, nil
+	return membership, mask, true, nil
 }
 
 func tenantPermissionMask(ctx context.Context, db *gorm.DB, membership *entity.UserTenant) (int32, error) {
@@ -1023,9 +1020,16 @@ func tenantRoleAuditValue(role *entity.Role) map[string]interface{} {
 	return map[string]interface{}{"id": role.ID, "role_name": role.RoleName, "description": role.Description}
 }
 
-func recordTenantPermissionChangeEE(tx *gorm.DB, tenantID, actorUserID, eventType, targetType, targetID, resourceType, resourceID, actionType string, beforePermission, afterPermission int32, beforeData, afterData interface{}) error {
+func recordTenantPermissionChangeEE(ctx context.Context, tx *gorm.DB, _ string, eventType, targetType, targetID, resourceType, resourceID, actionType string, beforePermission, afterPermission int32, beforeData, afterData interface{}) error {
+	// Identity and scope come from the authenticated request context, so callers
+	// cannot write audit events into another Tenant's scope.
+	tenantID := permission.TenantIDFromContext(ctx)
+	actorUserID := permission.UserIDFromContext(ctx)
+	if strings.TrimSpace(tenantID) == "" || strings.TrimSpace(actorUserID) == "" {
+		return common.NewCodedError(common.CodeUnauthorized, "User and Tenant context are required")
+	}
 	var membership entity.UserTenant
-	err := tx.Where("tenant_id = ? AND user_id = ? AND status = ?", tenantID, actorUserID, string(entity.StatusValid)).
+	err := tx.WithContext(ctx).Where("tenant_id = ? AND user_id = ? AND status = ?", tenantID, actorUserID, string(entity.StatusValid)).
 		Take(&membership).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) && targetType == "user" && targetID == actorUserID && resourceType == "tenant_membership" && resourceID != "" {
 		membership.ID = resourceID

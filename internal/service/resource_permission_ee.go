@@ -371,7 +371,7 @@ func (s *TenantService) ListResourcePermissionsByTarget(ctx context.Context, use
 		return nil, err
 	}
 	if !actor.systemAdmin && actor.membership.Role != TenantRoleOwner {
-		if _, _, err := tenantMemberPermission(ctx, db, userID, tenantID, entity.TenantPermissionManageRoles); err != nil {
+		if _, _, err := tenantMemberPermission(ctx, db, permission.TenantIDFromContext(ctx), entity.TenantPermissionManageRoles); err != nil {
 			return nil, err
 		}
 	}
@@ -453,7 +453,7 @@ func loadPermissionActor(ctx context.Context, db *gorm.DB, userID, tenantID stri
 	if systemAdmin {
 		return actor, nil
 	}
-	membership, _, err := tenantMemberPermission(ctx, db, userID, tenantID, 0)
+	membership, _, err := tenantMemberPermission(ctx, db, permission.TenantIDFromContext(ctx), 0)
 	if err != nil {
 		return nil, err
 	}
@@ -499,7 +499,7 @@ func requireResourcePermissionListAccess(ctx context.Context, db *gorm.DB, actor
 		_, err := requireGroupPermission(ctx, db, actor.userID, actor.tenantID, resource.ID, entity.GroupPermissionConfigureMemberPermissions)
 		return err
 	case "tenant":
-		_, _, err := tenantMemberPermission(ctx, db, actor.userID, actor.tenantID, entity.TenantPermissionManageRoles)
+		_, _, err := tenantMemberPermission(ctx, db, permission.TenantIDFromContext(ctx), entity.TenantPermissionManageRoles)
 		return err
 	default:
 		return requireResourcePermissionManager(ctx, db, actor, resource, false)

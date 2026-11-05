@@ -114,12 +114,12 @@ func TestModelPermissionsAllowMemberUseButHideInstanceConfiguration(t *testing.T
 	ctx := serviceTestContext(t, "member-1", "user-1", "user-1")
 	grantServiceTestResource(t, "user-1", "model_instance", "instance-1", "member-1", testResourcePermissionRead)
 	service := NewModelProviderService()
-	providers, code, err := service.ListProvidersOfTenant(ctx, "member-1")
+	providers, code, err := service.ListProvidersOfTenant(ctx)
 	if err != nil || code != common.CodeSuccess || len(providers) != 0 {
 		t.Fatalf("ListProvidersOfTenant() = (%v, %v, %d providers), want success without exposing the owner's provider configuration", code, err, len(providers))
 	}
 
-	instance, showCode, showErr := service.ShowProviderInstance(ctx, "OpenAI", "instance-1", "member-1")
+	instance, showCode, showErr := service.ShowProviderInstance(ctx, "OpenAI", "instance-1")
 	if showErr != nil || showCode != common.CodeSuccess {
 		t.Fatalf("ShowProviderInstance() = (%v, %v), want visible shared instance", showCode, showErr)
 	}
@@ -128,15 +128,14 @@ func TestModelPermissionsAllowMemberUseButHideInstanceConfiguration(t *testing.T
 	}
 
 	factory := NewModelFactory()
-	access := Identity{UserID: "member-1", TenantID: "user-1"}
-	if _, err = factory.resolveConfig(ctx, access, entity.ModelTypeChat, "model-1"); err != nil {
+	if _, err = factory.resolveConfig(ctx, entity.ModelTypeChat, "model-1"); err != nil {
 		t.Fatalf("member should be able to use the tenant model: %v", err)
 	}
-	if _, err = factory.resolveConfig(ctx, access, entity.ModelTypeChat, "gpt-test@default@OpenAI"); err != nil {
+	if _, err = factory.resolveConfig(ctx, entity.ModelTypeChat, "gpt-test@default@OpenAI"); err != nil {
 		t.Fatalf("member should be able to use the composite model reference: %v", err)
 	}
 
-	code, err = service.AlterModel(ctx, "OpenAI", "default", "gpt-test", "member-1", "", map[string]interface{}{"status": "inactive"})
+	code, err = service.AlterModel(ctx, "OpenAI", "default", "gpt-test", "model-1", map[string]interface{}{"status": "inactive"})
 	if err == nil || code != common.CodeNotFound {
 		t.Fatalf("AlterModel() = (%v, %v), want hidden model update denial", code, err)
 	}
@@ -189,7 +188,7 @@ func TestSkillSpacePermissionsUsePolicyAcrossServiceOperations(t *testing.T) {
 	restrictServiceTestFeatureRole(t, "team", "file", testRoleActionEnable|testRoleActionRead)
 	grantServiceTestResource(t, "team", "file", space.ID, "member", testResourcePermissionRead)
 
-	listed, code, err := service.ListSpaces(ctx, "member")
+	listed, code, err := service.ListSpaces(ctx)
 	if err != nil || code != common.CodeSuccess {
 		t.Fatalf("member list: code=%d err=%v", code, err)
 	}
@@ -198,47 +197,47 @@ func TestSkillSpacePermissionsUsePolicyAcrossServiceOperations(t *testing.T) {
 		t.Fatalf("member list result = %#v, want only %q", listed["spaces"], space.ID)
 	}
 
-	if _, code, err := service.GetSpace(ctx, "member", space.ID); err != nil || code != common.CodeSuccess {
+	if _, code, err := service.GetSpace(ctx, space.ID); err != nil || code != common.CodeSuccess {
 		t.Fatalf("member read: code=%d err=%v", code, err)
 	}
-	if _, code, err := service.UpdateSpace(ctx, "member", space.ID, &UpdateSpaceRequest{Description: "forbidden"}); err == nil || code != common.CodeNotFound || !errors.Is(err, permission.ErrPermissionDenied) {
+	if _, code, err := service.UpdateSpace(ctx, space.ID, &UpdateSpaceRequest{Description: "forbidden"}); err == nil || code != common.CodeNotFound || !errors.Is(err, permission.ErrPermissionDenied) {
 		t.Fatalf("member update should be hidden: code=%d err=%v", code, err)
 	}
-	if code, err := service.DeleteSpace(ctx, "member", space.ID, nil); err == nil || code != common.CodeNotFound || !errors.Is(err, permission.ErrPermissionDenied) {
+	if code, err := service.DeleteSpace(ctx, space.ID, nil); err == nil || code != common.CodeNotFound || !errors.Is(err, permission.ErrPermissionDenied) {
 		t.Fatalf("member delete should be hidden: code=%d err=%v", code, err)
 	}
-	if _, code, err := service.GetSpace(outsiderCtx, "outsider", space.ID); err == nil || code != common.CodeNotFound || !errors.Is(err, permission.ErrResourceNotFound) {
+	if _, code, err := service.GetSpace(outsiderCtx, space.ID); err == nil || code != common.CodeNotFound || !errors.Is(err, permission.ErrResourceNotFound) {
 		t.Fatalf("outsider read should be hidden: code=%d err=%v", code, err)
 	}
 
 	personalCtx := serviceTestContext(t, "member", "member")
-	created, code, err := service.CreateSpace(personalCtx, "member", &CreateSpaceRequest{Name: "personal"})
+	created, code, err := service.CreateSpace(personalCtx, &CreateSpaceRequest{Name: "personal"})
 	if err != nil || code != common.CodeSuccess || created["tenant_id"] != "member" {
 		t.Fatalf("member should create a personal skill space after switching tenants: result=%#v code=%d err=%v", created, code, err)
 	}
-	if tenantID, err := resolveSkillSpaceTenantID(ownerCtx, "owner", "default", permission.OperationUse); err != nil || tenantID != "team" {
+	if tenantID, err := resolveSkillSpaceTenantID(ownerCtx, "default", permission.OperationUse); err != nil || tenantID != "team" {
 		t.Fatalf("default skill space tenant = %q, err=%v; want team", tenantID, err)
 	}
 
-	updated, code, err := service.UpdateSpace(ownerCtx, "owner", space.ID, &UpdateSpaceRequest{Description: "updated"})
+	updated, code, err := service.UpdateSpace(ownerCtx, space.ID, &UpdateSpaceRequest{Description: "updated"})
 	if err != nil || code != common.CodeSuccess || updated["description"] != "updated" {
 		t.Fatalf("owner update: result=%#v code=%d err=%v", updated, code, err)
 	}
 
 	indexer := NewSkillIndexerService()
-	if err := indexer.BatchIndexSkills(ctx, "member", space.ID, nil, nil, ""); !errors.Is(err, permission.ErrPermissionDenied) {
+	if err := indexer.BatchIndexSkills(ctx, space.ID, nil, nil, ""); !errors.Is(err, permission.ErrPermissionDenied) {
 		t.Fatalf("member indexing should be denied before engine access, got %v", err)
 	}
-	if err := indexer.DeleteSkillIndex(ctx, "member", space.ID, "skill", nil); !errors.Is(err, permission.ErrPermissionDenied) {
+	if err := indexer.DeleteSkillIndex(ctx, space.ID, "skill", nil); !errors.Is(err, permission.ErrPermissionDenied) {
 		t.Fatalf("member index deletion should be denied before engine access, got %v", err)
 	}
-	if _, _, err := NewSkillSearchService().UpdateConfig(ctx, "member", &UpdateConfigRequest{
+	if _, _, err := NewSkillSearchService().UpdateConfig(ctx, &UpdateConfigRequest{
 		SpaceID: space.ID, EmbdID: "model", VectorSimilarityWeight: 0.5,
 		SimilarityThreshold: 0.2, TopK: 10,
 	}); !errors.Is(err, permission.ErrPermissionDenied) {
 		t.Fatalf("member config update should be denied, got %v", err)
 	}
-	if _, _, err := NewSkillSearchService().Search(outsiderCtx, "outsider", &SearchRequest{SpaceID: space.ID}, nil); !errors.Is(err, permission.ErrResourceNotFound) {
+	if _, _, err := NewSkillSearchService().Search(outsiderCtx, &SearchRequest{SpaceID: space.ID}, nil); !errors.Is(err, permission.ErrResourceNotFound) {
 		t.Fatalf("outsider search should be denied before engine access, got %v", err)
 	}
 }

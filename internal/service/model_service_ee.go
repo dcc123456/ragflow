@@ -218,7 +218,8 @@ func (m *ModelProviderService) RemoveModelFromGroupByID(ctx context.Context, gro
 }
 
 func (m *ModelProviderService) GetModelEntityByName(ctx context.Context, userID, providerName, instanceName, modelName string) (*entity.TenantModel, error) {
-	ownedTenantID, err := requireCurrentTenantID(ctx, userID)
+	ctx = permission.WithIdentity(ctx, userID, permission.TenantIDFromContext(ctx))
+	ownedTenantID, err := requireCurrentTenantID(ctx)
 	if err != nil {
 		if permissionresponse.IsPermissionError(err) {
 			_, normalizedErr := permissionresponse.NormalizeHidden(err)
@@ -226,7 +227,7 @@ func (m *ModelProviderService) GetModelEntityByName(ctx context.Context, userID,
 		}
 		return nil, err
 	}
-	provider, err := m.findProviderByIDOrNameInTenant(ctx, ownedTenantID, userID, providerName, false)
+	provider, err := m.findProviderByIDOrNameInCurrentTenant(ctx, providerName, false)
 	if err != nil {
 		return nil, err
 	}
