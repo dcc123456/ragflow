@@ -28,8 +28,6 @@ import (
 
 	"ragflow/internal/common"
 	"ragflow/internal/entity"
-	"ragflow/internal/permission"
-	"ragflow/internal/permission/testsupport"
 	"ragflow/internal/service"
 )
 
@@ -165,9 +163,8 @@ func TestListVersionCatalogEmpty(t *testing.T) {
 
 func TestListVersionCatalogSharedPipeline(t *testing.T) {
 	c, w, db := setupGinContextWithUserAndDB(t, "GET", "/api/v1/agents/versions?category=dataflow")
-	c.Request = c.Request.WithContext(permission.WithIdentity(c.Request.Context(), "user-1", "team"))
 	if err := db.Create(&entity.UserTenant{
-		ID: "membership", UserID: "user-1", TenantID: "team", Role: "normal", Status: sptr(string(entity.TenantMembershipStatusJoined)),
+		ID: "membership", UserID: "user-1", TenantID: "team", Role: "normal",
 	}).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -176,9 +173,6 @@ func TestListVersionCatalogSharedPipeline(t *testing.T) {
 		{ID: "private", UserID: "user-2", TenantID: sptr("team"), Permission: "me", CanvasCategory: "dataflow_canvas"},
 	}
 	if err := db.Create(&canvases).Error; err != nil {
-		t.Fatal(err)
-	}
-	if err := testsupport.PrepareEnterprisePermissionFixture(db, "team"); err != nil {
 		t.Fatal(err)
 	}
 	(&AgentHandler{agentService: service.NewAgentService()}).ListVersionCatalog(c)
