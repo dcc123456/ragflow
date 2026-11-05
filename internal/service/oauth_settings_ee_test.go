@@ -60,20 +60,20 @@ func TestLoadSSOChannelsBuildsFromSystemSettings(t *testing.T) {
 		ssoSetting("github|sso.enabled", "True"),
 		ssoSetting("github|sso.client_id", "github-client"),
 		ssoSetting("github|sso.client_secret", "github-secret"),
-		// Feishu settings exist but the provider has no client implementation.
+		// Feishu keeps the callback optional, so the channel is reported
+		// with the value the admin console left behind.
 		ssoSetting("feishu|sso.enabled", "true"),
-		ssoSetting("feishu|sso.app_id", "cli_app"),
-		ssoSetting("feishu|sso.app_secret", "feishu-secret"),
-		ssoSetting("feishu|sso.app_access_token_url", "https://open.feishu.cn/token"),
-		ssoSetting("feishu|sso.user_access_token_url", "https://open.feishu.cn/user_token"),
+		ssoSetting("feishu|sso.client_id", "cli_app"),
+		ssoSetting("feishu|sso.client_secret", "feishu-secret"),
+		ssoSetting("feishu|sso.redirect_uri", "https://ragflow.example/api/v1/auth/oauth/feishu/callback"),
 		// Unrelated settings, including one that happens to use the separator.
 		ssoSetting("mail|sso.enabled", "true"),
 		ssoSetting("mail.server", "smtp.example.com"),
 	)
 
 	channels := loadSSOChannels(context.Background())
-	if len(channels) != 2 {
-		t.Fatalf("got %d channels (%v), want google and github only", len(channels), channels)
+	if len(channels) != 3 {
+		t.Fatalf("got %d channels (%v), want google, github and feishu", len(channels), channels)
 	}
 
 	google, ok := channels["google"]
@@ -108,8 +108,13 @@ func TestLoadSSOChannelsBuildsFromSystemSettings(t *testing.T) {
 		t.Fatalf("github redirect_uri = %q, want empty", github.RedirectURI)
 	}
 
-	if _, ok := channels["feishu"]; ok {
-		t.Fatal("feishu has no client implementation and must not be reported")
+	feishu, ok := channels["feishu"]
+	if !ok {
+		t.Fatal("feishu channel missing")
+	}
+	if feishu.Type != "lark" || feishu.ClientID != "cli_app" || feishu.ClientSecret != "feishu-secret" ||
+		feishu.RedirectURI != "https://ragflow.example/api/v1/auth/oauth/feishu/callback" {
+		t.Fatalf("feishu channel = %+v", feishu)
 	}
 	if _, ok := channels["mail"]; ok {
 		t.Fatal("a setting using the separator without a provider spec must be ignored")
@@ -143,7 +148,7 @@ func TestLoadSSOChannelsSkipsDisabledAndIncomplete(t *testing.T) {
 			channel: "github",
 		},
 		{
-			name: "missing redirect uri",
+			name: "google without redirect uri",
 			settings: []entity.SystemSettings{
 				ssoSetting("google|sso.enabled", "true"),
 				ssoSetting("google|sso.client_id", "id"),
@@ -194,6 +199,26 @@ func TestLoadSSOChannelsPrefersClientSecret(t *testing.T) {
 	}
 }
 
+// TestLoadSSOChannelsFeishuCallbackOptional pins the difference from Google: a
+// deployment that registers exactly one redirect URL with the Feishu app can
+// leave the setting empty, and Feishu falls back to that registration instead
+// of failing the authorization request.
+func TestLoadSSOChannelsFeishuCallbackOptional(t *testing.T) {
+	setupSSOSettings(t,
+		ssoSetting("feishu|sso.enabled", "true"),
+		ssoSetting("feishu|sso.client_id", "cli_app"),
+		ssoSetting("feishu|sso.client_secret", "feishu-secret"),
+	)
+
+	cfg, ok := loadSSOChannels(context.Background())["feishu"]
+	if !ok {
+		t.Fatal("feishu channel missing without redirect_uri")
+	}
+	if cfg.Type != "lark" || cfg.RedirectURI != "" {
+		t.Fatalf("feishu channel = %+v, want lark with an empty redirect uri", cfg)
+	}
+}
+
 func TestLoadSSOChannelsWithoutSettings(t *testing.T) {
 	setupSSOSettings(t)
 
@@ -221,5 +246,25 @@ func TestLookupOAuthConfigCaseInsensitive(t *testing.T) {
 
 	if _, ok := lookupOAuthConfig(context.Background(), "gitlab"); ok {
 		t.Fatal("unconfigured provider must not resolve")
+	}
+}
+
+// TestLoadSSOChannelsFeishuScopeOverride pins the read path: the seeded default
+// carries the email permission, and a deployment that widens or narrows the list
+// has the stored value win so the table stays the single source of the scope.
+func TestLoadSSOChannelsFeishuScopeOverride(t *testing.T) {
+	setupSSOSettings(t,
+		ssoSetting("feishu|sso.enabled", "true"),
+		ssoSetting("feishu|sso.client_id", "cli_app"),
+		ssoSetting("feishu|sso.client_secret", "feishu-secret"),
+		ssoSetting("feishu|sso.scope", "auth:user.id:read contact:user.email:readonly"),
+	)
+
+	cfg, ok := loadSSOChannels(context.Background())["feishu"]
+	if !ok {
+		t.Fatal("feishu channel missing")
+	}
+	if want := "auth:user.id:read contact:user.email:readonly"; cfg.Scope != want {
+		t.Fatalf("scope = %q, want %q", cfg.Scope, want)
 	}
 }

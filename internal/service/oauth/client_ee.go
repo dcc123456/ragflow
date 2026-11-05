@@ -32,6 +32,7 @@
 package oauth
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -121,6 +122,19 @@ type TokenResponse struct {
 // userinfo calls. Matches the Python http_request_timeout (7s).
 const HTTPRequestTimeout = 7 * time.Second
 
+// providerFactories holds the provider types a build adds for itself. The
+// shared flavors below are the ones every build ships; a provider that only
+// one edition carries registers here from its own file instead of being named
+// in the switch, so the switch stays free of provider code the other edition
+// does not compile.
+var providerFactories = map[string]func(Config) (Client, error){}
+
+// registerProvider makes a provider type resolvable by NewClient. It is meant
+// for an implementation file's init.
+func registerProvider(name string, factory func(Config) (Client, error)) {
+	providerFactories[name] = factory
+}
+
 // NewClient returns the Client implementation matching cfg.Type. When type
 // is empty, Issuer presence selects OIDC; otherwise OAuth2.
 func NewClient(cfg Config) (Client, error) {
@@ -139,13 +153,15 @@ func NewClient(cfg Config) (Client, error) {
 		return newOIDCClient(cfg)
 	case "github":
 		return newGitHubClient(cfg)
-	default:
-		return nil, fmt.Errorf("unsupported type: %s", t)
 	}
+	if factory, ok := providerFactories[t]; ok {
+		return factory(cfg)
+	}
+	return nil, fmt.Errorf("unsupported type: %s", t)
 }
 
-// oauthClient is the base OAuth 2.0 implementation. The OIDC and GitHub
-// flavors embed it and override fetchUserInfo.
+// oauthClient is the base OAuth 2.0 implementation. The OIDC, GitHub and
+// Feishu flavors embed it and override fetchUserInfo.
 type oauthClient struct {
 	cfg        Config
 	httpClient *http.Client
@@ -206,22 +222,7 @@ func (c *oauthClient) ExchangeCodeForToken(ctx context.Context, code string) (*T
 	}
 	form.Set("grant_type", "authorization_code")
 
-	// Log the credentials actually sent, without writing the secret itself:
-	// a fingerprint is enough to compare against the value in the database,
-	// and `secret_padded` catches the usual cause of a mismatch, a value the
-	// admin form saved with trailing whitespace.
-	sum := sha256.Sum256([]byte(c.cfg.ClientSecret))
-	common.Info("oauth token request",
-		zap.String("channel", c.cfg.Channel),
-		zap.String("type", c.cfg.Type),
-		zap.String("token_url", c.cfg.TokenURL),
-		zap.String("client_id", c.cfg.ClientID),
-		zap.String("client_secret_sha256", hex.EncodeToString(sum[:])[:16]),
-		zap.Int("client_secret_len", len(c.cfg.ClientSecret)),
-		zap.Bool("client_secret_padded", c.cfg.ClientSecret != strings.TrimSpace(c.cfg.ClientSecret)),
-		zap.String("redirect_uri", c.cfg.RedirectURI),
-		zap.Int("code_len", len(code)),
-	)
+	c.logTokenRequest(code)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.cfg.TokenURL, strings.NewReader(form.Encode()))
 	if err != nil {
@@ -305,13 +306,83 @@ func (c *oauthClient) FetchUserInfo(ctx context.Context, accessToken, idToken st
 	return normalizeUserInfoWithClaims(raw, c.cfg), nil
 }
 
-func (c *oauthClient) fetchUserinfoRaw(ctx context.Context, endpoint, accessToken string) (map[string]interface{}, error) {
+// logTokenRequest records the credentials being sent to the token endpoint,
+// without writing the secret itself: a fingerprint is enough to compare
+// against the value in the database, and `secret_padded` catches the usual
+// cause of a mismatch, a value the admin form saved with trailing whitespace.
+func (c *oauthClient) logTokenRequest(code string) {
+	sum := sha256.Sum256([]byte(c.cfg.ClientSecret))
+	common.Info("oauth token request",
+		zap.String("channel", c.cfg.Channel),
+		zap.String("type", c.cfg.Type),
+		zap.String("token_url", c.cfg.TokenURL),
+		zap.String("client_id", c.cfg.ClientID),
+		zap.String("client_secret_sha256", hex.EncodeToString(sum[:])[:16]),
+		zap.Int("client_secret_len", len(c.cfg.ClientSecret)),
+		zap.Bool("client_secret_padded", c.cfg.ClientSecret != strings.TrimSpace(c.cfg.ClientSecret)),
+		zap.String("redirect_uri", c.cfg.RedirectURI),
+		zap.Int("code_len", len(code)),
+	)
+}
+
+// fetchUserinfoBody performs the bearer-authenticated GET a provider's
+// userinfo endpoint expects and returns the raw body together with the HTTP
+// status. Flavors whose response wraps its claims (Feishu answers inside
+// `data`) or reports a rejection with HTTP 200 need the envelope rather than
+// an already-flattened map.
+func (c *oauthClient) fetchUserinfoBody(ctx context.Context, endpoint, bearer string) ([]byte, int, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, 0, err
+	}
+	req.Header.Set("Authorization", "Bearer "+bearer)
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	if err != nil {
+		return nil, resp.StatusCode, err
+	}
+	return body, resp.StatusCode, nil
+}
+
+func (c *oauthClient) fetchUserinfoRaw(ctx context.Context, endpoint, bearer string) (map[string]interface{}, error) {
+	body, status, err := c.fetchUserinfoBody(ctx, endpoint, bearer)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+accessToken)
+	if status >= 400 {
+		return nil, fmt.Errorf("HTTP %d: %s", status, strings.TrimSpace(string(body)))
+	}
+	var out map[string]interface{}
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, fmt.Errorf("parse userinfo response: %w", err)
+	}
+	return out, nil
+}
+
+// postJSON posts a JSON body and returns the raw response. Feishu's token
+// endpoint expects this shape rather than the form encoding the other
+// flavors use. bearer may be empty.
+func (c *oauthClient) postJSON(ctx context.Context, endpoint string, payload map[string]string, bearer string) ([]byte, error) {
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(encoded))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json; charset=utf-8")
 	req.Header.Set("Accept", "application/json")
+	if bearer != "" {
+		req.Header.Set("Authorization", "Bearer "+bearer)
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -319,18 +390,17 @@ func (c *oauthClient) fetchUserinfoRaw(ctx context.Context, endpoint, accessToke
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
 		return nil, err
 	}
-	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	// A rejected provider call often still answers with its own error
+	// envelope, which carries the real reason, so the status is only used
+	// when there is nothing else to report.
+	if resp.StatusCode >= 400 && len(bytes.TrimSpace(body)) == 0 {
+		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
-	var out map[string]interface{}
-	if err := json.Unmarshal(body, &out); err != nil {
-		return nil, fmt.Errorf("parse userinfo response: %w", err)
-	}
-	return out, nil
+	return body, nil
 }
 
 // Default claim precedence, matching OIDC Core and the Python normalize_user_info.

@@ -6,6 +6,7 @@ import z from 'zod';
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -53,10 +54,10 @@ function SSOProviderFeishuForm({
       >
         <FormField
           control={form.control}
-          name="app_id"
+          name="client_id"
           render={({ field }) => (
             <FormItem>
-              <FormLabel required>{t('fields.appId')}</FormLabel>
+              <FormLabel required>{t('fields.clientId')}</FormLabel>
               <FormControl>
                 <Input {...field} className="h-10" />
               </FormControl>
@@ -66,10 +67,10 @@ function SSOProviderFeishuForm({
 
         <FormField
           control={form.control}
-          name="app_secret"
+          name="client_secret"
           render={({ field }) => (
             <FormItem>
-              <FormLabel required>{t('fields.appSecret')}</FormLabel>
+              <FormLabel required>{t('fields.clientSecret')}</FormLabel>
               <FormControl>
                 <PasswordInput
                   {...field}
@@ -84,38 +85,18 @@ function SSOProviderFeishuForm({
 
         <FormField
           control={form.control}
-          name="app_access_token_url"
+          name="redirect_uri"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>{t('fields.appAccessTokenUrl')}</FormLabel>
+              <FormLabel>{t('fields.redirectUri')}</FormLabel>
               <FormControl>
                 <Input
                   {...field}
                   className="h-10"
-                  placeholder={
-                    SSOProviderFeishuForm.defaultValues.app_access_token_url
-                  }
+                  placeholder={t('placeholder.redirectUri')}
                 />
               </FormControl>
-            </FormItem>
-          )}
-        />
-
-        <FormField
-          control={form.control}
-          name="user_access_token_url"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>{t('fields.userAccessTokenUrl')}</FormLabel>
-              <FormControl>
-                <Input
-                  {...field}
-                  className="h-10"
-                  placeholder={
-                    SSOProviderFeishuForm.defaultValues.user_access_token_url
-                  }
-                />
-              </FormControl>
+              <FormDescription>{t('description.redirectUri')}</FormDescription>
             </FormItem>
           )}
         />
@@ -124,18 +105,10 @@ function SSOProviderFeishuForm({
   );
 }
 
-SSOProviderFeishuForm.defaultValues = {
-  app_access_token_url:
-    'https://open.feishu.cn/open-apis/auth/v3/app_access_token/internal',
-  user_access_token_url:
-    'https://open.feishu.cn/open-apis/authen/v1/oidc/access_token',
-};
-
 SSOProviderFeishuForm.schema = z.object({
-  app_id: z.string().min(1),
-  app_secret: z.string().min(1),
-  app_access_token_url: z.string(),
-  user_access_token_url: z.string(),
+  client_id: z.string().min(1),
+  client_secret: z.string().min(1),
+  redirect_uri: z.string(),
 });
 
 type SchemaType = z.infer<typeof SSOProviderFeishuForm.schema>;

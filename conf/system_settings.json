@@ -157,28 +157,28 @@
       "value": "false"
     },
     {
-      "name": "feishu|sso.app_id",
+      "name": "feishu|sso.client_id",
       "source": "feishu|sso",
       "data_type": "string",
       "value": ""
     },
     {
-      "name": "feishu|sso.app_secret",
+      "name": "feishu|sso.client_secret",
       "source": "feishu|sso",
       "data_type": "string",
       "value": ""
     },
     {
-      "name": "feishu|sso.app_access_token_url",
+      "name": "feishu|sso.redirect_uri",
       "source": "feishu|sso",
       "data_type": "string",
-      "value": "https://open.feishu.cn/open-apis/auth/v3/app_access_token/internal"
+      "value": ""
     },
     {
-      "name": "feishu|sso.user_access_token_url",
+      "name": "feishu|sso.scope",
       "source": "feishu|sso",
       "data_type": "string",
-      "value": "https://open.feishu.cn/open-apis/authen/v1/oidc/access_token"
+      "value": "auth:user.id:read contact:user.email:readonly"
     },
     {
       "name": "sandbox.provider_type",

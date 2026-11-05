@@ -263,13 +263,19 @@ export default {
           },
           feishu: {
             title: 'Feishu',
-            dialogTitle: 'Configure Feishu',
+            dialogTitle: 'Configure Feishu SSO',
             loginTip: 'Login with Feishu',
             fields: {
-              appId: 'App ID',
-              appSecret: 'App secret',
-              appAccessTokenUrl: 'App access token URL',
-              userAccessTokenUrl: 'User access token URL',
+              clientId: 'App ID',
+              clientSecret: 'App secret',
+              redirectUri: 'Redirect URI (optional)',
+            },
+            placeholder: {
+              redirectUri: 'http://<domain>/api/v1/auth/oauth/feishu/callback',
+            },
+            description: {
+              redirectUri:
+                'Leave empty to use the single redirect URL registered with the Feishu app.',
             },
           },
         },

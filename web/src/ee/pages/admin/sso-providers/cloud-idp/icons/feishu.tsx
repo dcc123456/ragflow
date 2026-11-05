@@ -1,13 +1,11 @@
 export default function IconFeishu(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg
-      className="icon"
       viewBox="0 0 1024 1024"
-      version="1.1"
       xmlns="http://www.w3.org/2000/svg"
       xmlnsXlink="http://www.w3.org/1999/xlink"
-      width="200"
-      height="200"
+      width="32"
+      height="32"
       {...props}
     >
       <path

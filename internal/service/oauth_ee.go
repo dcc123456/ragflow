@@ -192,6 +192,14 @@ func (s *UserService) OAuthCallback(ctx context.Context, channel, code, callback
 		return nil, common.CodeServerError, fmt.Errorf("failed to fetch user info: %v", err)
 	}
 	if info.Email == "" {
+		// The provider answered but withheld email, usually because the account
+		// has none on record or the app was never granted the permission.
+		common.Warn("oauth callback: provider returned no email",
+			zap.String("channel", channel),
+			zap.String("scope", cfg.Scope),
+			zap.String("token_scope", token.Scope),
+			zap.String("subject", info.Subject),
+		)
 		return nil, common.CodeDataError, ErrOAuthEmailMissing
 	}
 

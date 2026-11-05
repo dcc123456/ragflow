@@ -32,6 +32,20 @@ import (
 // provider's own key: "google|sso.client_id" yields ("google", "client_id").
 const ssoSettingSeparator = "|sso."
 
+// splitSSOSetting splits "<id>|sso.<key>" into its provider id and key. Names
+// outside that shape, or with an empty key, are not SSO settings.
+func splitSSOSetting(name string) (providerID, key string, ok bool) {
+	idx := strings.Index(name, ssoSettingSeparator)
+	if idx <= 0 {
+		return "", "", false
+	}
+	key = name[idx+len(ssoSettingSeparator):]
+	if key == "" {
+		return "", "", false
+	}
+	return name[:idx], key, true
+}
+
 // ssoProviderSpec maps a provider's flat `<id>|sso.<key>` settings onto the
 // channel shape the OAuth client consumes.
 type ssoProviderSpec struct {
@@ -43,12 +57,23 @@ type ssoProviderSpec struct {
 	ClientID string
 	Secret   string
 	// RedirectURI names the setting holding the callback URL. Empty means the
-	// provider expects the callback to be registered out of band, so the
-	// parameter is omitted from the authorization and token requests.
+	// provider never receives one, not even when the admin console stores a
+	// value. When it is named but unset the parameter is omitted from the
+	// authorization and token requests, which lets the provider fall back to
+	// the callback registered with the application.
 	RedirectURI string
+	// RedirectURIRequired marks the callback as mandatory: a provider whose
+	// login fails without one (Google) has the channel skipped while the
+	// setting is missing. A provider that remembers a single callback out of
+	// band (Feishu) leaves it false. Only meaningful when RedirectURI is set.
+	RedirectURIRequired bool
 	// Scope is the space-separated scope list sent with the authorization
 	// request. Empty means the provider's default.
 	Scope string
+	// ScopeSetting names the setting that can widen Scope to the permission
+	// list this deployment was granted. Empty means Scope is always used
+	// verbatim. Only providers whose useful scopes differ per tenant need it.
+	ScopeSetting string
 }
 
 // ssoProviderSpecs is keyed by the provider id used in the setting names. A
@@ -56,17 +81,33 @@ type ssoProviderSpec struct {
 // the admin console has stored settings for it.
 var ssoProviderSpecs = map[string]ssoProviderSpec{
 	"google": {
-		Type:        "oidc",
-		Issuer:      "https://accounts.google.com",
-		ClientID:    "client_id",
-		Secret:      "client_secret",
-		RedirectURI: "redirect_uri",
-		Scope:       "openid email profile",
+		Type:                "oidc",
+		Issuer:              "https://accounts.google.com",
+		ClientID:            "client_id",
+		Secret:              "client_secret",
+		RedirectURI:         "redirect_uri",
+		RedirectURIRequired: true,
+		Scope:               "openid email profile",
 	},
 	"github": {
 		Type:     "github",
 		ClientID: "client_id",
 		Secret:   "client_secret",
+	},
+	// Feishu grants per-tenant capabilities, so a deployment that has been
+	// given the contact permission widens the requested list itself: without
+	// it only union/open ids come back and there is no email to bind the
+	// login to.
+	//
+	// The callback is optional: when the app registers exactly one redirect
+	// URL, Feishu uses it unless the request names one, which is the same
+	// out-of-band arrangement GitHub relies on.
+	"feishu": {
+		Type:         "lark",
+		ClientID:     "client_id",
+		Secret:       "client_secret",
+		RedirectURI:  "redirect_uri",
+		ScopeSetting: "scope",
 	},
 }
 
@@ -86,7 +127,7 @@ func parseSSOBool(raw string) bool {
 // provider is reported as a channel.
 func ssoRequiredSettings(spec ssoProviderSpec) []string {
 	required := []string{spec.ClientID, spec.Secret}
-	if spec.RedirectURI != "" {
+	if spec.RedirectURIRequired && spec.RedirectURI != "" {
 		required = append(required, spec.RedirectURI)
 	}
 	return required
@@ -109,15 +150,10 @@ func loadSSOChannels(ctx context.Context) map[string]config.OAuthChannel {
 
 	values := make(map[string]map[string]string)
 	for _, setting := range settings {
-		idx := strings.Index(setting.Name, ssoSettingSeparator)
-		if idx <= 0 {
+		id, key, ok := splitSSOSetting(setting.Name)
+		if !ok {
 			continue
 		}
-		key := setting.Name[idx+len(ssoSettingSeparator):]
-		if key == "" {
-			continue
-		}
-		id := setting.Name[:idx]
 		if values[id] == nil {
 			values[id] = make(map[string]string)
 		}
@@ -148,10 +184,15 @@ func loadSSOChannels(ctx context.Context) map[string]config.OAuthChannel {
 			continue
 		}
 
+		scope := spec.Scope
+		if override := strings.TrimSpace(providerValues[spec.ScopeSetting]); spec.ScopeSetting != "" && override != "" {
+			scope = override
+		}
+
 		channels[id] = config.OAuthChannel{
 			Type:         spec.Type,
 			Issuer:       spec.Issuer,
-			Scope:        spec.Scope,
+			Scope:        scope,
 			ClientID:     providerValues[spec.ClientID],
 			ClientSecret: providerValues[spec.Secret],
 			RedirectURI:  providerValues[spec.RedirectURI],
