@@ -26,6 +26,7 @@ import (
 
 	"ragflow/internal/common"
 	"ragflow/internal/entity"
+	"ragflow/internal/permission"
 )
 
 type memoryTenantInviteLinkStore struct {
@@ -82,7 +83,8 @@ func TestTenantInviteLinkCanBeUsedByMultipleUsersForSevenDays(t *testing.T) {
 	store := newMemoryTenantInviteLinkStore()
 	svc := NewTenantService()
 	createdAt := time.Now().UTC()
-	link, err := svc.CreateTenantInviteLinkEE(t.Context(), "owner-user", tenantID, store)
+	ownerCtx := permission.WithIdentity(t.Context(), "owner-user", tenantID)
+	link, err := svc.CreateTenantInviteLinkEE(ownerCtx, "owner-user", tenantID, store)
 	if err != nil {
 		t.Fatalf("CreateTenantInviteLinkEE() error = %v", err)
 	}
@@ -105,12 +107,13 @@ func TestTenantInviteLinkCanBeUsedByMultipleUsersForSevenDays(t *testing.T) {
 		t.Fatalf("stored invitation payload = %#v", payload)
 	}
 
-	info, err := svc.GetTenantInviteLinkInfoEE(t.Context(), link.Token, store)
+	info, err := svc.GetTenantInviteLinkInfoEE(ownerCtx, link.Token, store)
 	if err != nil || info.TenantName != tenantName || info.Inviter != "owner-user" {
 		t.Fatalf("GetTenantInviteLinkInfoEE() = (%#v, %v)", info, err)
 	}
 	for _, userID := range []string{"first-user", "second-user"} {
-		if err := svc.AcceptTenantInviteLinkEE(t.Context(), userID, link.Token, store); err != nil {
+		inviteeCtx := permission.WithIdentity(t.Context(), userID, tenantID)
+		if err := svc.AcceptTenantInviteLinkEE(inviteeCtx, userID, link.Token, store); err != nil {
 			t.Fatalf("AcceptTenantInviteLinkEE(%q) error = %v", userID, err)
 		}
 		var membership entity.UserTenant
@@ -169,7 +172,7 @@ func TestTenantInviteLinkAcceptanceRejectsDisabledTenant(t *testing.T) {
 	store := newMemoryTenantInviteLinkStore()
 	store.values[tenantInviteLinkKey(token)] = string(payload)
 	svc := NewTenantService()
-	if err := svc.AcceptTenantInviteLinkEE(t.Context(), "invitee", token, store); err == nil {
+	if err := svc.AcceptTenantInviteLinkEE(permission.WithIdentity(t.Context(), "invitee", tenantID), "invitee", token, store); err == nil {
 		t.Fatal("AcceptTenantInviteLinkEE() succeeded for disabled Tenant")
 	} else {
 		var coded *common.CodedError

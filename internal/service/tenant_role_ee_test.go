@@ -19,6 +19,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"strconv"
 	"testing"
@@ -31,6 +32,11 @@ import (
 
 	"gorm.io/gorm"
 )
+
+func tenantRoleTestContext(t *testing.T, userID string) context.Context {
+	t.Helper()
+	return permission.WithIdentity(t.Context(), userID, "tenant-1")
+}
 
 func setupTenantRoleTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
@@ -113,19 +119,19 @@ func TestTenantRoleManagementUsesTenantPermissionAndStoresMembershipRoleID(t *te
 	seedTenantRoleMember(t, db, "manager-link", "manager-user", "tenant-1", "normal")
 	seedTenantRoleMember(t, db, "member-link", "member-user", "tenant-1", "normal")
 	manager := NewTenantService()
-	grant, err := manager.SetTenantManagementPermissions(t.Context(), "owner-user", "tenant-1", "manager-user", "", []string{"manage_roles"})
+	grant, err := manager.SetTenantManagementPermissions(tenantRoleTestContext(t, "owner-user"), "owner-user", "tenant-1", "manager-user", "", []string{"manage_roles"})
 	if err != nil {
 		t.Fatalf("SetTenantManagementPermissions() for user error = %v", err)
 	}
 	if grant.SubjectType != "user" || grant.UserID != "manager-user" || len(grant.Permissions) != 1 || grant.Permissions[0] != "manage_roles" {
 		t.Fatalf("Tenant management grant = %#v", grant)
 	}
-	grants, err := manager.ListTenantManagementPermissions(t.Context(), "manager-user", "tenant-1")
+	grants, err := manager.ListTenantManagementPermissions(tenantRoleTestContext(t, "manager-user"), "manager-user", "tenant-1")
 	if err != nil || len(grants.Grants) != 1 || grants.Grants[0].UserID != "manager-user" {
 		t.Fatalf("ListTenantManagementPermissions() = (%#v, %v), want one user grant", grants, err)
 	}
 
-	role, err := manager.CreateTenantRole(t.Context(), "manager-user", "tenant-1", "Editor", "Can edit datasets")
+	role, err := manager.CreateTenantRole(tenantRoleTestContext(t, "manager-user"), "manager-user", "tenant-1", "Editor", "Can edit datasets")
 	if err != nil {
 		t.Fatalf("CreateTenantRole() error = %v", err)
 	}
@@ -144,7 +150,7 @@ func TestTenantRoleManagementUsesTenantPermissionAndStoresMembershipRoleID(t *te
 	actions := map[string]map[string]bool{
 		"dataset": {"enable": true, "read": true, "write": true},
 	}
-	permissions, err := manager.SetTenantRolePermissions(t.Context(), "manager-user", "tenant-1", role.ID, actions)
+	permissions, err := manager.SetTenantRolePermissions(tenantRoleTestContext(t, "manager-user"), "manager-user", "tenant-1", role.ID, actions)
 	if err != nil {
 		t.Fatalf("SetTenantRolePermissions() error = %v", err)
 	}
@@ -152,10 +158,10 @@ func TestTenantRoleManagementUsesTenantPermissionAndStoresMembershipRoleID(t *te
 		t.Fatalf("permission matrix = %#v", permissions.Permissions)
 	}
 
-	if _, err = manager.SetTenantDefaultRole(t.Context(), "manager-user", "tenant-1", &role.ID); err != nil {
+	if _, err = manager.SetTenantDefaultRole(tenantRoleTestContext(t, "manager-user"), "manager-user", "tenant-1", &role.ID); err != nil {
 		t.Fatalf("SetTenantDefaultRole() error = %v", err)
 	}
-	memberRole, err := manager.SetTenantMemberRole(t.Context(), "manager-user", "tenant-1", "member-user", role.ID)
+	memberRole, err := manager.SetTenantMemberRole(tenantRoleTestContext(t, "manager-user"), "manager-user", "tenant-1", "member-user", role.ID)
 	if err != nil {
 		t.Fatalf("SetTenantMemberRole() by role manager error = %v", err)
 	}
@@ -170,7 +176,7 @@ func TestTenantRoleManagementUsesTenantPermissionAndStoresMembershipRoleID(t *te
 	if membership.Role != strconv.FormatInt(int64(role.ID), 10) {
 		t.Fatalf("user_tenant.role = %q, want role id %d", membership.Role, role.ID)
 	}
-	memberRole, err = manager.GetTenantMemberRole(t.Context(), "manager-user", "tenant-1", "member-user")
+	memberRole, err = manager.GetTenantMemberRole(tenantRoleTestContext(t, "manager-user"), "manager-user", "tenant-1", "member-user")
 	if err != nil || memberRole["role_id"] != role.ID {
 		t.Fatalf("GetTenantMemberRole() = (%#v, %v), want role ID %d", memberRole, err, role.ID)
 	}
@@ -179,18 +185,18 @@ func TestTenantRoleManagementUsesTenantPermissionAndStoresMembershipRoleID(t *te
 		t.Fatalf("role-id membership should still count as a Tenant member: %v", err)
 	}
 
-	if _, err := manager.SetTenantManagementPermissions(t.Context(), "owner-user", "tenant-1", "manager-user", "", []string{}); err != nil {
+	if _, err := manager.SetTenantManagementPermissions(tenantRoleTestContext(t, "owner-user"), "owner-user", "tenant-1", "manager-user", "", []string{}); err != nil {
 		t.Fatalf("revoke Tenant management grant: %v", err)
 	}
-	grants, err = manager.ListTenantManagementPermissions(t.Context(), "owner-user", "tenant-1")
+	grants, err = manager.ListTenantManagementPermissions(tenantRoleTestContext(t, "owner-user"), "owner-user", "tenant-1")
 	if err != nil || len(grants.Grants) != 0 {
 		t.Fatalf("ListTenantManagementPermissions() after revoke = (%#v, %v), want no grants", grants, err)
 	}
-	if _, err := manager.CreateTenantRole(t.Context(), "manager-user", "tenant-1", "Denied after revoke", ""); err == nil {
+	if _, err := manager.CreateTenantRole(tenantRoleTestContext(t, "manager-user"), "manager-user", "tenant-1", "Denied after revoke", ""); err == nil {
 		t.Fatal("CreateTenantRole() succeeded after its Tenant permission was revoked")
 	}
 
-	logs, err := manager.ListTenantPermissionLogs(t.Context(), "owner-user", "tenant-1", dao.PermissionChangeLogFilter{}, 1, 20)
+	logs, err := manager.ListTenantPermissionLogs(tenantRoleTestContext(t, "owner-user"), "owner-user", "tenant-1", dao.PermissionChangeLogFilter{}, 1, 20)
 	if err != nil {
 		t.Fatalf("ListTenantPermissionLogs() error = %v", err)
 	}
@@ -198,7 +204,7 @@ func TestTenantRoleManagementUsesTenantPermissionAndStoresMembershipRoleID(t *te
 		t.Fatalf("audit log count = %d, want management grant/revoke, role, permission, default-role, and member-role changes", logs.Total)
 	}
 
-	if err := manager.DeleteTenantRole(t.Context(), "owner-user", "tenant-1", role.ID); err == nil {
+	if err := manager.DeleteTenantRole(tenantRoleTestContext(t, "owner-user"), "owner-user", "tenant-1", role.ID); err == nil {
 		t.Fatal("DeleteTenantRole() succeeded while the role is assigned")
 	} else {
 		var coded *common.CodedError
@@ -221,10 +227,10 @@ func TestTenantRoleAPIsRejectCrossTenantRolesAndUnauthorizedChanges(t *testing.T
 	}
 	service := NewTenantService()
 
-	if _, err := service.GetTenantRole(t.Context(), "owner-user", "tenant-1", role.ID); err == nil {
+	if _, err := service.GetTenantRole(tenantRoleTestContext(t, "owner-user"), "owner-user", "tenant-1", role.ID); err == nil {
 		t.Fatal("GetTenantRole() returned a role from another Tenant")
 	}
-	if _, err := service.CreateTenantRole(t.Context(), "member-user", "tenant-1", "Denied", ""); err == nil {
+	if _, err := service.CreateTenantRole(tenantRoleTestContext(t, "member-user"), "member-user", "tenant-1", "Denied", ""); err == nil {
 		t.Fatal("CreateTenantRole() succeeded without Tenant role-management permission")
 	} else {
 		var coded *common.CodedError
@@ -232,7 +238,7 @@ func TestTenantRoleAPIsRejectCrossTenantRolesAndUnauthorizedChanges(t *testing.T
 			t.Fatalf("CreateTenantRole() error = %v, want forbidden", err)
 		}
 	}
-	if _, err := service.SetTenantDefaultRole(t.Context(), "owner-user", "tenant-1", &role.ID); err == nil {
+	if _, err := service.SetTenantDefaultRole(tenantRoleTestContext(t, "owner-user"), "owner-user", "tenant-1", &role.ID); err == nil {
 		t.Fatal("SetTenantDefaultRole() accepted a role from another Tenant")
 	}
 }
@@ -252,15 +258,15 @@ func TestTenantRoleManagerPermissionCanBeGrantedThroughGroup(t *testing.T) {
 	if err := db.Create(&member).Error; err != nil {
 		t.Fatalf("seed group membership: %v", err)
 	}
-	if _, err := NewTenantService().SetTenantManagementPermissions(t.Context(), "owner-user", "tenant-1", "", group.ID, []string{"manage_roles"}); err != nil {
+	if _, err := NewTenantService().SetTenantManagementPermissions(tenantRoleTestContext(t, "owner-user"), "owner-user", "tenant-1", "", group.ID, []string{"manage_roles"}); err != nil {
 		t.Fatalf("SetTenantManagementPermissions() for group error = %v", err)
 	}
-	grants, err := NewTenantService().ListTenantManagementPermissions(t.Context(), "owner-user", "tenant-1")
+	grants, err := NewTenantService().ListTenantManagementPermissions(tenantRoleTestContext(t, "owner-user"), "owner-user", "tenant-1")
 	if err != nil || len(grants.Grants) != 1 || grants.Grants[0].GroupID != group.ID {
 		t.Fatalf("ListTenantManagementPermissions() for group = (%#v, %v), want one group grant", grants, err)
 	}
 
-	if _, err := NewTenantService().CreateTenantRole(t.Context(), "member-user", "tenant-1", "Editor", ""); err != nil {
+	if _, err := NewTenantService().CreateTenantRole(tenantRoleTestContext(t, "member-user"), "member-user", "tenant-1", "Editor", ""); err != nil {
 		t.Fatalf("CreateTenantRole() with group permission error = %v", err)
 	}
 }
@@ -281,7 +287,7 @@ func TestTenantManagementPermissionsAllowGroupContainingActor(t *testing.T) {
 		t.Fatalf("seed group membership: %v", err)
 	}
 
-	grant, err := NewTenantService().SetTenantManagementPermissions(t.Context(), "owner-user", "tenant-1", "", group.ID, []string{"manage_roles"})
+	grant, err := NewTenantService().SetTenantManagementPermissions(tenantRoleTestContext(t, "owner-user"), "owner-user", "tenant-1", "", group.ID, []string{"manage_roles"})
 	if err != nil {
 		t.Fatalf("SetTenantManagementPermissions for a group containing the actor: %v", err)
 	}

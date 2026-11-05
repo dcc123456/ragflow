@@ -19,15 +19,22 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"testing"
 
 	"ragflow/internal/common"
 	"ragflow/internal/entity"
+	"ragflow/internal/permission"
 
 	"gorm.io/gorm"
 )
+
+func groupTestContext(t *testing.T, userID string) context.Context {
+	t.Helper()
+	return permission.WithIdentity(t.Context(), userID, "tenant-1")
+}
 
 func TestCreateGroupUsesTenantRoleWriteAction(t *testing.T) {
 	db := setupTenantRoleTestDB(t)
@@ -43,14 +50,14 @@ func TestCreateGroupUsesTenantRoleWriteAction(t *testing.T) {
 	seedTenantRoleMember(t, db, "writer-link", "writer", "tenant-1", fmt.Sprint(role.ID))
 	seedTenantRoleMember(t, db, "reader-link", "reader", "tenant-1", fmt.Sprint(readerRole.ID))
 
-	group, err := NewGroupService().CreateGroup(t.Context(), "writer", "tenant-1", CreateGroupRequest{Name: "Writers"})
+	group, err := NewGroupService().CreateGroup(groupTestContext(t, "writer"), "writer", "tenant-1", CreateGroupRequest{Name: "Writers"})
 	if err != nil {
 		t.Fatalf("create group with write permission: %v", err)
 	}
 	if group.ParentID != nil || group.OwnerID != "writer-link" || group.Path == nil || *group.Path != "/"+group.ID+"/" {
 		t.Fatalf("created root group = %+v", group)
 	}
-	if _, err := NewGroupService().CreateGroup(t.Context(), "reader", "tenant-1", CreateGroupRequest{Name: "Readers"}); err == nil {
+	if _, err := NewGroupService().CreateGroup(groupTestContext(t, "reader"), "reader", "tenant-1", CreateGroupRequest{Name: "Readers"}); err == nil {
 		t.Fatal("CreateGroup succeeded without group.write")
 	} else {
 		var coded *common.CodedError
@@ -78,7 +85,7 @@ func TestMoveGroupRewritesDescendantPaths(t *testing.T) {
 	}
 
 	parentB := "group-b"
-	if _, err := NewGroupService().MoveGroup(t.Context(), "owner", "tenant-1", "group-a", &parentB); err != nil {
+	if _, err := NewGroupService().MoveGroup(groupTestContext(t, "owner"), "owner", "tenant-1", "group-a", &parentB); err != nil {
 		t.Fatalf("move group: %v", err)
 	}
 	var moved, child entity.GroupInfo
@@ -122,7 +129,7 @@ func TestListGroupsShowsMembershipOrManagementAccess(t *testing.T) {
 		t.Fatalf("grant group management permission: %v", err)
 	}
 
-	groups, err := NewGroupService().ListGroups(t.Context(), "member", "tenant-1")
+	groups, err := NewGroupService().ListGroups(groupTestContext(t, "member"), "member", "tenant-1")
 	if err != nil {
 		t.Fatalf("ListGroups(): %v", err)
 	}
@@ -145,7 +152,7 @@ func TestGroupReadRequiresTenantRoleReadAction(t *testing.T) {
 	if err := db.Create(&entity.GroupMember{ID: "member-group-1", MemberID: "member-link", GroupID: group.ID, Status: &joined}).Error; err != nil {
 		t.Fatalf("join group: %v", err)
 	}
-	if _, err := NewGroupService().ListGroups(t.Context(), "member", "tenant-1"); err == nil {
+	if _, err := NewGroupService().ListGroups(groupTestContext(t, "member"), "member", "tenant-1"); err == nil {
 		t.Fatal("ListGroups succeeded without group.read")
 	} else {
 		var coded *common.CodedError
@@ -157,7 +164,7 @@ func TestGroupReadRequiresTenantRoleReadAction(t *testing.T) {
 	if err := db.Model(&entity.UserTenant{}).Where("id = ?", "member-link").Update("role", fmt.Sprint(readRole.ID)).Error; err != nil {
 		t.Fatalf("assign readable group role: %v", err)
 	}
-	groups, err := NewGroupService().ListGroups(t.Context(), "member", "tenant-1")
+	groups, err := NewGroupService().ListGroups(groupTestContext(t, "member"), "member", "tenant-1")
 	if err != nil || len(groups) != 1 || groups[0].ID != group.ID {
 		t.Fatalf("ListGroups with group.read = (%v, %v), want one visible group", groups, err)
 	}
@@ -189,7 +196,7 @@ func TestSetGroupMemberPermissionsRequiresTenantRoleShareAction(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatalf("grant group permission configuration: %v", err)
 	}
-	if _, err := NewGroupService().SetGroupMemberPermissions(t.Context(), "manager", "tenant-1", group.ID, "target", []string{"add_member"}); err == nil {
+	if _, err := NewGroupService().SetGroupMemberPermissions(groupTestContext(t, "manager"), "manager", "tenant-1", group.ID, "target", []string{"add_member"}); err == nil {
 		t.Fatal("SetGroupMemberPermissions succeeded without group.share")
 	} else {
 		var coded *common.CodedError
@@ -213,7 +220,7 @@ func TestSetGroupMemberPermissionsRejectsActor(t *testing.T) {
 		t.Fatalf("create group membership: %v", err)
 	}
 
-	_, err := NewGroupService().SetGroupMemberPermissions(t.Context(), "owner", "tenant-1", group.ID, "owner", []string{"add_member"})
+	_, err := NewGroupService().SetGroupMemberPermissions(groupTestContext(t, "owner"), "owner", "tenant-1", group.ID, "owner", []string{"add_member"})
 	if err == nil {
 		t.Fatal("SetGroupMemberPermissions allowed changing the actor's own permission")
 	}
@@ -250,7 +257,7 @@ func TestDeleteGroupRecursivelyRevokesMembersAndGrants(t *testing.T) {
 		t.Fatalf("create child grant: %v", err)
 	}
 
-	if err := NewGroupService().DeleteGroup(t.Context(), "owner", "tenant-1", root.ID); err != nil {
+	if err := NewGroupService().DeleteGroup(groupTestContext(t, "owner"), "owner", "tenant-1", root.ID); err != nil {
 		t.Fatalf("DeleteGroup(): %v", err)
 	}
 	var groups []entity.GroupInfo
@@ -296,7 +303,7 @@ func TestTransferGroupOwnershipActivatesTargetAndAuditsChange(t *testing.T) {
 		t.Fatalf("create group memberships: %v", err)
 	}
 
-	if _, err := NewGroupService().TransferGroupOwnership(t.Context(), "owner", "tenant-1", group.ID, "target"); err != nil {
+	if _, err := NewGroupService().TransferGroupOwnership(groupTestContext(t, "owner"), "owner", "tenant-1", group.ID, "target"); err != nil {
 		t.Fatalf("transfer group ownership: %v", err)
 	}
 	var updated entity.GroupInfo
