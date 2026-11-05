@@ -57,7 +57,6 @@ func setupHandlerAgentsTestDB(t *testing.T) *gorm.DB {
 		&entity.User{},
 		&entity.UserCanvas{},
 		&entity.UserCanvasVersion{},
-		&entity.Search{},
 		&entity.UserTenant{},
 		&entity.API4Conversation{},
 		&entity.API4ConversationMessage{},
