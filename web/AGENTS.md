@@ -103,6 +103,16 @@ When fixing CSS/layout issues (especially flex truncation, ellipsis, or element 
 
 - Before editing, explain: (1) the full flex/container hierarchy from the target element up to the nearest non-flex ancestor, (2) what constraint is actually causing the bug, and (3) how the proposed fix addresses that root cause.
 
+### Text Overflow
+
+Any element rendering **user-generated or server-returned text** (names, titles, descriptions, file names, messages) inside a bounded container (card, table cell, dialog title, list item, badge, select trigger, button) must have an explicit overflow strategy. Never assume real data is short.
+
+- Choose deliberately: single-line `truncate`, multi-line `line-clamp-N`, or intentional wrapping with `break-words`. Rendering with no strategy is a defect — long real-world data always finds it.
+- `truncate` needs a width constraint to bite: add `min-w-0` on every flex ancestor between the text and the element that actually constrains the width (flex children default to `min-width: auto` and won't shrink below content size).
+- Keep truncated text revealable: prefer the shared `TruncatedText` component (`src/components/truncated-text.tsx`), which shows a tooltip only when truncation actually occurs.
+- Long i18n strings count as long text — a label that fits in Chinese may overflow in English.
+- When overflow is suspected or the user asks, verify with extreme input (100+ characters, an unbroken no-space string, a CJK/Latin mix) using the `overflow-check` skill (`.claude/skills/overflow-check`), which scans the rendered page in a real browser. jsdom and lint cannot measure layout.
+
 ### Color Tokens
 
 When writing or modifying styles, **use the project-defined color tokens from `src/tailwind.css`** (e.g., `bg-bg-base`, `text-text-primary`, `text-text-secondary`, `text-text-disabled`, `border-border-button`, `bg-bg-card`). Do not use arbitrary hex/RGB values or Tailwind's default palette colors (e.g., `emerald-500`, `blue-400`) directly in component class names. These tokens are defined for both light and dark modes and keep the UI consistent with the design system.

@@ -9,16 +9,17 @@ import (
 )
 
 type IngestionLog struct {
-	EventTime time.Time `json:"event_time"`
-	TenantID  string    `json:"tenant_id"`
-	DatasetID string    `json:"dataset_id"`
-	DocID     string    `json:"doc_id"`
-	UserID    string    `json:"user_id"`
-	UserName  string    `json:"user_name,omitempty"`
-	Worker    string    `json:"worker"`
-	TaskID    string    `json:"task_id"`
-	EventType string    `json:"event_type"` // created|scheduled|running|completed|failed|stopped
-	Status    string    `json:"status"`
+	EventTime  time.Time `json:"event_time"`
+	TenantID   string    `json:"tenant_id"`
+	DatasetID  string    `json:"dataset_id"`
+	DocID      string    `json:"doc_id"`
+	UserID     string    `json:"user_id"`
+	UserName   string    `json:"user_name,omitempty"`
+	TenantName string    `json:"tenant_name,omitempty"`
+	Worker     string    `json:"worker"`
+	TaskID     string    `json:"task_id"`
+	EventType  string    `json:"event_type"` // created|scheduled|running|completed|failed|stopped
+	Status     string    `json:"status"`
 	// ErrorInfo is the terminal reason as a plain string (not an error
 	// interface) so the event serializes cleanly and portably to external
 	// dashboards / ClickHouse.

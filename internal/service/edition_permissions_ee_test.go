@@ -57,28 +57,28 @@ func TestMCPServerPermissionsUsePolicyAcrossServiceOperations(t *testing.T) {
 	ctx := serviceTestContext(t, "member", "team", "owner")
 	restrictServiceTestFeatureRole(t, "team", "mcp", testRoleActionEnable|testRoleActionRead)
 
-	if _, code, err := service.GetMCPServer(ctx, "member", "team-server"); err == nil || code != common.CodeNotFound || !errors.Is(err, permission.ErrPermissionDenied) {
+	if _, code, err := service.GetMCPServer(ctx, "team-server"); err == nil || code != common.CodeNotFound || !errors.Is(err, permission.ErrPermissionDenied) {
 		t.Fatalf("member direct read should be hidden: code=%d err=%v", code, err)
 	}
-	listed, code, err := service.ListMCPServers(ctx, "member", "team", nil, "", 0, 0, "create_time", false)
+	listed, code, err := service.ListMCPServers(ctx, "team", nil, "", 0, 0, "create_time", false)
 	if err != nil || code != common.CodeSuccess || len(listed.MCPServers) != 0 || listed.Total != 0 {
 		t.Fatalf("member list should hide an unshared server: response=%#v code=%d err=%v", listed, code, err)
 	}
 
 	name, _ := json.Marshal("renamed")
-	if _, code, err := service.UpdateMCPServer(ctx, "member", "team-server", UpdateMCPServerRequest{"name": name}); err == nil || code != common.CodeNotFound || !errors.Is(err, permission.ErrPermissionDenied) {
+	if _, code, err := service.UpdateMCPServer(ctx, "team-server", UpdateMCPServerRequest{"name": name}); err == nil || code != common.CodeNotFound || !errors.Is(err, permission.ErrPermissionDenied) {
 		t.Fatalf("member update should be hidden: code=%d err=%v", code, err)
 	}
-	if _, code, err := service.DeleteMCPServer(ctx, "member", "team-server"); err == nil || code != common.CodeNotFound || !errors.Is(err, permission.ErrPermissionDenied) {
+	if _, code, err := service.DeleteMCPServer(ctx, "team-server"); err == nil || code != common.CodeNotFound || !errors.Is(err, permission.ErrPermissionDenied) {
 		t.Fatalf("member delete should be hidden: code=%d err=%v", code, err)
 	}
-	if _, err := service.TestServer(ctx, "member", "team-server", &TestServerRequest{
+	if _, err := service.TestServer(ctx, "team-server", &TestServerRequest{
 		URL: "https://example.com/mcp", ServerType: mcpServerTypeStreamableHTTP,
 	}); err == nil || !errors.Is(err, permission.ErrPermissionDenied) {
 		t.Fatalf("member connection test should require update permission: %v", err)
 	}
 	personalCtx := serviceTestContext(t, "member", "member")
-	created, code, err := service.CreateMCPServer(personalCtx, "member", CreateMCPServerRequest{
+	created, code, err := service.CreateMCPServer(personalCtx, CreateMCPServerRequest{
 		Name: "new", URL: server.URL, ServerType: mcpServerTypeStreamableHTTP,
 	})
 	if err != nil || code != common.CodeSuccess || created.TenantID != "member" {
