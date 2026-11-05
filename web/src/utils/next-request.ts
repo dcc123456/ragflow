@@ -30,18 +30,6 @@ import { addTenantParams } from './llm-util';
 
 const FAILED_TO_FETCH = 'Failed to fetch';
 
-const showBillingUpgradeModalIfNeeded = async (data: any) => {
-  const { PriceCode, showPriceModal } =
-    await import('@/pages/price/global/hook');
-
-  if (!PriceCode[data?.code as keyof typeof PriceCode]) {
-    return false;
-  }
-
-  showPriceModal(data);
-  return true;
-};
-
 export const RetcodeMessage = {
   200: i18n.t('message.200'),
   201: i18n.t('message.201'),
@@ -115,7 +103,6 @@ request.interceptors.request.use(
   (config) => {
     const data = convertTheKeysOfTheObjectToSnake(config.data);
     const params = convertTheKeysOfTheObjectToSnake(config.params);
-    // showStarDialog(request, config.url, config.method);
 
     // Add tenant parameters to data
     const dataWithTenantParams = isFormData(data)

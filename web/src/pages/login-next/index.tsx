@@ -30,7 +30,7 @@ import { z } from 'zod';
 import { NICKNAME_PATTERN } from '../user-setting/profile/constants';
 import { BgSvg } from './bg';
 import FlipCard3D from './card';
-import { ForgetPassword } from './forget-password';
+import { ForgetPassword } from '@/ee/pages/login-next/forget-password';
 import './index.less';
 
 // type LoginFormContentProps = {

@@ -26,7 +26,6 @@ import 'dayjs/locale/zh-cn';
 import advancedFormat from 'dayjs/plugin/advancedFormat';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
 import localeData from 'dayjs/plugin/localeData';
-import utc from 'dayjs/plugin/utc';
 import weekOfYear from 'dayjs/plugin/weekOfYear';
 import weekYear from 'dayjs/plugin/weekYear';
 import weekday from 'dayjs/plugin/weekday';
@@ -56,7 +55,6 @@ dayjs.extend(weekday);
 dayjs.extend(localeData);
 dayjs.extend(weekOfYear);
 dayjs.extend(weekYear);
-dayjs.extend(utc);
 
 if (process.env.NODE_ENV === 'development') {
   import('@welldone-software/why-did-you-render').then(

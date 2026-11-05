@@ -1,5 +1,7 @@
 import { ShowPrivilegeModalReturnType } from '@/ee/pages/dataset/dataset/use-show-privilege-dialog';
-import { ReactNode } from 'react';
+import { Key } from 'lucide-react';
+import { ReactNode, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 
 export type BulkOperationAction = {
   id: string;
@@ -9,14 +11,24 @@ export type BulkOperationAction = {
 };
 
 /**
- * Enterprise seam for dataset bulk-operation entries. Open source has no
- * collaborator permissions, so no extra entry is appended.
+ * Appends the permission entry to the dataset bulk-operation list so the
+ * operator can manage collaborators for the selected documents.
  */
 export function useExtraBulkActions(
-  _handShowPrivilegeModal: ShowPrivilegeModalReturnType['handShowPrivilegeModal'],
-  _selectedRowKeys: string[],
+  handShowPrivilegeModal: ShowPrivilegeModalReturnType['handShowPrivilegeModal'],
+  selectedRowKeys: string[],
 ): BulkOperationAction[] {
-  void _handShowPrivilegeModal;
-  void _selectedRowKeys;
-  return [];
+  const { t } = useTranslation();
+
+  return useMemo(
+    () => [
+      {
+        id: 'permission',
+        label: t('permission.permission'),
+        icon: <Key />,
+        onClick: handShowPrivilegeModal(selectedRowKeys),
+      },
+    ],
+    [handShowPrivilegeModal, selectedRowKeys, t],
+  );
 }

@@ -20,7 +20,6 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { McpSelectionGuard } from '@/ee/pages/user-setting/mcp/mcp-selection-guard';
 import { IMcpServer } from '@/interfaces/database/mcp';
 import { formatDate } from '@/utils/date';
-import { hasOwnerPermission } from '@/utils/permission-util';
 import { isPlainObject } from 'lodash';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -45,7 +44,6 @@ export function McpCard({
   isSelectionMode,
 }: DatasetCardProps) {
   const { t } = useTranslation();
-  const isOwner = hasOwnerPermission(data.operator_permission);
   const toolLength = useMemo(() => {
     const tools = data.variables?.tools;
     if (isPlainObject(tools)) {

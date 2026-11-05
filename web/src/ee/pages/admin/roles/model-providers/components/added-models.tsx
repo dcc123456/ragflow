@@ -37,7 +37,7 @@ import {
   useAddFactory,
   useDeleteMyFactory,
   useMyLlmList,
-} from '@/pages/admin/hooks/useLlm';
+} from '@/ee/pages/admin/hooks/useLlm';
 import {
   mapModelKey,
   sortModelTypes,

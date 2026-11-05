@@ -1,10 +1,29 @@
-import { ReactNode, createContext, useContext } from 'react';
+import { StripeProvider } from '@/ee/contexts/stripe-context';
+import PaymentStatusModal from '@/ee/pages/billing/component/payment-status-modal';
+import { isBillingEnabled } from '@/ee/services/billingStatus';
+import { ReactNode, createContext, useContext, useState } from 'react';
+import {
+  useDirectPaymentConvergence,
+  useFetchCurrentPlan,
+} from '@/ee/pages/price/hook/use-price-hooks';
+import { FreeUpgradeModal } from '@/ee/pages/price/price-modal/free-upgrade-modal';
+import { ConfirmModal } from '@/ee/pages/price/price-modal/price-confirm-modal';
+import { PriceModalComponent } from '@/ee/pages/price/price-modal/price-modal';
+import { UpgradeTipsModal } from '@/ee/pages/price/price-modal/upgrade-tips-modal';
+import {
+  showFreeUpgradeTipsModal,
+  showPriceConfirmModal,
+  showUpgradeTipsModal,
+  useShowConfirmPriceModal,
+  useShowFreeUpgradeTipsModal,
+  useShowUpgradeTipsModal,
+} from '@/ee/pages/price/global/hook';
 
-/**
- * Enterprise seam for the global upgrade modal. The enterprise build replaces
- * this file with the price modal providers; open source never enables billing,
- * so the provider renders its children unchanged.
- */
+export {
+  showFreeUpgradeTipsModal,
+  showPriceConfirmModal,
+  showUpgradeTipsModal,
+};
 
 interface UpgradeModalContextType {
   isModalOpen: boolean;
@@ -16,19 +35,97 @@ const UpgradeModalContext = createContext<UpgradeModalContextType | undefined>(
   undefined,
 );
 
-export const UpgradeModalProvider = ({
-  children,
-}: {
+interface UpgradeModalProviderProps {
   children?: ReactNode;
-}) => <>{children}</>;
+}
+
+export const UpgradeModalProvider: React.FC<UpgradeModalProviderProps> = ({
+  children,
+}) => {
+  useFetchCurrentPlan();
+  useDirectPaymentConvergence();
+
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const openModal = () => {
+    setIsModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setIsModalOpen(false);
+  };
+
+  const { upgradeTips, hideUpgradeTips } = useShowUpgradeTipsModal();
+
+  const { confirmPrice, hideConfirmPrice } = useShowConfirmPriceModal();
+
+  const { freeUpgradeTips, hideFreeUpgradeTips } =
+    useShowFreeUpgradeTipsModal();
+
+  return (
+    <UpgradeModalContext.Provider
+      value={{
+        isModalOpen,
+        openModal,
+        closeModal,
+      }}
+    >
+      {children}
+      {isModalOpen && (
+        <PriceModalComponent isOpen={isModalOpen} onClose={closeModal} />
+      )}
+
+      {upgradeTips.isOpen && upgradeTips.type && (
+        <div className="fixed inset-0 z-50">
+          <UpgradeTipsModal
+            isOpen={upgradeTips.isOpen}
+            type={upgradeTips.type}
+            message={upgradeTips.message}
+            container={upgradeTips.container}
+            onClose={hideUpgradeTips}
+          />
+        </div>
+      )}
+      {freeUpgradeTips.isOpen && (
+        <div className="fixed inset-0 z-50">
+          <FreeUpgradeModal
+            isOpen={freeUpgradeTips.isOpen}
+            onClose={hideFreeUpgradeTips}
+          />
+        </div>
+      )}
+
+      {confirmPrice.isOpen && (
+        <StripeProvider
+          publishableKey={confirmPrice.stripe_publishable_key ?? null}
+        >
+          <ConfirmModal
+            plan={confirmPrice.plan}
+            isOpen={confirmPrice.isOpen}
+            onClose={hideConfirmPrice}
+            has_reusable_payment_method={
+              confirmPrice.has_reusable_payment_method
+            }
+            requires_payment_method_setup={
+              confirmPrice.requires_payment_method_setup
+            }
+          />
+        </StripeProvider>
+      )}
+      <PaymentStatusModal />
+    </UpgradeModalContext.Provider>
+  );
+};
 
 export const useUpgradeModal = () => {
   const context = useContext(UpgradeModalContext);
-  return (
-    context ?? {
-      isModalOpen: false,
-      openModal: () => {},
-      closeModal: () => {},
-    }
-  );
+  if (!isBillingEnabled()) {
+    return {} as UpgradeModalContextType;
+  }
+  if (context === undefined) {
+    throw new Error(
+      'useUpgradeModal must be used within an UpgradeModalProvider',
+    );
+  }
+  return context as UpgradeModalContextType;
 };

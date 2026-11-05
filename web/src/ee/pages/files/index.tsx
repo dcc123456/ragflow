@@ -4,8 +4,8 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
 import { FileBreadcrumb } from '@/pages/files/file-breadcrumb';
-import { FilesManager } from '@/pages/files/file-manager';
-import { EvaluationPage } from '@/pages/files/evaluation';
+import { FilesManager } from '@/ee/pages/files/file-manager';
+import { EvaluationPage } from '@/ee/pages/files/evaluation';
 import { useSelectBreadcrumbItems } from '@/pages/files/use-navigate-to-folder';
 import { FileTabs, FilesInstanceType } from './constant';
 

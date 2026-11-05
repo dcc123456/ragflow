@@ -1,0 +1,187 @@
+import Divider from '@/components/ui/divider';
+import { nextLayoutRef } from '@/ee/layouts/root-layout-shell';
+import billingService from '@/ee/services/price';
+import storagePrivate from '@/ee/utils/authorization-private-util';
+import { formatNumberWithThousandsSeparator } from '@/utils/common-util';
+import { useState } from 'react';
+import { PriceName } from '@/ee/pages/price/constant';
+import { showPriceConfirmModal } from '@/ee/pages/price/global';
+import { ConfirmPriceEventDetail } from '@/ee/pages/price/global/hook';
+import {
+  useCharge,
+  useFetchCurrentPlan,
+} from '@/ee/pages/price/hook/use-price-hooks';
+import '@/ee/pages/price/index.less';
+import { ICurrentPlan, IPricePlanWithButton } from '@/ee/pages/price/interface';
+import { shouldPreviewPlanUpgrade } from '@/ee/pages/price/utils/upgrade';
+import CancelPlanDialog from '@/ee/pages/price/components/cancel-plan-dialog';
+import PricingCardButton from '@/ee/pages/price/components/pricing-card-button';
+
+const PricingCard = (props: IPricePlanWithButton) => {
+  const {
+    title,
+    isPopular,
+    description,
+    price,
+    features,
+    buttonLabel,
+    isUse = false,
+    disabled = false,
+    paymentRequired = false,
+    name: currentPlanName = '',
+  } = props;
+  const { loading, charge } = useCharge();
+  const { data: currentPlanData } = useFetchCurrentPlan();
+  const [upcomingLoading, setUpComingLoading] = useState(false);
+  const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false);
+  const normalizedPrice =
+    currentPlanName === PriceName.Trial &&
+    (price === '' || price === null || price === undefined)
+      ? 0
+      : Number(price);
+  const shouldShowPrice =
+    Number.isFinite(normalizedPrice) && normalizedPrice >= 0;
+
+  const handleBuy = async (props: IPricePlanWithButton) => {
+    if (props.isUse && paymentRequired) {
+      return;
+    }
+    if (props.isUse && currentPlanData) {
+      setIsCancelDialogOpen(true);
+      return;
+    }
+    const currentPlan: ICurrentPlan = storagePrivate.getPricePlan();
+
+    if (props.name === 'Enterprise') {
+      window.open('https://ragflow.io/contact-us', '_blank');
+      return;
+    }
+
+    const isUpgrade = shouldPreviewPlanUpgrade(currentPlan, currentPlanName);
+    if (isUpgrade) {
+      const requiresPaymentMethodSetup =
+        !!currentPlan?.subscription_id &&
+        ['active', 'trialing'].includes(currentPlan?.subscription_status || '');
+      setUpComingLoading(true);
+      try {
+        const { data: upcoming } = await billingService.getUpcoming({
+          tenant_id: currentPlan?.tenant_id,
+          new_price_id: props.id,
+        });
+
+        showPriceConfirmModal({
+          plan: {
+            ...props,
+            priceDifference: upcoming?.data?.amount_due_today,
+          },
+          has_reusable_payment_method:
+            upcoming?.data?.has_reusable_payment_method ?? true,
+          stripe_publishable_key:
+            upcoming?.data?.stripe_publishable_key ?? null,
+          requires_payment_method_setup: requiresPaymentMethodSetup,
+          container: nextLayoutRef.current || undefined,
+        } as ConfirmPriceEventDetail);
+      } finally {
+        setUpComingLoading(false);
+      }
+    } else {
+      charge(props);
+    }
+  };
+
+  return (
+    <div className="relative  group max-w-[300px]">
+      <div
+        className={` rounded-lg p-6 text-center border border-border-button transition-transform group-hover:scale-y-110 group-hover:scale-x-105 bg-bg-base text-text-primary relative z-20 group-hover:border-accent-primary h-full
+          `}
+        // after:absolute after:-inset-4 after:bg-gradient-to-b after:from-[#42b6ff] after:to-[#2be8aa] after:blur group-hover:after:opacity-50 after:z-10 after:opacity-0
+      >
+        <div className="flex justify-between items-center">
+          <div className="text-2xl font-bold mb-4 text-left flex gap-1">
+            {title}
+            {isPopular && (
+              <div className="bg-gradient-to-r from-[#42b6ff] to-[#2be8aa] rounded-sm px-1 py-0.5 text-sm h-6 font-normal text-black">
+                Most Popular
+              </div>
+            )}
+          </div>
+          {/* <div className="icon">{icon?.()}</div> */}
+        </div>
+        <p className=" text-left line-clamp-3 h-[4.5rem]">{description}</p>
+        <Divider className="!border-border-button" />
+        <ul className="mb-6 ">
+          {features.map((item) => (
+            <li key={item.key} className="mb-2 text-left">
+              <div className="flex items-center flex-nowrap">
+                {item.icon}
+                {item.key === 'apps' && Number(item.value) >= 100000 && (
+                  <span className="italic font-semibold">Unlimited</span>
+                )}
+                {Number(item.value) > -1 &&
+                  !(item.key === 'apps' && Number(item.value) >= 100000) && (
+                    <span className="italic font-semibold">
+                      {formatNumberWithThousandsSeparator(item.value + '')}
+                    </span>
+                  )}
+                <span className="ml-2 text-xm font-normal whitespace-nowrap">
+                  {item.name}
+                </span>
+              </div>
+            </li>
+          ))}
+        </ul>
+        <h3 className="text-3xl flex items-center  font-bold mb-6  text-left h-16">
+          {shouldShowPrice && (
+            <div className="flex items-end gap-2">
+              <div className="flex flex-nowrap items-end">
+                <span className="text-sm mr-1">$</span>
+                {normalizedPrice}
+                <span className="text-sm text-text-secondary font-normal ml-1">
+                  /month
+                </span>
+              </div>
+              {
+                <div className="  font-normal text-text-secondary text-xl flex flex-nowrap items-end">
+                  <span className="mr-0.5 text-sm">$</span>
+                  <span className="line-through ">
+                    {Number(normalizedPrice) > 0
+                      ? Number(normalizedPrice) * 2 + 1
+                      : ''}
+                  </span>
+                  <span className="ml-0.5 text-sm">/month</span>
+                </div>
+              }
+            </div>
+          )}
+        </h3>
+        {currentPlanName !== PriceName.Trial && (
+          <PricingCardButton
+            buttonLabel={buttonLabel}
+            isUse={isUse}
+            disabled={disabled}
+            paymentRequired={paymentRequired}
+            loading={loading}
+            upcomingLoading={upcomingLoading}
+            onClick={() => handleBuy(props)}
+          />
+        )}
+      </div>
+      <div className="absolute -inset-0.5 bg-gradient-to-b from-[#42b6ff] to-[#2be8aa] group-hover:scale-y-110 group-hover:scale-x-105 blur group-hover:opacity-70 z-10 opacity-0"></div>
+
+      <CancelPlanDialog
+        open={isCancelDialogOpen}
+        onOpenChange={setIsCancelDialogOpen}
+        planName={title}
+        endDate={
+          typeof currentPlanData?.end_time === 'string'
+            ? currentPlanData.end_time.split('T')[0]
+            : ''
+        }
+        tenantId={currentPlanData?.tenant_id || ''}
+        targetPriceId={props.cancelTargetPriceId}
+      />
+    </div>
+  );
+};
+
+export default PricingCard;

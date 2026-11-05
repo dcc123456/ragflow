@@ -1,9 +1,9 @@
 import { useCallback } from 'react';
 import { useNavigate } from 'react-router';
 
-import { EvaluationType } from '@/constants/evaluation';
+import { EvaluationType } from '@/ee/constants/evaluation';
 import { FileTabs } from '@/ee/pages/files/constant';
-import { PrivateRoutes } from '@/private-routes';
+import { PrivateRoutes } from '@/ee/private-routes';
 import { Routes } from '@/routes';
 
 /** Enterprise-only navigation targets for evaluation pages. */

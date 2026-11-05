@@ -1,5 +1,10 @@
+import { PrivilegeMenuItem } from '@/ee/components/privilege/privilege-dropdown';
+import {
+  hasManagePermissionPermission,
+  hasOwnerPermission,
+} from '@/ee/utils/permission-util';
 import { IDataset } from '@/interfaces/database/dataset';
-import { ReactNode } from 'react';
+import { MouseEventHandler, ReactNode, useCallback } from 'react';
 
 type DatasetDropdownGuardProps = {
   dataset: IDataset;
@@ -9,17 +14,41 @@ type DatasetDropdownGuardProps = {
 };
 
 /**
- * Enterprise seam for the dataset dropdown. Open source has no collaborator
- * permissions, so every action the shared file provides is rendered as-is.
+ * Collaborator-aware gating for the dataset dropdown. Hides the whole menu
+ * when the operator may not manage the dataset, and the delete entry unless
+ * the operator owns it.
  */
 export function DatasetDropdownGuard({
+  dataset,
+  showPrivilegeModal,
   manageItems,
   deleteItems,
 }: DatasetDropdownGuardProps) {
+  const canManage = hasManagePermissionPermission(dataset.operator_permission);
+  const canDelete = hasOwnerPermission(dataset.operator_permission);
+
+  const handleShowPrivilegeModal: MouseEventHandler<HTMLDivElement> =
+    useCallback(
+      (e) => {
+        e.stopPropagation();
+        showPrivilegeModal();
+      },
+      [showPrivilegeModal],
+    );
+
+  if (!canManage) {
+    return null;
+  }
+
   return (
     <>
-      {manageItems}
-      {deleteItems}
+      {canManage && (
+        <>
+          {manageItems}
+          <PrivilegeMenuItem onClick={handleShowPrivilegeModal} />
+        </>
+      )}
+      {canDelete && <>{deleteItems}</>}
     </>
   );
 }

@@ -27,7 +27,7 @@ import message from '@/components/ui/message';
 
 import { useTranslate } from '@/hooks/common-hooks';
 
-import { useRoleDefaultModels } from '@/pages/admin/hooks/useLlm';
+import { useRoleDefaultModels } from '@/ee/pages/admin/hooks/useLlm';
 
 const schema = z.object({
   llm_id: z.string().nonempty(),

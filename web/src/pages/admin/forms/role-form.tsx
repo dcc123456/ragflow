@@ -19,7 +19,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
-import { useRoleResourceTypes } from '../hooks/useRole';
+import { useRoleResourceTypes } from '@/ee/pages/admin/hooks/useRole';
 import { RESOURCE_PERMISSIONS, formMergeDefaultValues } from '../utils';
 
 export interface CreateRoleFormData {

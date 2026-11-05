@@ -38,17 +38,10 @@ declare namespace AdminService {
     update_time: [number];
   };
 
-  export type ListUsersResponse = {
-    total: number;
-    page: number;
-    page_size: number;
-    users: ListUsersItem[];
-  };
-
   export type ListUsersItem = {
     create_date: number;
     email: string;
-    status: '0' | '1';
+    is_active: '0' | '1';
     is_superuser: boolean;
     nickname: string;
     role?: string;

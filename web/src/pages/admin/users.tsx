@@ -30,7 +30,7 @@ import {
   LucideUserPlus,
 } from 'lucide-react';
 
-import { isBillingEnabled } from '@/services/billingStatus';
+import { isBillingEnabled } from '@/ee/services/billingStatus';
 import { rsaPsw } from '@/utils';
 
 import Spotlight from '@/components/spotlight';
@@ -76,7 +76,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { PriceName } from '@/pages/price/constant';
+import { PriceName } from '@/ee/pages/price/constant';
 import { Routes } from '@/routes';
 import { LucideFilter, LucideSearch } from 'lucide-react';
 
@@ -191,7 +191,12 @@ function AdminUserManagement() {
         plan: filters.plan || undefined,
       });
       if (data.code === 0) {
-        return data.data;
+        return {
+          users: data.data,
+          total: data.total ?? data.data.length,
+          page: pagination.page,
+          page_size: pagination.pageSize,
+        };
       }
     },
     retry: false,
@@ -363,7 +368,7 @@ function AdminUserManagement() {
           ]
         : []),
 
-      columnHelper.accessor('status', {
+      columnHelper.accessor('is_active', {
         header: t('admin.status'),
         meta: { colClassName: 'w-40' },
         cell: ({ cell, row }) => {

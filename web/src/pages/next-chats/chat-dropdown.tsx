@@ -2,8 +2,6 @@ import {
   ConfirmDeleteDialog,
   ConfirmDeleteDialogNode,
 } from '@/components/confirm-delete-dialog';
-
-import { PrivilegeDropdown } from '@/components/privilege/privilege-dropdown';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,10 +12,6 @@ import {
 import { ChatDropdownGuard } from '@/ee/pages/next-chats/chat-dropdown-guard';
 import { useDeleteChat } from '@/hooks/use-chat-request';
 import { IDialog } from '@/interfaces/database/chat';
-import {
-  hasManagePermissionPermission,
-  hasOwnerPermission,
-} from '@/utils/permission-util';
 import { PenLine, Trash2 } from 'lucide-react';
 import { MouseEventHandler, PropsWithChildren, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -48,19 +42,6 @@ export function ChatDropdown({
   const handleDelete: MouseEventHandler<HTMLDivElement> = useCallback(() => {
     deleteChat(chat.id);
   }, [chat.id, deleteChat]);
-
-  const handlesShowPrivilegeModal: MouseEventHandler<HTMLDivElement> =
-    useCallback(
-      (e) => {
-        e.stopPropagation();
-        showPrivilegeModal();
-      },
-      [showPrivilegeModal],
-    );
-
-  if (!hasManagePermissionPermission(chat.operator_permission)) {
-    return null;
-  }
 
   return (
     <DropdownMenu>

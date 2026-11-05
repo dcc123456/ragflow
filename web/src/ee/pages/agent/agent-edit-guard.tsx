@@ -1,3 +1,4 @@
+import { canEditAgent } from '@/ee/pages/agent/can-edit-agent';
 import { ReactNode } from 'react';
 
 type AgentEditGuardProps = {
@@ -6,9 +7,15 @@ type AgentEditGuardProps = {
 };
 
 /**
- * Enterprise seam for the agent canvas editing controls. Open source has no
- * collaborator permissions, so every control stays visible.
+ * Hides the agent canvas editing controls from operators without write access.
  */
-export function AgentEditGuard({ children }: AgentEditGuardProps) {
+export function AgentEditGuard({
+  operatorPermission,
+  children,
+}: AgentEditGuardProps) {
+  if (!canEditAgent(operatorPermission)) {
+    return null;
+  }
+
   return <>{children}</>;
 }

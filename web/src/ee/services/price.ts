@@ -1,0 +1,192 @@
+import { IChargePlan } from '@/ee/pages/price/hook/use-price-hooks';
+import api from '@/ee/utils/private-api';
+import registerServer from '@/utils/register-server';
+import request from '@/utils/request';
+
+// function registerServer() {}
+
+const {
+  billing_checkout,
+  current_plan,
+  plan_list,
+  plan_spend_overview,
+  getUpcoming,
+  spendHistory,
+  addonPlans,
+  storageCurrent,
+  storageSetTarget,
+} = api;
+const methods = {
+  billingCheckout: {
+    url: billing_checkout,
+    method: 'post',
+  },
+  getCurrentPlan: {
+    url: current_plan,
+    method: 'get',
+  },
+  getPlanList: {
+    url: plan_list,
+    method: 'get',
+  },
+  planSpendOverview: {
+    url: plan_spend_overview,
+    headers: { 'Content-Type': 'application/json' },
+    method: 'get',
+  },
+  getUpcoming: {
+    url: getUpcoming,
+    method: 'post',
+  },
+  spendHistory: {
+    url: spendHistory,
+    method: 'get',
+  },
+  addonPlans: {
+    url: addonPlans,
+    method: 'get',
+  },
+  storageCurrent: {
+    url: storageCurrent,
+    method: 'get',
+  },
+  storageSetTarget: {
+    url: storageSetTarget,
+    method: 'post',
+  },
+};
+
+const billingService = (() => {
+  return registerServer<keyof typeof methods>?.(methods, request);
+})();
+
+export const billingCheckout = (
+  data: IChargePlan & {
+    payment_type: string;
+    tenant_id: string;
+    session_cancel_url: string;
+    session_success_url: string;
+    setup_intent_id?: string;
+  },
+) => {
+  return request.post(api.billing_checkout, { data, noToast: true });
+};
+export const getCurrentPlan = () => {
+  return request.get(api.current_plan);
+};
+
+export const createBillingPortalSession = (data?: {
+  tenant_id?: string;
+  return_url?: string;
+}) => request.post(api.createPortalSession, { data });
+
+export const getBillingBaseOverview = ({ tenantId }: { tenantId: string }) => {
+  return request.get(api.billing_base_overview, {
+    params: { tenant_id: tenantId },
+  });
+};
+export const getBillingPlanOverview = ({ tenantId }: { tenantId: string }) => {
+  return request.get(api.plan_overview, {
+    params: { tenant_id: tenantId },
+  });
+};
+
+export interface IStorageSubscriptionCurrent {
+  tenant_id: string;
+  plan_name: string;
+  trial_forbidden: boolean;
+  unit_price: number;
+  addon_storage_bytes: number;
+  target_storage_bytes: number;
+  subscription_id: string;
+  price_id: string;
+  status: string;
+  cancel_at_period_end: boolean;
+  current_period_start: string | null;
+  current_period_end: string | null;
+  payment_required: boolean;
+  payment_recovery_url: string;
+}
+
+export const getBillingStorageCurrent = (tenantId?: string) => {
+  return request.get(api.storageCurrent, {
+    params: tenantId ? { tenant_id: tenantId } : undefined,
+  });
+};
+
+export const postBillingStorageSetTarget = (data: {
+  tenant_id?: string;
+  target_storage_bytes: number;
+  session_cancel_url?: string;
+  session_success_url?: string;
+  setup_intent_id?: string;
+}) => {
+  return request.patch(api.storageSetTarget, { data });
+};
+
+export const getBillingDeepDocUsage = (tenantId?: string) =>
+  request.get(api.deepdocUsage, {
+    params: tenantId ? { tenant_id: tenantId } : undefined,
+  });
+
+export const getBillingPointsPrice = () => request.get(api.pointsPrice);
+export const getAddonPlans = () => request.get(api.addonPlans);
+
+export const postBillingPointsCheckout = (data: {
+  tenant_id?: string;
+  quantity: number;
+  session_success_url?: string;
+  session_cancel_url?: string;
+}) => request.post(api.pointsCheckout, { data });
+
+export const getBillingPointsBalance = (tenantId?: string) =>
+  request.get(api.pointsBalance, {
+    params: tenantId ? { tenant_id: tenantId } : undefined,
+  });
+
+export const getBillingPointsOverview = (tenantId?: string) =>
+  request.get(api.pointsOverview, {
+    params: tenantId ? { tenant_id: tenantId } : undefined,
+  });
+
+export const getBillingPointsLedger = (params: {
+  tenant_id?: string;
+  page?: number;
+  page_size?: number;
+  event_type?: string;
+}) => request.get(api.pointsLedger, { params });
+
+export const getBillingPointsHolds = (params: {
+  tenant_id?: string;
+  page?: number;
+  page_size?: number;
+  status?: string;
+  start_date?: string;
+  end_date?: string;
+}) => request.get(api.pointsHolds, { params });
+
+export const getBillingSession = (sessionId: string) =>
+  request.get(api.session(sessionId));
+
+export const getDirectSubscriptionPaymentStatus = (
+  subscriptionId: string,
+  invoiceId?: string,
+) =>
+  request.get(api.directPaymentStatus(subscriptionId), {
+    params: invoiceId ? { invoice_id: invoiceId } : undefined,
+    noToast: true,
+  });
+
+export const postBillingSetupIntent = (data: {
+  tenant_id?: string;
+  setup_type: 'subscription_upgrade' | 'storage_addon';
+  price_id?: string;
+  target_storage_bytes?: number;
+  // Where Stripe sends the customer after a redirect-based payment method
+  // authenticates; SetupIntent confirmation fails without it.
+  return_url?: string;
+}) => {
+  return request.post(api.billingSetupIntent, { data });
+};
+
+export default billingService;

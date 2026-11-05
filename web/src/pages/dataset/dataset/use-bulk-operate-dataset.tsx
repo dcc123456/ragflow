@@ -13,7 +13,6 @@ import {
 import { IDocumentInfo } from '@/interfaces/database/document';
 import { omit } from 'lodash';
 import {
-  Key,
   LucideCircleX,
   LucideCylinder,
   LucidePlayCircle,
@@ -218,12 +217,6 @@ export function useBulkOperateDataset({
       onClick: handleCancelClick,
     },
     ...extraBulkActions,
-    {
-      id: 'permission',
-      label: t('permission.permission'),
-      icon: <Key />,
-      onClick: handShowPrivilegeModal(selectedRowKeys),
-    },
     {
       id: 'enabled',
       label: t('knowledgeDetails.enabled'),

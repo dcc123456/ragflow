@@ -7,7 +7,6 @@ import { MessageType } from '@/constants/chat';
 import { useFetchChat, useGetChatSearchParams } from '@/hooks/use-chat-request';
 import { useFetchUserInfo } from '@/hooks/use-user-setting-request';
 import { IClientConversation } from '@/interfaces/database/chat';
-import { hasManagePermissionPermission } from '@/utils/permission-util';
 import { useEffect } from 'react';
 import {
   useGetSendButtonDisabled,
@@ -42,9 +41,6 @@ export function SingleChatBox({ conversation }: IProps) {
   } = useSendMessage();
   const { data: userInfo } = useFetchUserInfo();
   const { data: currentDialog } = useFetchChat();
-  const canManageChat = hasManagePermissionPermission(
-    currentDialog.operator_permission ?? 0,
-  );
   const { createConversationBeforeUploadDocument } =
     useCreateConversationBeforeUploadDocument();
   const { conversationId } = useGetChatSearchParams();
@@ -107,6 +103,7 @@ export function SingleChatBox({ conversation }: IProps) {
               isLast={(messages?.length ?? 0) - 1 === i}
               removeMessageById={removeMessageById}
               deleteDisabled={message.awaitingServerId}
+              regenerateMessage={regenerateMessage}
               sendLoading={sendLoading}
             />
           )}

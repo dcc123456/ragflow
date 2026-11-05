@@ -1,14 +1,22 @@
-/**
- * Enterprise seam for the navigation helpers used by auth guards and the
- * request interceptors.
- *
- * The enterprise build sends users back to login with a `redirect` query so
- * they land on the page they were viewing. Open source keeps the upstream
- * redirect target and has no post-login redirect hop.
- */
+import { IThirdOAIModel } from '@/interfaces/database/llm';
 
-export { redirectToLogin } from '@/utils/authorization-util';
+export function getLlmFactoryFromLlmId(llmId: string) {
+  return llmId?.split('@')?.at(1)?.split('#').at(0);
+}
 
+export function buildLlmId(
+  model: Pick<IThirdOAIModel, 'fid' | 'llm_name' | 'tenant_id'>,
+) {
+  return `${model.llm_name}@${model.fid}#${model.tenant_id}`;
+}
+
+// Will not jump to the login page
+export function redirectToLogin() {
+  window.location.href =
+    location.origin + `/login` + '?redirect=' + location.pathname;
+}
+
+// Will not jump to the specified page
 export function redirectToSpecifiedPage(page: string) {
   window.location.href = location.origin + page;
 }

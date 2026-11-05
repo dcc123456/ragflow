@@ -26,7 +26,7 @@ import {
 import { useFindLlmByUuid } from '@/hooks/use-llm-request';
 import { useFetchUserInfo } from '@/hooks/use-user-setting-request';
 import { IClientConversation } from '@/interfaces/database/chat';
-import { hasManagePermissionPermission } from '@/utils/permission-util';
+import { hasManagePermissionPermission } from '@/ee/utils/permission-util';
 import {
   deriveModelPreset,
   removeUselessFieldsFromValues,

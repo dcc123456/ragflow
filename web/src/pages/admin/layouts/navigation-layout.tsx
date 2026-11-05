@@ -35,9 +35,6 @@ const AdminNavigationLayout = () => {
     queryFn: async () => (await getSystemVersion())?.data?.data?.version,
   });
 
-  // const { variables } = useAdminVariables();
-
-  // const isWhitelistEnabled = !!variables?.enable_whitelist?.value;
   const enterpriseNav = useEnterpriseAdminNav();
 
   const navItems = useMemo(
@@ -79,16 +76,6 @@ const AdminNavigationLayout = () => {
     ],
     [t],
   );
-
-  // const visibleNavItems = useMemo(
-  //   () => [
-  //     ...navItems.filter(
-  //       ({ path }) => !enterpriseNav.hiddenPaths.includes(path),
-  //     ),
-  //     ...enterpriseNav.items,
-  //   ],
-  //   [navItems, enterpriseNav.items, enterpriseNav.hiddenPaths],
-  // );
 
   const visibleNavItems = useMemo(
     () => [

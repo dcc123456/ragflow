@@ -29,7 +29,7 @@ import { Sidebar } from '@/pages/user-setting/setting-model/layout/sidebar';
 // Registers the axios interceptor that redirects the shared model-provider
 // hooks onto the admin gateway. Import for side effects; must stay above the
 // components whose queries it rewrites.
-import '@/services/admin-llm-scope';
+import '@/ee/services/admin-llm-scope';
 import { Plus } from 'lucide-react';
 import { FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 

@@ -1,18 +1,31 @@
+import { useSetModalState } from '@/hooks/common-hooks';
+import { useKnowledgeWithSourceType } from '@/ee/hooks/logic-hooks/use-knowledge';
 import { IDataset } from '@/interfaces/database/dataset';
+import { useCallback, useState } from 'react';
 
-/**
- * Enterprise seam for the dataset permission dialog. Open source has no
- * collaborator permissions, so the modal stays closed and the record is empty.
- */
 export function useShowPrivilegeDialog() {
+  const {
+    visible: privilegeModal,
+    hideModal: hidePrivilegeModal,
+    showModal: showPrivilegeModal,
+  } = useSetModalState();
+
+  const [record, setRecord] = useState<IDataset>({} as IDataset);
+
+  const handShowPrivilegeModal = useCallback(
+    (item: IDataset) => () => {
+      setRecord(item);
+      showPrivilegeModal();
+    },
+    [showPrivilegeModal],
+  );
+
+  const recordWithSourceType = useKnowledgeWithSourceType(record);
+
   return {
-    privilegeModal: false,
-    hidePrivilegeModal: () => {},
-    handShowPrivilegeModal: (_item: IDataset) => () => {},
-    recordWithSourceType: {},
+    privilegeModal,
+    hidePrivilegeModal,
+    handShowPrivilegeModal,
+    recordWithSourceType,
   };
 }
-
-export type ShowPrivilegeDialogReturnType = ReturnType<
-  typeof useShowPrivilegeDialog
->;

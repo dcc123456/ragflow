@@ -1,16 +1,19 @@
+import { hasOwnerPermission } from '@/ee/utils/permission-util';
 import { IMcpServer } from '@/interfaces/database/mcp';
+import { useEffect } from 'react';
 
-/**
- * Enterprise seam for the MCP bulk-selection availability. Open source has no
- * collaborator permissions, so a selection never has to be exited because the
- * operator lost owner access.
- */
 export function useExitMcpSelectionWithoutOwner(
-  _mcpList: IMcpServer[],
-  _isSelectionMode: boolean,
-  _exitSelectionMode: () => void,
+  mcpList: IMcpServer[],
+  isSelectionMode: boolean,
+  exitSelectionMode: () => void,
 ) {
-  void _mcpList;
-  void _isSelectionMode;
-  void _exitSelectionMode;
+  const hasOwnerMcp = mcpList?.some((item) =>
+    hasOwnerPermission(item.operator_permission),
+  );
+
+  useEffect(() => {
+    if (!hasOwnerMcp && isSelectionMode) {
+      exitSelectionMode();
+    }
+  }, [hasOwnerMcp, isSelectionMode, exitSelectionMode]);
 }

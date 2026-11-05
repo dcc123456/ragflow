@@ -23,7 +23,7 @@ import {
   LlmFactory,
   useAddFactory,
   useLlmFactoryList,
-} from '@/pages/admin/hooks/useLlm';
+} from '@/ee/pages/admin/hooks/useLlm';
 import ProviderModal from '../model-config/ProviderModal';
 
 const TAG_FILTER_ALL = '<all>';

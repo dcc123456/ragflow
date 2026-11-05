@@ -162,6 +162,7 @@ type ResponseData<D = NonNullable<unknown>> = {
   code: number;
   message: string;
   data: D;
+  total?: number;
 };
 
 export const login = (params: EmailLoginParams | LDAPLoginParams) =>
@@ -179,10 +180,9 @@ export const listUsers = (params?: {
   status?: string;
   plan?: string;
 }) =>
-  request.get<ResponseData<AdminService.ListUsersResponse>>(
-    API.adminListUsers,
-    { params },
-  );
+  request.get<ResponseData<AdminService.ListUsersItem[]>>(API.adminListUsers, {
+    params,
+  });
 
 export const createUser = (email: string, password: string) =>
   request.post<ResponseData<boolean>>(API.adminCreateUser, {

@@ -1,27 +1,98 @@
-/**
- * Enterprise seam for the private-LLM admin flags. The enterprise build
- * replaces this file with the private deployment requests; open source is not
- * a private deployment, so the admin flags are off and the default-model
- * action is a no-op. Model providers and the API page are part of the open
- * source product, so their exposure flags stay on.
- */
+import message from '@/components/ui/message';
+import { isBillingEnabled } from '@/ee/services/billingStatus';
+import exposeApiService from '@/ee/services/expose-api-service';
+import exposeModelProviderService from '@/ee/services/expose-model-provider-service';
+import privateLLMService from '@/ee/services/private-llm-service';
+import { useMutation, useQuery } from '@tanstack/react-query';
 
-export const useFetchEnableAdmin = () => ({ data: false, loading: false });
+export const enum PrivateLLMApiAction {
+  FetchEnableAdmin = 'fetchEnableAdmin',
+  FetchIsAdmin = 'fetchIsAdmin',
+  SetDefaultLlm = 'setDefaultLlm',
+  FetchExposeModelProvider = 'fetchExposeModelProvider',
+  FetchExposeApi = 'fetchExposeApi',
+}
 
-export const useFetchIsAdmin = () => ({ data: false, loading: false });
+export async function fetchEnableAdminQueryFn() {
+  const { data } = await privateLLMService.enableAdmin();
+  return data?.data?.enable !== 0;
+}
+export function useFetchEnableAdmin() {
+  const { data, isFetching: loading } = useQuery<boolean>({
+    queryKey: [PrivateLLMApiAction.FetchEnableAdmin],
+    initialData: false,
+    queryFn: fetchEnableAdminQueryFn,
+  });
 
-export const useSetDefaultLlm = () => ({
-  data: undefined,
-  loading: false,
-  setDefaultLlm: async (_params: {
-    llm_factory: string;
-    llm_name: string;
-  }) => {},
-});
+  return { data, loading };
+}
 
-export const useFetchExposeModelProvider = () => ({
-  data: true,
-  loading: false,
-});
+export async function fetchIsAdminQueryFn() {
+  const { data } = await privateLLMService.isAdmin();
+  return data?.data?.admin === true;
+}
 
-export const useFetchExposeApi = () => ({ data: true, loading: false });
+export function useFetchIsAdmin() {
+  const { data, isFetching: loading } = useQuery<boolean>({
+    queryKey: [PrivateLLMApiAction.FetchIsAdmin],
+    initialData: false,
+    queryFn: fetchIsAdminQueryFn,
+  });
+
+  return { data, loading };
+}
+
+export const useSetDefaultLlm = () => {
+  const {
+    data,
+    isPending: loading,
+    mutateAsync,
+  } = useMutation<number, Error, { llm_factory: string; llm_name: string }>({
+    mutationKey: [PrivateLLMApiAction.SetDefaultLlm],
+    mutationFn: async (params) => {
+      const ret = await privateLLMService.setDefaultLlm(params);
+      if (ret?.data?.code === 0) {
+        message.success('success');
+      } else {
+        message.error(ret?.data?.data);
+      }
+      return ret?.data?.code;
+    },
+  });
+
+  return { data, loading, setDefaultLlm: mutateAsync };
+};
+
+export async function fetchExposeModelProviderQueryFn() {
+  const { data } = await exposeModelProviderService.getExposeModelProvider();
+  return data?.data?.enabled === true;
+}
+
+export function useFetchExposeModelProvider() {
+  const { data, isFetching: loading } = useQuery<boolean>({
+    queryKey: [PrivateLLMApiAction.FetchExposeModelProvider],
+    initialData: false,
+    queryFn: fetchExposeModelProviderQueryFn,
+  });
+
+  return { data, loading };
+}
+
+export async function fetchExposeApiQueryFn() {
+  const { data } = await exposeApiService.getExposeApi();
+  const enabled = data?.data?.enabled;
+  if (enabled === undefined || enabled === null) {
+    return isBillingEnabled();
+  }
+  return enabled === true;
+}
+
+export function useFetchExposeApi() {
+  const { data, isFetching: loading } = useQuery<boolean>({
+    queryKey: [PrivateLLMApiAction.FetchExposeApi],
+    initialData: isBillingEnabled(),
+    queryFn: fetchExposeApiQueryFn,
+  });
+
+  return { data, loading };
+}

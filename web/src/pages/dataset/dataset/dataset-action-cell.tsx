@@ -18,13 +18,11 @@ import { downloadDatasetDocument } from '@/services/file-manager-service';
 import { formatFileSize } from '@/utils/common-util';
 import { formatDate } from '@/utils/date';
 import { downloadFileFromBlob } from '@/utils/file-util';
-import { Download, Eye, Key, PenLine, Trash2 } from 'lucide-react';
-import { useCallback, useContext } from 'react';
+import { Download, Eye, PenLine, Trash2 } from 'lucide-react';
 import { omit } from 'lodash';
+import { useCallback } from 'react';
 import { UseRenameDocumentShowType } from './use-rename-document';
-import { ShowPrivilegeModalContext } from './use-show-privilege-dialog';
 import { isDocumentProcessing } from './utils';
-import { useTranslation } from 'react-i18next';
 
 const Fields = ['name', 'size', 'type', 'create_time', 'update_time'];
 
@@ -47,7 +45,6 @@ export function DatasetActionCell({
   datasetEditButtonDisabled,
 }: DatasetActionCellProps) {
   const { id, type } = record;
-  const { t } = useTranslation();
   const isRunning = isDocumentProcessing(record);
   const isVirtualDocument = type === DocumentType.Virtual;
   const actionDisabled = isRunning || Boolean(datasetEditButtonDisabled);
@@ -83,8 +80,6 @@ export function DatasetActionCell({
     showRenameModal(record);
   }, [record, showRenameModal]);
 
-  const { handShowPrivilegeModal } = useContext(ShowPrivilegeModalContext);
-
   return (
     <div
       className={cn(
@@ -103,7 +98,7 @@ export function DatasetActionCell({
       </Button>
       <HoverCard>
         <HoverCardTrigger>
-          <Button variant="ghost" disabled={isRunning} size="icon-xs">
+          <Button size="icon-xs" variant="ghost" disabled={isRunning}>
             <Eye className="size-[1em]" />
           </Button>
         </HoverCardTrigger>

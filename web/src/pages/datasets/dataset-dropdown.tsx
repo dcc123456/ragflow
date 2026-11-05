@@ -2,7 +2,6 @@ import {
   ConfirmDeleteDialog,
   ConfirmDeleteDialogNode,
 } from '@/components/confirm-delete-dialog';
-import { PrivilegeDropdown } from '@/components/privilege/privilege-dropdown';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,10 +13,6 @@ import { DatasetDropdownGuard } from '@/ee/pages/datasets/dataset-dropdown-guard
 import useDuplicateDataset from '@/ee/pages/datasets/use-duplicate-dataset';
 import { useDeleteKnowledge } from '@/hooks/use-knowledge-request';
 import { IDataset } from '@/interfaces/database/dataset';
-import {
-  hasManagePermissionPermission,
-  hasOwnerPermission,
-} from '@/utils/permission-util';
 import { PenLine, Trash2 } from 'lucide-react';
 import { MouseEventHandler, PropsWithChildren, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -35,7 +30,6 @@ type IDatasetDropdownProps = {
 export function DatasetDropdown({
   children,
   showDatasetRenameModal,
-  // showDatasetDuplicateModal,
   dataset,
   showPrivilegeModal,
 }: PropsWithChildren<IDatasetDropdownProps> &
@@ -57,19 +51,6 @@ export function DatasetDropdown({
   const handleDelete: MouseEventHandler<HTMLDivElement> = useCallback(() => {
     deleteKnowledge(dataset.id);
   }, [dataset.id, deleteKnowledge]);
-
-  const handlesShowPrivilegeModal: MouseEventHandler<HTMLDivElement> =
-    useCallback(
-      (e) => {
-        e.stopPropagation();
-        showPrivilegeModal();
-      },
-      [showPrivilegeModal],
-    );
-
-  if (!hasManagePermissionPermission(dataset.operator_permission)) {
-    return null;
-  }
 
   return (
     <DropdownMenu>

@@ -1,5 +1,10 @@
+import { PrivilegeMenuItem } from '@/ee/components/privilege/privilege-dropdown';
+import {
+  hasManagePermissionPermission,
+  hasOwnerPermission,
+} from '@/ee/utils/permission-util';
 import { IDialog } from '@/interfaces/database/chat';
-import { ReactNode } from 'react';
+import { MouseEventHandler, ReactNode, useCallback } from 'react';
 
 type ChatDropdownGuardProps = {
   chat: IDialog;
@@ -9,17 +14,41 @@ type ChatDropdownGuardProps = {
 };
 
 /**
- * Enterprise seam for the chat dropdown. Open source has no collaborator
- * permissions, so every action the shared file provides is rendered as-is.
+ * Collaborator-aware gating for the chat dropdown. Hides the whole menu when
+ * the operator may not manage the chat, and the delete entry unless the
+ * operator owns it.
  */
 export function ChatDropdownGuard({
+  chat,
+  showPrivilegeModal,
   manageItems,
   deleteItems,
 }: ChatDropdownGuardProps) {
+  const canManage = hasManagePermissionPermission(chat.operator_permission);
+  const canDelete = hasOwnerPermission(chat.operator_permission);
+
+  const handleShowPrivilegeModal: MouseEventHandler<HTMLDivElement> =
+    useCallback(
+      (e) => {
+        e.stopPropagation();
+        showPrivilegeModal();
+      },
+      [showPrivilegeModal],
+    );
+
+  if (!canManage) {
+    return null;
+  }
+
   return (
     <>
-      {manageItems}
-      {deleteItems}
+      {canManage && (
+        <>
+          {manageItems}
+          <PrivilegeMenuItem onClick={handleShowPrivilegeModal} />
+        </>
+      )}
+      {canDelete && <>{deleteItems}</>}
     </>
   );
 }

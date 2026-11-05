@@ -1,8 +1,11 @@
-/**
- * Enterprise admin 404 page. The enterprise build replaces this file with the
- * "feature not enabled" page; open source renders nothing because no shared
- * page is gated behind an enterprise admin toggle.
- */
+import { useTranslation } from 'react-i18next';
+
 export default function AdminNotFoundPage() {
-  return null;
+  const { t } = useTranslation();
+
+  return (
+    <>
+      <h1>{t('admin.registrationWhitelistNotEnabled')}</h1>
+    </>
+  );
 }

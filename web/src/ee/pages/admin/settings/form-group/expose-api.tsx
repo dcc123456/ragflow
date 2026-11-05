@@ -1,5 +1,5 @@
 import { useTranslate } from '@/hooks/common-hooks';
-import { isBillingEnabled } from '@/services/billingStatus';
+import { isBillingEnabled } from '@/ee/services/billingStatus';
 import { useFormContext } from 'react-hook-form';
 
 import {

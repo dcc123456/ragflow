@@ -1,43 +1,40 @@
-/**
- * Enterprise seam for resource-level permission checks.
- *
- * The enterprise build replaces this file with collaborator-aware checks based
- * on `operator_permission`. Open source has no collaborator permissions: every
- * resource belongs to its tenant and every user who can see it can edit and
- * delete it.
- */
+import { Permission, hasResourcePermission } from '@/ee/constants/team';
 
 export function hasPreviewPermission(operatorPermission: number) {
-  void operatorPermission;
-  return false;
+  return (
+    hasResourcePermission(operatorPermission, Permission.Read) &&
+    !hasResourcePermission(operatorPermission, Permission.Write) &&
+    !hasResourcePermission(operatorPermission, Permission.Manage) &&
+    !hasResourcePermission(operatorPermission, Permission.Owner)
+  );
 }
 
 export function hasEditPermission(operatorPermission: number) {
-  void operatorPermission;
-  return true;
+  return (
+    hasResourcePermission(operatorPermission, Permission.Write) ||
+    hasResourcePermission(operatorPermission, Permission.Owner)
+  );
 }
 
 export function hasManagementPermission(operatorPermission: number) {
-  void operatorPermission;
-  return true;
+  return hasResourcePermission(operatorPermission, Permission.Manage);
 }
 
 export function hasOwnerPermission(operatorPermission: number) {
-  void operatorPermission;
-  return true;
+  return hasResourcePermission(operatorPermission, Permission.Owner);
 }
 
 export function showEditButton(operatorPermission: number) {
-  void operatorPermission;
-  return true;
+  return hasEditPermission(operatorPermission);
 }
 
 export function disableEditButton(operatorPermission: number) {
-  void operatorPermission;
-  return false;
+  return !hasEditPermission(operatorPermission);
 }
 
 export function hasManagePermissionPermission(operatorPermission: number) {
-  void operatorPermission;
-  return true;
+  return (
+    hasManagementPermission(operatorPermission) ||
+    hasOwnerPermission(operatorPermission)
+  );
 }

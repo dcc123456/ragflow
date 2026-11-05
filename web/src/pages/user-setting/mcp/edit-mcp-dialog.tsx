@@ -24,7 +24,6 @@ import { useGetMcpServer, useTestMcpServer } from '@/hooks/use-mcp-request';
 import { IModalProps } from '@/interfaces/common';
 import { IMCPTool, IMCPToolObject } from '@/interfaces/database/mcp';
 import { cn } from '@/lib/utils';
-import { hasPreviewPermission } from '@/utils/permission-util';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { isEmpty, omit, pick } from 'lodash';
 import { RefreshCw } from 'lucide-react';

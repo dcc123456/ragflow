@@ -166,41 +166,20 @@ export default function Datasets() {
               />
             </div>
           )}
-          <CardContainer className="flex-1 overflow-auto px-8">
-            {kbs.map((dataset) => {
-              return (
-                <DatasetCard
-                  dataset={dataset}
-                  key={dataset.id}
-                  showDatasetRenameModal={showDatasetRenameModal}
-                  showDatasetDuplicateModal={showDatasetDuplicateModal}
-                  showPrivilegeModal={handShowPrivilegeModal(dataset)}
-                ></DatasetCard>
-              );
-            })}
-          </CardContainer>
-
-          <footer className="mt-4 px-5 pb-5">
-            <RAGFlowPagination
-              {...pick(pagination, 'current', 'pageSize')}
-              total={total_datasets}
-              onChange={handlePageChange}
-            />
-          </footer>
         </article>
       ) : (
-        <>
-          <div className="size-full flex w-full items-center justify-center">
-            <EmptyAppCard
-              showIcon
-              size="large"
-              className="w-[480px] p-14"
-              isSearch={!!searchString}
-              type={EmptyCardType.Dataset}
-              onClick={showModal}
-            />
-          </div>
-        </>
+        <article
+          className="size-full flex items-center justify-center"
+          data-testid="datasets-list"
+        >
+          <EmptyAppCard
+            showIcon
+            size="large"
+            className="w-[480px] p-14"
+            type={EmptyCardType.Dataset}
+            onClick={() => showModal()}
+          />
+        </article>
       )}
       {visible && (
         <DatasetCreatingDialog

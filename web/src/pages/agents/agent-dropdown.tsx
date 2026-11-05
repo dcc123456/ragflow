@@ -2,7 +2,6 @@ import {
   ConfirmDeleteDialog,
   ConfirmDeleteDialogNode,
 } from '@/components/confirm-delete-dialog';
-import { PrivilegeDropdown } from '@/components/privilege/privilege-dropdown';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,11 +12,6 @@ import {
 import { AgentDropdownGuard } from '@/ee/pages/agents/agent-dropdown-guard';
 import { useDeleteAgent } from '@/hooks/use-agent-request';
 import { IFlow } from '@/interfaces/database/agent';
-import {
-  hasManagePermissionPermission,
-  hasOwnerPermission,
-  showEditButton,
-} from '@/utils/permission-util';
 import { PenLine, Tag, Trash2 } from 'lucide-react';
 import {
   MouseEventHandler,
@@ -42,10 +36,6 @@ export function AgentDropdown({
   const { t } = useTranslation();
   const { deleteAgent } = useDeleteAgent();
   const [tagEditorOpen, setTagEditorOpen] = useState(false);
-  const canManageAgent = hasManagePermissionPermission(
-    agent.operator_permission,
-  );
-  const canDeleteAgent = hasOwnerPermission(agent.operator_permission);
 
   const handleShowAgentRenameModal: MouseEventHandler<HTMLDivElement> =
     useCallback(
@@ -64,23 +54,6 @@ export function AgentDropdown({
   const handleDelete: MouseEventHandler<HTMLDivElement> = useCallback(() => {
     deleteAgent(agent.id);
   }, [agent.id, deleteAgent]);
-
-  const handlesShowPrivilegeModal: MouseEventHandler<HTMLDivElement> =
-    useCallback(
-      (e) => {
-        e.stopPropagation();
-        showPrivilegeModal();
-      },
-      [showPrivilegeModal],
-    );
-
-  if (!showEditButton(agent.operator_permission)) {
-    return null;
-  }
-
-  if (!canManageAgent && !canDeleteAgent) {
-    return null;
-  }
 
   return (
     <>

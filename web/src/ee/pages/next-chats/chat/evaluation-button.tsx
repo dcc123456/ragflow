@@ -1,8 +1,21 @@
-/**
- * Enterprise slot for the chat evaluation entry. The enterprise build replaces
- * this file with the evaluation button; open source has no evaluation module,
- * so the slot renders nothing.
- */
+import { Button } from '@/components/ui/button';
+import { EvaluationType } from '@/ee/constants/evaluation';
+import { useEvaluationNavigate } from '@/ee/hooks/use-evaluation-navigate';
+import { ChartColumn } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { useParams } from 'react-router';
+
 export function ChatEvaluationButton() {
-  return null;
+  const { t } = useTranslation();
+  const { navigateToEvaluation } = useEvaluationNavigate();
+  const { id } = useParams();
+
+  return (
+    <Button
+      variant="ghost"
+      onClick={navigateToEvaluation(EvaluationType.Chat, id!)}
+    >
+      <ChartColumn /> {t('evaluation.title')}
+    </Button>
+  );
 }

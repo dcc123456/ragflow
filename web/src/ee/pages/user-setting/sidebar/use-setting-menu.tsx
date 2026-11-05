@@ -1,4 +1,17 @@
+import {
+  useFetchEnableAdmin,
+  useFetchExposeApi,
+  useFetchExposeModelProvider,
+  useFetchIsAdmin,
+} from '@/ee/hooks/use-private-llm-request';
+import { PriceName } from '@/ee/pages/price/constant';
+import { useFetchCurrentPlan } from '@/ee/pages/price/hook/use-price-hooks';
+import { PrivateRoutes } from '@/ee/private-routes';
+import { isBillingEnabled } from '@/ee/services/billingStatus';
+import { Routes } from '@/routes';
+import { ReceiptText } from 'lucide-react';
 import { ReactNode, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 
 export type SettingMenuEntry = {
   icon: ReactNode;
@@ -8,12 +21,63 @@ export type SettingMenuEntry = {
 };
 
 /**
- * Enterprise seam for the settings sidebar entries. Open source has no billing
- * page and no model-provider exposure rules, so the upstream menu is shown
- * unchanged.
+ * Extends the upstream settings menu with the enterprise entries: billing when
+ * billing is active, and hiding the model-provider page from users who are not
+ * allowed to manage providers while an administrator is.
  */
 export function useSettingMenuItems<T extends SettingMenuEntry>(
   items: T[],
 ): T[] {
-  return useMemo(() => items, [items]);
+  const { t } = useTranslation();
+  const { data: isAdmin } = useFetchIsAdmin();
+  const { data: enableAdmin } = useFetchEnableAdmin();
+  const { data: exposeModelProvider } = useFetchExposeModelProvider();
+  const { data: exposeApi } = useFetchExposeApi();
+  const { data: currentPlan } = useFetchCurrentPlan();
+
+  return useMemo(() => {
+    const menus: SettingMenuEntry[] = [...items];
+
+    if (isBillingEnabled()) {
+      menus.splice(3, 0, {
+        icon: <ReceiptText className="size-[1em]" />,
+        label: t('setting.billing'),
+        key: PrivateRoutes.Billing,
+      });
+    }
+
+    return menus.filter((x) => {
+      if (x.key === Routes.Api) {
+        if (
+          exposeApi ||
+          (currentPlan?.plan_name &&
+            [PriceName.Starter, PriceName.Pro].includes(
+              currentPlan.plan_name as PriceName,
+            ))
+        ) {
+          return true;
+        }
+        return false;
+      }
+
+      if (x.key === Routes.Model) {
+        if (exposeModelProvider) {
+          return true;
+        }
+        if (enableAdmin && !isAdmin) {
+          return false;
+        }
+      }
+
+      return true;
+    }) as T[];
+  }, [
+    items,
+    t,
+    currentPlan,
+    exposeApi,
+    exposeModelProvider,
+    enableAdmin,
+    isAdmin,
+  ]);
 }

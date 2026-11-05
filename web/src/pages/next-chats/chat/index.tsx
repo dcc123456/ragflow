@@ -10,14 +10,9 @@ import { IClientConversation } from '@/interfaces/database/chat';
 import { RootLayoutContainer } from '@/layouts/root-layout';
 import { cn } from '@/lib/utils';
 import { isEmpty } from 'lodash';
-import {
-  ChartColumn,
-  LucideArrowBigLeft,
-  LucideArrowUpRight,
-} from 'lucide-react';
+import { LucideArrowBigLeft, LucideArrowUpRight } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useParams } from 'react-router';
 import { useHandleClickConversationCard } from '../hooks/use-click-card';
 import { ChatSettings } from './app-settings/chat-settings';
 import { MultipleChatBox } from './chat-box/next-multiple-chat-box';

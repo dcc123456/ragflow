@@ -22,23 +22,12 @@ import { Domain } from '@/constants/common';
 import { useSettingMenuItems } from '@/ee/pages/user-setting/sidebar/use-setting-menu';
 import { useLogout } from '@/hooks/use-login-request';
 import {
-  useFetchEnableAdmin,
-  useFetchExposeApi,
-  useFetchExposeModelProvider,
-  useFetchIsAdmin,
-} from '@/hooks/use-private-llm-request';
-import {
   useFetchSystemVersion,
   useFetchUserInfo,
 } from '@/hooks/use-user-setting-request';
 import { cn } from '@/lib/utils';
-import { PrivateRoutes } from '@/private-routes';
 import { Routes } from '@/routes';
-import { isBillingEnabled } from '@/services/billingStatus';
 import { TFunction } from 'i18next';
-
-import { PriceName } from '@/pages/price/constant';
-import { useFetchCurrentPlan } from '@/pages/price/hook/use-price-hooks';
 import {
   LucideBox,
   LucideLogOut,
@@ -47,26 +36,12 @@ import {
   LucideUnplug,
   LucideUser,
   LucideUsers,
-  ReceiptText,
 } from 'lucide-react';
-import { useEffect, useMemo } from 'react';
+import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useHandleMenuClick } from './hooks';
-type MenuItem = {
-  icon: any;
-  label: string;
-  key: Routes | PrivateRoutes;
-  'data-testid'?: string;
-};
-// const menuItems = (t: TFunction): MenuItem[] => [
-//   { icon: Server, label: t('setting.dataSources'), key: Routes.DataSource },
-//   { icon: Box, label: t('setting.model'), key: Routes.Model },
-//   { icon: Banknote, label: 'MCP', key: Routes.Mcp },
-//   { icon: Users, label: t('setting.team'), key: Routes.Team },
-//   { icon: User, label: t('setting.profile'), key: Routes.Profile },
-//   { icon: Unplug, label: t('setting.api'), key: Routes.Api },
 
-const menuItems = (t: TFunction): MenuItem[] => [
+const menuItems = (t: TFunction) => [
   {
     icon: <LucideBox className="size-[1em]" />,
     label: t('setting.model'),
@@ -110,9 +85,10 @@ export function SideBar() {
   const { handleMenuClick, active: activeItemKey } = useHandleMenuClick();
   const { version, fetchSystemVersion } = useFetchSystemVersion();
   const { t } = useTranslation();
-
   useEffect(() => {
-    fetchSystemVersion();
+    if (location.host !== Domain) {
+      fetchSystemVersion();
+    }
   }, [fetchSystemVersion]);
   const { logout } = useLogout();
   const items = useSettingMenuItems(menuItems(t));

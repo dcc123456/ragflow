@@ -21,7 +21,6 @@ import {
   Eye,
   FolderInput,
   FolderPen,
-  KeyRound,
   Link2,
   Trash2,
 } from 'lucide-react';

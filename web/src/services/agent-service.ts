@@ -46,10 +46,6 @@ const {
   prompt,
   cancelDataflow,
   cancelCanvas,
-  joinCanvasPresence,
-  heartbeatCanvasPresence,
-  leaveCanvasPresence,
-  fetchCanvasPresence,
   listBuiltinPipelines,
   getBuiltinPipeline,
 } = api;
@@ -165,22 +161,6 @@ const methods = {
   createAgentSession: {
     url: api.createAgentSession,
     method: 'post',
-  },
-  joinCanvasPresence: {
-    url: joinCanvasPresence,
-    method: 'post',
-  },
-  heartbeatCanvasPresence: {
-    url: heartbeatCanvasPresence,
-    method: 'post',
-  },
-  leaveCanvasPresence: {
-    url: leaveCanvasPresence,
-    method: 'post',
-  },
-  fetchCanvasPresence: {
-    url: fetchCanvasPresence,
-    method: 'get',
   },
   listBuiltinPipelines: {
     url: listBuiltinPipelines,

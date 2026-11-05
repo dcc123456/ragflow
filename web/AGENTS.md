@@ -30,22 +30,54 @@ Each extension point is a **same-path overlay file**: upstream ships it under `w
 | `@/ee/locales/zh-private` | same-path empty object | Chinese enterprise translations |
 | `@/ee/locales/zh-traditional-private` | same-path empty object | Traditional Chinese enterprise translations |
 | `@/ee/utils/api-private` | same-path empty object | enterprise-only endpoints + path overrides |
+| `@/ee/merge-routes` | `export { routers } from '@/routes'` | merges the enterprise route tree over the upstream router |
+| `@/ee/components/star-modal` | component returning `null` | GitHub star prompt rendered by the app root |
+| `@/ee/services/billingStatus` | `fetchBillingStatus` resolving `false` | runtime `/api/v1/billing/status` lookup |
+| `@/ee/utils/private-util` | `redirectToLogin` re-exported from `@/utils/authorization-util` | login redirect that preserves the current path as `?redirect=` |
+| `@/ee/utils/response-private` | `handleEnterpriseResponseError` resolving `false` | billing upgrade modal + license-related login silence; `true` suppresses the shared toast |
+| `@/ee/hooks/auth-hooks-private` | `useEnterpriseAuthRedirect` returning `undefined` | consumes `?auth=`/`?error=`/`?redirect_url=` on the login callback |
+| `@/ee/private-routes` | path enum + empty `privateRoutes` | enterprise route tree merged by `@/ee/merge-routes` |
+| `@/ee/constants/team` | permission/role enums and helpers | collaborator permission bit set |
+| `@/ee/constants/evaluation` | evaluation enums | evaluation page constants |
+| `@/ee/utils/permission-util` | every resource editable by its tenant | `operator_permission` checks (preview/edit/manage/owner) |
+| `@/ee/hooks/use-evaluation-navigate` | no-op navigators | evaluation page navigation |
+| `@/ee/hooks/use-private-llm-request` | every flag `false`, setter no-op | private-deployment admin/expose requests |
+| `@/ee/components/privilege/privilege-dropdown` | component returning `null` | "permission management" dropdown entry |
+| `@/ee/components/privilege-management/interface` | shared collaborator types | same types, enterprise call sites |
+| `@/ee/components/privilege-management/privilege-management-dialog` | component returning `null` | collaborator management dialog |
+| `@/ee/components/duplicate-dialog` | component returning `null` | duplicate-resource dialog |
+| `@/ee/pages/*/use-show-privilege-dialog` | closed modal + empty record | per-resource permission dialog state |
+| `@/ee/pages/datasets/use-duplicate-dataset` | closed modal | dataset duplicate action |
+| `@/ee/layouts/components/notification-banner` | component returning `null` | notification banner above the shell |
+| `@/ee/layouts/components/team-invitation-reminder-dialog` | children passthrough | team invitation dialog around the bell |
+| `@/ee/pages/agent/online-users` | component returning `null` | agent online-presence list |
+| `@/ee/pages/admin/404` | component returning `null` | "feature not enabled" admin page |
+| `@/ee/pages/admin/hooks/useAdminVariables` | empty variables | system-variable reads/writes |
+| `@/ee/pages/admin/hooks/useRole` | empty, inert results | admin role CRUD requests |
+| `@/ee/pages/login-next/forget-password` | components returning `null` | multi-step password reset |
+| `@/ee/pages/price/constant` | plan-name enum | pricing catalogue |
+| `@/ee/pages/price/global` | provider rendering children | upgrade modal providers |
+| `@/ee/pages/price/global/hook` | no-op upgrade prompts | price/upgrade events and modals |
+| `@/ee/pages/price/hook/use-price-hooks` | empty plan, no-op billing actions | billing plan and checkout requests |
+| `@/ee/pages/user-setting/setting-team/team-management` | component returning `null` | team/department/group management |
 
-Both files are merged via `lodash/merge` in the shared file (`src/locales/config.ts`, `src/utils/api.ts`); overlay keys override same-named base keys, new keys are additive.
+Locale and API overlays are merged via `lodash/merge` in the shared file (`src/locales/config.ts`, `src/utils/api.ts`); overlay keys override same-named base keys, new keys are additive.
 
-Routing is the one exception: upstream exposes no same-path hook for `src/routes.tsx`, so enterprise routes are declared in `src/private-routes.tsx` and merged at runtime by `src/merge-routes.tsx` (see Rule 3).
+Routing is the one exception: upstream exposes no same-path hook for `src/routes.tsx`, so enterprise routes are declared in `src/ee/private-routes.tsx` and merged at runtime by `src/ee/merge-routes.tsx` (see Rule 3). `src/app.tsx` imports its router from `@/ee/merge-routes` in both trees; upstream's copy of that file only re-exports `routers` from `@/routes`.
 
 ### Rule 3 — Where new enterprise content goes
 
 - **New enterprise-only API endpoint** → add the key to `src/ee/utils/api-private.ts` (function values use the `const webAPI = '/v1'; const restAPIv1 = '/api/v1';` consts already declared in that file). Do **not** add it to `src/utils/api.ts`.
 - **New enterprise-only translation key** → add it to the matching `src/ee/locales/<lang>-private.ts` (deep-merge: nest it under the same section path as `en.ts`/`zh.ts` would use). Do **not** add it to `src/locales/en.ts` or `src/locales/zh.ts`.
 - **Enterprise-only component, hook, service** → place the whole implementation under `src/ee/<same-path>/` and, when a shared file must reach it, extend the same-path overlay pattern: add an empty no-op file under `web/src/ee/` **upstream** (or propose it), then fill it here. Never fork the shared file.
+- **Enterprise-only type module** → keep it under `src/ee/` and ship an upstream counterpart only when a **shared** file imports it. When a shared file needs the prop shape of an enterprise overlay component, derive it (`ComponentProps<typeof Component>['prop']`) instead of importing the enterprise type, so the open-source tree carries no enterprise type definitions. Do not add overlay stubs that no shared file imports.
 - **Enterprise content that must be inserted into a shared component** (nav entries, header badges, extra toolbar buttons) → do not fork the component. Give the shared file **one inert extension point** importing a same-path `src/ee/` overlay, then fill the overlay:
   - render slot → overlay exports a component that `return null` upstream (e.g. `@/ee/layouts/components/header-enterprise` → `EnterpriseHeaderUpgradeBadge` / `EnterpriseHeaderTicketsLink` / `EnterpriseHeaderPlanBadge`);
   - list extension → overlay exports a hook returning `{ items, hiddenPaths }` with `{ items: [], hiddenPaths: [] }` upstream (e.g. `@/ee/pages/admin/layouts/navigation-private` → `useEnterpriseAdminNav`).
   The overlay owns all enterprise hooks/queries/navigation so the shared file needs no enterprise state; keep overlay identities stable (`useMemo`) because the shared file lists them in `useMemo` deps.
 - **Enterprise-only helper inside a shared hook** (e.g. `useNavigatePage`) → leave the shared hook byte-identical and put the helper in its own hook under `src/ee/hooks/`, updating enterprise call sites. Do not add the helper to the shared hook "for convenience".
-- **Enterprise-only route** → declare the entry in `src/private-routes.tsx`: add a `PrivateRoutes` enum member for any path enterprise code navigates to, then add the route tree entry. `src/merge-routes.tsx` merges this tree over the router upstream already built, so the entry must reach its target with `matchIndex` (n-th sibling with the same path, 1-based) and/or `replace` (upstream paths to substitute) instead of editing `src/routes.tsx`. Path constants come from `PrivateRoutes`, never from upstream `Routes`. Never edit `src/routes.tsx`: it must stay byte-identical to upstream.
+- **Generic utility that enterprise code happens to use** (date/number/string formatting, parsing, validation, URL helpers) → add it to the shared module under `src/utils/` and ship the same text upstream in the same change; enterprise files import it from `@/utils/...`. Do **not** park it in `src/ee/`: a generic helper is not enterprise behavior, so hiding it in the overlay forks the shared module for no reason and leaves the open-source build without it. `src/ee/` only holds logic that exists solely in the enterprise edition.
+- **Enterprise-only route** → declare the entry in `src/ee/private-routes.tsx`: add a `PrivateRoutes` enum member for any path enterprise code navigates to, then add the route tree entry. `src/ee/merge-routes.tsx` merges this tree over the router upstream already built, so the entry must reach its target with `matchIndex` (n-th sibling with the same path, 1-based) and/or `replace` (upstream paths to substitute) instead of editing `src/routes.tsx`. Path constants come from `PrivateRoutes`, never from upstream `Routes`. Never edit `src/routes.tsx`: it must stay byte-identical to upstream.
 
 ### Rule 4 — No per-file build aliases
 
@@ -54,6 +86,17 @@ Do **not** add per-file entries to `vite.config.ts` / `jest.config.ts` / `tsconf
 ### Rule 5 — No compatibility shims
 
 When upstream changes something an overlay covers, update the overlay to match; do not keep both old and new keys, dead branches, or "move later" notes inside `src/ee/`. Delete overlay keys that upstream no longer uses.
+
+### Rule 6 — Every shared-file change ships to the open-source tree in the same change
+
+A shared file only stays conflict-free while both trees carry the same text. Every task that adds or reshapes a seam must therefore produce, in the **same change set**, the open-source counterpart on its own branch (`feat/...`, never a release branch):
+
+- the empty no-op overlay at the same path under `web/src/ee/` (or the inert extension point inside the shared file, e.g. a render slot's `return null`), and
+- the identical shared-file text, including the import switched to the `@/ee/...` specifier.
+
+**Why:** a seam that exists only in this repository is not a seam — the next merge-oss reintroduces exactly the conflict it was built to remove, and the OSS build has no no-op to resolve the new `@/ee/...` import.
+
+**How to apply:** when a task touches a shared file or creates an overlay, pair it with the OSS change before reporting the task done. Verify each pair with `diff --strip-trailing-cr <oss-file> <ee-file>` (must be byte-identical) and record the OSS branch in the commit message. If the texts cannot match — the enterprise content is still inline in a shared file — do not ship half a seam: move the content into an overlay first, or leave the pair unchanged and report the remaining fork.
 
 ## Common Commands
 
@@ -96,6 +139,7 @@ The two repositories share one frontend source tree. Enterprise-only content liv
 - The shared file only imports the overlay and merges it — `merge(base, private)` in `src/locales/config.ts`, `merge(apiEndpoints, apiPrivate)` in `src/utils/api.ts`. Never inline enterprise strings or endpoints into `src/locales/*.ts` or `src/utils/api.ts`.
 - The edition is chosen by the file's content, never at runtime: no `import.meta.env` switch that selects enterprise code and no `isEnterprise` branch in shared modules.
 - These overlay paths already exist in both trees, so editing one is a part 1 change (same as `stub.go`): keep the path, put the real implementation here, leave the OSS copy an empty object. A new overlay file needs its empty counterpart upstream in the same change.
+- `web/tailwind.config.js` must keep `'./src/ee/**/*.{ts,tsx}'` in `content`: Tailwind only generates classes found in globbed files, so any file moved into `src/ee/` silently loses its utilities (notably arbitrary values such as `min-h-[680px]`) and its layout collapses.
 
 ### CSS and Layout Debugging
 

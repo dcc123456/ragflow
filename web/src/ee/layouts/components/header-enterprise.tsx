@@ -6,10 +6,10 @@ import { Link, useNavigate } from 'react-router';
 import { IconFontFill } from '@/components/icon-font';
 import { RAGFlowTooltip } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
-import { PriceName } from '@/pages/price/constant';
-import { useFetchCurrentPlan } from '@/pages/price/hook/use-price-hooks';
-import { PrivateRoutes } from '@/private-routes';
-import { isBillingEnabled } from '@/services/billingStatus';
+import { PriceName } from '@/ee/pages/price/constant';
+import { useFetchCurrentPlan } from '@/ee/pages/price/hook/use-price-hooks';
+import { PrivateRoutes } from '@/ee/private-routes';
+import { isBillingEnabled } from '@/ee/services/billingStatus';
 
 /** Navigate to the pricing page; shared by the upgrade and plan badges. */
 function useOpenPricePage() {

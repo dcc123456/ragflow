@@ -6,7 +6,6 @@
  * resource is owned by its tenant, so the permission helpers treat the current
  * user as owner.
  */
-
 export enum TeamRole {
   Member = 'member',
   Department = 'department',

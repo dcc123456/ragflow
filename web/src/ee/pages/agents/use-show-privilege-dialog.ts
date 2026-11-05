@@ -1,18 +1,41 @@
+import { PermissionResourceType } from '@/ee/constants/team';
+import { useSetModalState } from '@/hooks/common-hooks';
 import { IFlow } from '@/interfaces/database/agent';
+import { useCallback, useMemo, useState } from 'react';
 
-/**
- * Enterprise seam for the agent permission dialog. Open source has no
- * collaborator permissions, so the modal stays closed and the record is empty.
- */
-export function useShowPrivilegeDialog() {
-  return {
-    privilegeModalVisible: false,
-    hidePrivilegeModal: () => {},
-    handShowPrivilegeModal: (_item: IFlow) => () => {},
-    recordWithSourceType: {},
-  };
+export function useAgentWithSourceType(record: IFlow) {
+  return useMemo(() => {
+    return {
+      ...record,
+      resourceType: PermissionResourceType.Canvas,
+      name: record.title,
+    };
+  }, [record]);
 }
 
-export type ShowPrivilegeDialogReturnType = ReturnType<
-  typeof useShowPrivilegeDialog
->;
+export function useShowPrivilegeDialog() {
+  const {
+    visible: privilegeModalVisible,
+    hideModal: hidePrivilegeModal,
+    showModal: showPrivilegeModal,
+  } = useSetModalState();
+
+  const [record, setRecord] = useState<IFlow>({} as IFlow);
+
+  const handShowPrivilegeModal = useCallback(
+    (item: IFlow) => () => {
+      setRecord(item);
+      showPrivilegeModal();
+    },
+    [showPrivilegeModal],
+  );
+
+  const recordWithSourceType = useAgentWithSourceType(record);
+
+  return {
+    privilegeModalVisible,
+    hidePrivilegeModal,
+    handShowPrivilegeModal,
+    recordWithSourceType,
+  };
+}

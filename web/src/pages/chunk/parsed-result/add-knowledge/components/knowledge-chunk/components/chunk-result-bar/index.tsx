@@ -9,7 +9,7 @@ import { Radio } from '@/components/ui/radio';
 import { Segmented } from '@/components/ui/segmented';
 import { useDatasetEditButtonDisabled } from '@/ee/hooks/logic-hooks/use-permission';
 import { cn } from '@/lib/utils';
-import { ListFilter, LucideFilter, Plus } from 'lucide-react';
+import { LucideFilter, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChunkTextMode } from '../../constant';

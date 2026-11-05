@@ -1,0 +1,112 @@
+import React from 'react';
+import { PriceName } from '@/ee/pages/price/constant';
+
+export interface IFeatureProps {
+  // apps: string;
+  // teamMembers: string;
+  // datasetStorage: string;
+  // apiRequests: string;
+  key: 'apps' | 'teamMembers' | 'datasetStorage' | 'apiRequests' | 'credits';
+  value: string | number;
+  icon: React.ReactNode;
+  name: string;
+}
+export interface IPricePlan {
+  id: string;
+  title: string;
+  description: string;
+  price: string;
+  features: IFeatureProps[];
+}
+
+export type IPricePlanWithButton = IPricePlan & {
+  name?: string;
+  isPopular?: boolean;
+  buttonLabel: string;
+  isUse: boolean;
+  disabled?: boolean;
+  paymentRequired?: boolean;
+  // Internal billing target identifier for scheduled downgrade flows.
+  // For Trial this may be a backend placeholder, not a Stripe Dashboard price id.
+  cancelTargetPriceId?: string;
+  icon: () => JSX.Element;
+};
+
+export type IConfirmPlan = IPricePlan & {
+  priceDifference: string;
+  nextBillingDate?: number;
+};
+
+export interface IPlanFeature {
+  quota_api_limits: number;
+  quota_points: number;
+  quota_apps: number;
+  quota_storage: number;
+  quota_members: number;
+}
+
+export interface IPlan {
+  description: null | string;
+  feature: IPlanFeature;
+  id: string;
+  name: PriceName;
+  price: number;
+  price_ids: string;
+}
+
+export interface ICurrentPlan {
+  customer_id: string;
+  end_time: Date | string;
+  id: string;
+  invoice_pdf_url: string | null;
+  invoice_url: string | null;
+  original_subscription_id: string;
+  pending_subscription_change?: {
+    schedule_id: string;
+    pending_price_id: string;
+    pending_plan_name: string;
+    effective_at: string | null;
+  };
+  plan_name: PriceName;
+  price_id: string;
+  product_id: string;
+  payment_required?: boolean;
+  payment_recoverable?: boolean;
+  payment_recovery_url?: string;
+  quota_apps: number;
+  quota_storage: number;
+  quota_members: number;
+  start_time: Date | string;
+  subscription_id: string;
+  subscription_status: string;
+  task_priority: string;
+  tenant_id: string;
+  version: number;
+}
+
+export interface ICheckoutResult {
+  redirect_to?: string;
+  requires_payment_method_setup?: boolean;
+  scheduled_change?: {
+    effective_at?: string;
+  };
+  subscription_id?: string;
+  plan_name?: string;
+  price_id?: string;
+  invoice_id?: string;
+  invoice_url?: string;
+  invoice_pdf_url?: string;
+  invoice_status?: string;
+  payment_intent_status?: string;
+  payment_state?:
+    | 'paid'
+    | 'requires_action'
+    | 'pending'
+    | 'scheduled'
+    | 'failed';
+  entitlement_ready?: boolean;
+  product_type?: 'subscription' | 'storage' | 'points';
+  amount_cents?: number;
+  currency?: string;
+  target_storage_bytes?: number;
+}

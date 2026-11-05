@@ -18,14 +18,9 @@ import { Modal } from '@/components/ui/modal/modal';
 import { useEmptyModelWarning } from '@/ee/hooks/use-empty-model-warning';
 import DOMPurify from 'dompurify';
 import { isEmpty } from 'lodash';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { toast } from 'sonner';
 import { useNavigatePage } from './logic-hooks/navigate-hooks';
-import {
-  useFetchEnableAdmin,
-  useFetchIsAdmin,
-} from './use-private-llm-request';
 
 let isWarningVisible = false;
 
@@ -36,28 +31,26 @@ export const useWarnEmptyModel = (
   loading?: boolean,
 ) => {
   const { t } = useTranslation();
+  const warnedRef = useRef(false);
   const { navigateToModelSetting } = useNavigatePage();
-  const { data: isAdmin, loading: isAdminLoading } = useFetchIsAdmin();
-  const { data: enableAdmin, loading: enableAdminLoading } =
-    useFetchEnableAdmin();
   const { isChecking, showWarning } = useEmptyModelWarning();
 
   useEffect(() => {
     if (
-      !isAdminLoading &&
-      !enableAdminLoading &&
+      showEmptyModelWarn &&
+      !warnedRef.current &&
+      !isWarningVisible &&
       !loading &&
       !isChecking &&
       (isEmpty(embdId) || isEmpty(llmId)) &&
       typeof embdId === 'string' &&
-      typeof llmId === 'string' &&
-      showEmptyModelWarn
+      typeof llmId === 'string'
     ) {
       if (showWarning()) {
         return;
       }
 
-      // warnedRef.current = true;
+      warnedRef.current = true;
       isWarningVisible = true;
       Modal.warning({
         title: t('common.warn'),
@@ -83,10 +76,6 @@ export const useWarnEmptyModel = (
     loading,
     navigateToModelSetting,
     t,
-    isAdmin,
-    enableAdmin,
-    isAdminLoading,
-    enableAdminLoading,
     isChecking,
     showWarning,
   ]);

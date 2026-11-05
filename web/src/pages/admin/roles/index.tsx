@@ -33,7 +33,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 import Empty from '@/components/empty/empty';
 import { useSetModalState } from '@/hooks/common-hooks';
-import { PrivateRoutes } from '@/private-routes';
+import { PrivateRoutes } from '@/ee/private-routes';
 
 import {
   Form,
@@ -49,13 +49,13 @@ import {
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import useCreateRoleForm from '../forms/role-form';
-import { useRoleDefaultModels } from '../hooks/useLlm';
+import { useRoleDefaultModels } from '@/ee/pages/admin/hooks/useLlm';
 import {
   useCreateRole,
   useMutateRole,
   useRoleList,
   useRoleResourceTypes,
-} from '../hooks/useRole';
+} from '@/ee/pages/admin/hooks/useRole';
 import { RESOURCE_PERMISSIONS } from '../utils';
 
 const editFormSchema = z.object({

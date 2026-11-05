@@ -1,9 +1,11 @@
+import { hasOwnerPermission } from '@/ee/utils/permission-util';
 import { IMcpServer } from '@/interfaces/database/mcp';
+import { useMemo } from 'react';
 
-/**
- * Enterprise seam for the MCP bulk-selection scope. Open source has no
- * collaborator permissions, so every listed server can be selected.
- */
 export function useOwnerMcpList(mcpList: IMcpServer[]) {
-  return mcpList;
+  return useMemo(
+    () =>
+      mcpList.filter((item) => hasOwnerPermission(item.operator_permission)),
+    [mcpList],
+  );
 }

@@ -3,9 +3,9 @@ import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { LucideBox, LucideSettings } from 'lucide-react';
 
-import { LucideCloudKey } from '@/pages/admin/components/icons/LucideCloudKey';
-import useAdminVariables from '@/pages/admin/hooks/useAdminVariables';
-import { PrivateRoutes } from '@/private-routes';
+import { LucideCloudKey } from '@/ee/pages/admin/components/icons/LucideCloudKey';
+import useAdminVariables from '@/ee/pages/admin/hooks/useAdminVariables';
+import { PrivateRoutes } from '@/ee/private-routes';
 import { Routes } from '@/routes';
 
 export type AdminNavItem = {

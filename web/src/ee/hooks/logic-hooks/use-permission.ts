@@ -1,12 +1,19 @@
-/**
- * Enterprise permission seam. The enterprise build overlays this file with
- * role-based gating; open source has no edit restrictions.
- */
+import {
+  hasManagementPermission,
+  hasOwnerPermission,
+  hasPreviewPermission,
+} from '@/ee/utils/permission-util';
+import { useFetchKnowledgeBaseConfiguration } from '@/hooks/use-knowledge-request';
 
 export function useDatasetEditButtonDisabled() {
-  return false;
+  const { data: knowledgeDetails } = useFetchKnowledgeBaseConfiguration();
+  return hasPreviewPermission(knowledgeDetails.operator_permission);
 }
 
 export function useDatasetManageButtonDisabled() {
-  return false;
+  const { data: knowledgeDetails } = useFetchKnowledgeBaseConfiguration();
+  return (
+    !hasManagementPermission(knowledgeDetails.operator_permission) &&
+    !hasOwnerPermission(knowledgeDetails.operator_permission)
+  );
 }

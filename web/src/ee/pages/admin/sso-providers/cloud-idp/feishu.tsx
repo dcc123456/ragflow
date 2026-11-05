@@ -17,7 +17,7 @@ import { Input } from '@/components/ui/input';
 
 import { useTranslate } from '@/hooks/common-hooks';
 
-import { useSSOVariables } from '@/pages/admin/hooks/useSSOVariables';
+import { useSSOVariables } from '@/ee/pages/admin/hooks/useSSOVariables';
 import SSOProviderCloudIdpCard from './Card';
 import IconFeishu from './icons/feishu';
 

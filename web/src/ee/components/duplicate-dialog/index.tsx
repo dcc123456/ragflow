@@ -1,12 +1,54 @@
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { IModalProps } from '@/interfaces/common';
+import { useId } from 'react';
+import { useTranslation } from 'react-i18next';
+import { Button, ButtonLoading } from '@/components/ui/button';
+import DuplicateForm from '@/ee/components/duplicate-dialog/duplicate-form';
 
-/**
- * Enterprise dialog for duplicating a resource. Open source has no duplicate
- * action, so the slot renders nothing; the shared call sites still mount it
- * with the same props.
- */
-export default function DuplicateDialog(
-  _props: IModalProps<any> & { initialName?: string },
-) {
-  return null;
+export default function DuplicateDialog({
+  hideModal,
+  initialName,
+  onOk,
+  loading,
+}: IModalProps<any> & { initialName?: string }) {
+  const formId = useId();
+  const { t } = useTranslation();
+
+  return (
+    <Dialog open onOpenChange={hideModal}>
+      <DialogContent className="sm:max-w-[425px]">
+        <DialogHeader>
+          <DialogTitle>{t('knowledgeList.duplicateModal.title')}</DialogTitle>
+        </DialogHeader>
+
+        <DialogDescription>
+          {t('knowledgeList.duplicateModal.description')}
+        </DialogDescription>
+
+        <DuplicateForm
+          id={formId}
+          initialValues={initialName}
+          hideModal={hideModal}
+          onOk={onOk}
+        />
+
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={hideModal}>
+            {t('common.cancel')}
+          </Button>
+
+          <ButtonLoading type="submit" form={formId} loading={loading}>
+            {t('common.confirm')}
+          </ButtonLoading>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }

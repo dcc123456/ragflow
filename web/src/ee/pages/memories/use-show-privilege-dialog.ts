@@ -1,18 +1,40 @@
+import { PermissionResourceType } from '@/ee/constants/team';
+import { useSetModalState } from '@/hooks/common-hooks';
 import { IMemory } from '@/pages/memories/interface';
+import { useCallback, useMemo, useState } from 'react';
 
-/**
- * Enterprise seam for the memory permission dialog. Open source has no
- * collaborator permissions, so the modal stays closed and the record is empty.
- */
-export function useShowPrivilegeDialog() {
-  return {
-    privilegeModalVisible: false,
-    hidePrivilegeModal: () => {},
-    handShowPrivilegeModal: (_item: IMemory) => () => {},
-    recordWithSourceType: {},
-  };
+export function useMemoryWithSourceType(record: IMemory) {
+  return useMemo(() => {
+    return {
+      ...record,
+      resourceType: PermissionResourceType.Memory,
+    };
+  }, [record]);
 }
 
-export type ShowPrivilegeDialogReturnType = ReturnType<
-  typeof useShowPrivilegeDialog
->;
+export function useShowPrivilegeDialog() {
+  const {
+    visible: privilegeModalVisible,
+    hideModal: hidePrivilegeModal,
+    showModal: showPrivilegeModal,
+  } = useSetModalState();
+
+  const [record, setRecord] = useState<IMemory>({} as IMemory);
+
+  const handShowPrivilegeModal = useCallback(
+    (item: IMemory) => () => {
+      setRecord(item);
+      showPrivilegeModal();
+    },
+    [showPrivilegeModal],
+  );
+
+  const recordWithSourceType = useMemoryWithSourceType(record);
+
+  return {
+    privilegeModalVisible,
+    hidePrivilegeModal,
+    handShowPrivilegeModal,
+    recordWithSourceType,
+  };
+}

@@ -24,7 +24,6 @@ import {
   UserInfo,
 } from '@/constants/authorization';
 import { getSearchValue } from './common-util';
-const DISMISSED_NOTIFICATION_KEY = 'dismissed_notification_id';
 
 type CredentialKeys = {
   authorization: string;
@@ -82,19 +81,6 @@ const storage = {
   getLanguage: (): string => {
     return localStorage.getItem('lng') as string;
   },
-
-  getDismissedNotificationId: (): string | null => {
-    return localStorage.getItem(DISMISSED_NOTIFICATION_KEY);
-  },
-
-  setDismissedNotificationId: (id: string): void => {
-    localStorage.setItem(DISMISSED_NOTIFICATION_KEY, id);
-  },
-
-  removeDismissedNotificationId: (): void => {
-    localStorage.removeItem(DISMISSED_NOTIFICATION_KEY);
-  },
-
   setThinkingLevel: (level: string) => {
     localStorage.setItem(ThinkingLevel, level);
   },
@@ -112,6 +98,7 @@ export const adminStorage = createCredentialStorage(AdminCredentialKeys);
 export const getAuthorization = () => {
   const auth = getSearchValue('auth');
   const authorization = auth ? 'Bearer ' + auth : storage.getAuthorization();
+
   return authorization;
 };
 

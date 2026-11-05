@@ -23,59 +23,16 @@ import { redirectToLogin } from '@/ee/utils/private-util';
 import { handleEnterpriseResponseError } from '@/ee/utils/response-private';
 import { ResponseType } from '@/interfaces/database/base';
 import i18n from '@/locales/config';
-import { isBillingEnabled } from '@/services/billingStatus';
 import authorizationUtil, {
   getAuthorization,
 } from '@/utils/authorization-util';
 import notification from '@/utils/notification';
 import { RequestMethod, extend } from 'umi-request';
-import api from './api';
 import { convertTheKeysOfTheObjectToSnake, isFormData } from './common-util';
 import { setCachedLlmList } from './llm-cache';
 import { addTenantParams } from './llm-util';
 
 const FAILED_TO_FETCH = 'Failed to fetch';
-
-type SilentRule = number | { code: number; messageContains?: string };
-
-/** Error codes to be silenced per API endpoint */
-const SilentErrors: Record<string, SilentRule[]> = {
-  [api.login]: [{ code: 109, messageContains: 'license' }], // Login endpoint: 109 = token expired, handle silently
-};
-
-const shouldSilent = (url: string, code: number, message?: string): boolean => {
-  const matchedKey = Object.keys(SilentErrors).find((path) =>
-    url?.includes(path),
-  );
-  if (!matchedKey) return false;
-  return SilentErrors[matchedKey].some((rule) => {
-    if (typeof rule === 'number') {
-      return rule === code;
-    }
-    const codeMatch = rule.code === code;
-    const messageMatch = rule.messageContains
-      ? (message?.toLowerCase().includes(rule.messageContains.toLowerCase()) ??
-        false)
-      : true;
-    return codeMatch && messageMatch;
-  });
-};
-
-const showBillingUpgradeModalIfNeeded = async (data: ResponseType) => {
-  if (!isBillingEnabled()) {
-    return false;
-  }
-
-  const { PriceCode, showPriceModal } =
-    await import('@/pages/price/global/hook');
-
-  if (!PriceCode[data?.code as keyof typeof PriceCode]) {
-    return false;
-  }
-
-  showPriceModal(data as any);
-  return true;
-};
 
 export const RetcodeMessage = {
   200: i18n.t('message.200'),
@@ -150,7 +107,6 @@ request.interceptors.request.use((url: string, options: any) => {
   const data = convertTheKeysOfTheObjectToSnake(options.data);
   const params = convertTheKeysOfTheObjectToSnake(options.params);
 
-  // showStarModal(url, options.method, request);
   // Add tenant parameters to data
   const dataWithTenantParams = isFormData(data)
     ? data

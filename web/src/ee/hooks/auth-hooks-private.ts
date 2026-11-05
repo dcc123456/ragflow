@@ -14,4 +14,43 @@
  *  limitations under the License.
  */
 
-export const useEnterpriseAuthRedirect = (): string | undefined => undefined;
+import message from '@/components/ui/message';
+import authorizationUtil from '@/utils/authorization-util';
+import { useMemo } from 'react';
+import { useNavigate, useSearchParams } from 'react-router';
+
+// Consumes the enterprise login callback query parameters: stores the token
+// from `auth`, surfaces `error`, and returns `redirect_url` for the caller to
+// navigate to once the credentials are in place.
+export const useEnterpriseAuthRedirect = (): string | undefined => {
+  const [currentQueryParameters, setSearchParams] = useSearchParams();
+  const error = currentQueryParameters.get('error');
+  const newQueryParameters: URLSearchParams = useMemo(
+    () => new URLSearchParams(currentQueryParameters.toString()),
+    [currentQueryParameters],
+  );
+  const navigate = useNavigate();
+
+  if (error) {
+    message.error(error);
+    navigate('/login');
+    newQueryParameters.delete('error');
+    setSearchParams(newQueryParameters);
+    return;
+  }
+
+  const auth = currentQueryParameters.get('auth');
+
+  const redirectUrl = currentQueryParameters.get('redirect_url');
+
+  if (auth) {
+    authorizationUtil.setAuthorization(auth);
+    newQueryParameters.delete('auth');
+    if (redirectUrl) {
+      newQueryParameters.delete('redirect_url');
+    }
+    setSearchParams(newQueryParameters);
+  }
+
+  return redirectUrl ?? undefined;
+};
