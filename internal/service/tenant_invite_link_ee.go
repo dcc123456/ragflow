@@ -31,6 +31,7 @@ import (
 	"ragflow/internal/common"
 	"ragflow/internal/dao"
 	"ragflow/internal/entity"
+	"ragflow/internal/permission"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -70,7 +71,7 @@ func (s *TenantService) CreateTenantInviteLinkEE(ctx context.Context, userID, te
 	if store == nil {
 		return nil, common.NewCodedError(common.CodeServerError, "Tenant invitation link storage is unavailable")
 	}
-	if _, _, err := tenantMemberPermission(ctx, dao.DB.WithContext(ctx), userID, tenantID, entity.TenantPermissionManageMembers); err != nil {
+	if _, _, err := tenantMemberPermission(ctx, dao.DB.WithContext(ctx), permission.TenantIDFromContext(ctx), entity.TenantPermissionManageMembers); err != nil {
 		return nil, common.NewCodedError(tenantRoleErrorCode(err), err.Error())
 	}
 	if code, err := s.checkTenantInviteEnabled(ctx, tenantID); err != nil {
@@ -99,7 +100,7 @@ func (s *TenantService) CreateTenantInviteLinkEE(ctx context.Context, userID, te
 
 		tokenHash := hashTenantInviteToken(token)
 		err = dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-			return recordTenantPermissionChange(tx, tenantID, userID,
+			return recordTenantPermissionChange(ctx, tx, permission.TenantIDFromContext(ctx),
 				"tenant.invitation_link.created", "tenant", tenantID,
 				"tenant_invitation_link", tokenHash[:32], "create", 0, 0, nil,
 				map[string]interface{}{"expires_at": expiresAt, "reusable": true})
@@ -224,7 +225,7 @@ func (s *TenantService) AcceptTenantInviteLinkEE(ctx context.Context, userID, to
 		if role.roleName != "" {
 			after["role_name"] = role.roleName
 		}
-		return recordTenantPermissionChange(tx, payload.TenantID, userID,
+		return recordTenantPermissionChange(ctx, tx, permission.TenantIDFromContext(ctx),
 			"tenant.invitation_link.accepted", "user", userID,
 			"tenant_membership", membership.ID, "join", 0, 0, before, after)
 	})

@@ -179,7 +179,7 @@ func (s *GroupService) CreateGroup(ctx context.Context, userID, tenantID string,
 	var group entity.GroupInfo
 	var ownerMembershipID string
 	err = dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		membership, _, err := tenantMemberPermission(ctx, tx, userID, tenantID, 0)
+		membership, _, err := tenantMemberPermission(ctx, tx, permission.TenantIDFromContext(ctx), 0)
 		if err != nil {
 			return err
 		}
@@ -242,7 +242,7 @@ func (s *GroupService) CreateGroup(ctx context.Context, userID, tenantID string,
 		}).Error; err != nil {
 			return fmt.Errorf("add group owner as a member: %w", err)
 		}
-		if err := recordTenantPermissionChange(tx, tenantID, userID, "group.created", "group", groupID, groupPermissionResourceType, groupID, "create", 0, 0, nil, groupAuditValue(&group)); err != nil {
+		if err := recordTenantPermissionChange(ctx, tx, permission.TenantIDFromContext(ctx), "group.created", "group", groupID, groupPermissionResourceType, groupID, "create", 0, 0, nil, groupAuditValue(&group)); err != nil {
 			return err
 		}
 		return nil
@@ -265,7 +265,7 @@ func loadGroupAccess(ctx context.Context, db *gorm.DB, userID, tenantID string) 
 	if err := requireGroupFeature(ctx, db, userID, tenantID, permission.ActionEnable); err != nil {
 		return nil, err
 	}
-	membership, tenantMask, err := tenantMemberPermission(ctx, db, userID, tenantID, 0)
+	membership, tenantMask, err := tenantMemberPermission(ctx, db, permission.TenantIDFromContext(ctx), 0)
 	if err != nil {
 		return nil, err
 	}
@@ -680,7 +680,7 @@ func (s *GroupService) UpdateGroup(ctx context.Context, userID, tenantID, groupI
 		group.FormattedPath = &formattedPath
 		after := groupAuditValue(group)
 		after["subtree"] = groupPathAuditValues(subtree, paths)
-		if err := recordTenantPermissionChange(tx, tenantID, userID, "group.updated", "group", groupID, groupPermissionResourceType, groupID, "update", 0, 0, before, after); err != nil {
+		if err := recordTenantPermissionChange(ctx, tx, permission.TenantIDFromContext(ctx), "group.updated", "group", groupID, groupPermissionResourceType, groupID, "update", 0, 0, before, after); err != nil {
 			return err
 		}
 		return nil
@@ -749,7 +749,7 @@ func (s *GroupService) TransferGroupOwnership(ctx context.Context, userID, tenan
 			return err
 		}
 		if oldMask&entity.GroupPermissionOwner != 0 {
-			if _, err := replaceDirectGroupMemberPermission(tx, userID, tenantID, groupID, oldOwnerID, oldMask&^entity.GroupPermissionOwner); err != nil {
+			if _, err := replaceDirectGroupMemberPermission(ctx, tx, groupID, oldOwnerID, oldMask&^entity.GroupPermissionOwner); err != nil {
 				return err
 			}
 		}
@@ -765,7 +765,7 @@ func (s *GroupService) TransferGroupOwnership(ctx context.Context, userID, tenan
 		if err := tx.Model(&entity.GroupInfo{}).Where("id = ? AND tenant_id = ?", groupID, tenantID).Update("owner_id", target.ID).Error; err != nil {
 			return fmt.Errorf("transfer group ownership: %w", err)
 		}
-		return recordTenantPermissionChange(tx, tenantID, userID, "group.owner.transferred", "group", groupID,
+		return recordTenantPermissionChange(ctx, tx, permission.TenantIDFromContext(ctx), "group.owner.transferred", "group", groupID,
 			groupPermissionResourceType, groupID, "transfer", entity.GroupPermissionOwner, entity.GroupPermissionOwner, before, after)
 	})
 	if err != nil {
@@ -838,7 +838,7 @@ func (s *GroupService) MoveGroup(ctx context.Context, userID, tenantID, groupID 
 				return fmt.Errorf("move group %s: %w", item.ID, err)
 			}
 		}
-		if err := recordTenantPermissionChange(tx, tenantID, userID, "group.moved", "group", groupID, groupPermissionResourceType, groupID, "update", 0, 0,
+		if err := recordTenantPermissionChange(ctx, tx, permission.TenantIDFromContext(ctx), "group.moved", "group", groupID, groupPermissionResourceType, groupID, "update", 0, 0,
 			map[string]interface{}{"parent_id": group.ParentID, "subtree": before},
 			map[string]interface{}{"parent_id": newParentID, "subtree": groupPathAuditValues(subtree, paths)}); err != nil {
 			return err
@@ -898,7 +898,7 @@ func (s *GroupService) DeleteGroup(ctx context.Context, userID, tenantID, groupI
 			}
 		}
 		for _, member := range members {
-			if err := recordTenantPermissionChange(tx, tenantID, userID, "group.member.removed", "user_tenant", member.MemberID, groupPermissionResourceType, member.GroupID, "revoke", 0, 0,
+			if err := recordTenantPermissionChange(ctx, tx, permission.TenantIDFromContext(ctx), "group.member.removed", "user_tenant", member.MemberID, groupPermissionResourceType, member.GroupID, "revoke", 0, 0,
 				map[string]interface{}{"group_member_id": member.ID, "status": member.Status},
 				map[string]interface{}{"group_member_id": member.ID, "status": entity.GroupMemberStatusRemoved}); err != nil {
 				return err
@@ -908,12 +908,12 @@ func (s *GroupService) DeleteGroup(ctx context.Context, userID, tenantID, groupI
 			targetType, targetID := permissionTarget(grant)
 			before := map[string]interface{}{"permission_id": grant.ID, "permission": grant.Permission, "status": grant.Status}
 			after := map[string]interface{}{"permission_id": grant.ID, "permission": 0, "status": invalid}
-			if err := recordTenantPermissionChange(tx, tenantID, userID, "group.permission.revoked", targetType, targetID, grant.ResourceType, groupStringValue(grant.ResourceID), "revoke", grant.Permission, 0, before, after); err != nil {
+			if err := recordTenantPermissionChange(ctx, tx, permission.TenantIDFromContext(ctx), "group.permission.revoked", targetType, targetID, grant.ResourceType, groupStringValue(grant.ResourceID), "revoke", grant.Permission, 0, before, after); err != nil {
 				return err
 			}
 		}
 		for _, item := range groups {
-			if err := recordTenantPermissionChange(tx, tenantID, userID, "group.deleted", "group", item.ID, groupPermissionResourceType, item.ID, "delete", 0, 0,
+			if err := recordTenantPermissionChange(ctx, tx, permission.TenantIDFromContext(ctx), "group.deleted", "group", item.ID, groupPermissionResourceType, item.ID, "delete", 0, 0,
 				groupAuditValue(&item), map[string]interface{}{"status": invalid}); err != nil {
 				return err
 			}
@@ -1071,7 +1071,7 @@ func (s *GroupService) InviteGroupMember(ctx context.Context, userID, tenantID, 
 		} else {
 			return fmt.Errorf("load existing group membership: %w", err)
 		}
-		if err := recordTenantPermissionChange(tx, tenantID, userID, "group.member.invited", "user", targetUserID,
+		if err := recordTenantPermissionChange(ctx, tx, permission.TenantIDFromContext(ctx), "group.member.invited", "user", targetUserID,
 			groupPermissionResourceType, groupID, "grant", 0, 0, before,
 			map[string]interface{}{"group_member_id": existing.ID, "member_id": memberID, "status": entity.GroupMemberStatusInvited, "invited_by": userID}); err != nil {
 			return err
@@ -1090,7 +1090,7 @@ func (s *GroupService) RespondToGroupInvitation(ctx context.Context, userID, ten
 		if err := requireGroupFeature(ctx, tx, userID, tenantID, permission.ActionEnable); err != nil {
 			return err
 		}
-		membership, _, err := tenantMemberPermission(ctx, tx, userID, tenantID, 0)
+		membership, _, err := tenantMemberPermission(ctx, tx, permission.TenantIDFromContext(ctx), 0)
 		if err != nil {
 			return err
 		}
@@ -1116,7 +1116,7 @@ func (s *GroupService) RespondToGroupInvitation(ctx context.Context, userID, ten
 		if err := tx.Model(&entity.GroupMember{}).Where("id = ?", invitation.ID).Update("status", newStatus).Error; err != nil {
 			return fmt.Errorf("update group invitation status: %w", err)
 		}
-		return recordTenantPermissionChange(tx, tenantID, userID, eventType, "user", userID,
+		return recordTenantPermissionChange(ctx, tx, permission.TenantIDFromContext(ctx), eventType, "user", userID,
 			groupPermissionResourceType, group.ID, "update", 0, 0,
 			map[string]interface{}{"group_member_id": invitation.ID, "status": entity.GroupMemberStatusInvited},
 			map[string]interface{}{"group_member_id": invitation.ID, "status": newStatus})
@@ -1129,7 +1129,7 @@ func (s *GroupService) ListGroupInvitations(ctx context.Context, userID, tenantI
 	if err := requireGroupFeature(ctx, db, userID, tenantID, permission.ActionRead); err != nil {
 		return nil, err
 	}
-	membership, _, err := tenantMemberPermission(ctx, db, userID, tenantID, 0)
+	membership, _, err := tenantMemberPermission(ctx, db, permission.TenantIDFromContext(ctx), 0)
 	if err != nil {
 		return nil, err
 	}
@@ -1216,14 +1216,14 @@ func (s *GroupService) RemoveGroupMember(ctx context.Context, userID, tenantID, 
 				return fmt.Errorf("revoke member group permissions: %w", err)
 			}
 		}
-		if err := recordTenantPermissionChange(tx, tenantID, userID, "group.member.removed", "user", targetUserID,
+		if err := recordTenantPermissionChange(ctx, tx, permission.TenantIDFromContext(ctx), "group.member.removed", "user", targetUserID,
 			groupPermissionResourceType, groupID, "revoke", 0, 0,
 			map[string]interface{}{"group_member_id": groupMember.ID, "status": beforeStatus},
 			map[string]interface{}{"group_member_id": groupMember.ID, "status": entity.GroupMemberStatusRemoved}); err != nil {
 			return err
 		}
 		for _, grant := range grants {
-			if err := recordTenantPermissionChange(tx, tenantID, userID, "group.member.permissions.revoked", "user", targetUserID,
+			if err := recordTenantPermissionChange(ctx, tx, permission.TenantIDFromContext(ctx), "group.member.permissions.revoked", "user", targetUserID,
 				groupPermissionResourceType, groupID, "revoke", grant.Permission, 0,
 				map[string]interface{}{"permission_id": grant.ID, "permission": grant.Permission},
 				map[string]interface{}{"permission_id": grant.ID, "permission": 0, "status": entity.StatusInvalid}); err != nil {
@@ -1275,7 +1275,7 @@ func (s *GroupService) SetGroupMemberPermissions(ctx context.Context, userID, te
 			}
 			return fmt.Errorf("load joined group member: %w", err)
 		}
-		_, err = replaceDirectGroupMemberPermission(tx, userID, tenantID, groupID, target.ID, newMask)
+		_, err = replaceDirectGroupMemberPermission(ctx, tx, groupID, target.ID, newMask)
 		return err
 	})
 	if err != nil {
@@ -1341,7 +1341,8 @@ func loadStoredDirectGroupMemberPermission(db *gorm.DB, tenantID, groupID, membe
 	return mask, nil
 }
 
-func replaceDirectGroupMemberPermission(tx *gorm.DB, actorUserID, tenantID, groupID, memberID string, newMask int32) (int32, error) {
+func replaceDirectGroupMemberPermission(ctx context.Context, tx *gorm.DB, groupID, memberID string, newMask int32) (int32, error) {
+	tenantID := permission.TenantIDFromContext(ctx)
 	var rows []entity.Permission
 	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 		Where("tenant_id = ? AND resource_type = ? AND resource_id = ? AND member_id = ? AND status = ? AND (group_id IS NULL OR group_id = '')",
@@ -1392,7 +1393,7 @@ func replaceDirectGroupMemberPermission(tx *gorm.DB, actorUserID, tenantID, grou
 	if oldMask != newMask {
 		before := map[string]interface{}{"permission": oldMask, "permissions": groupPermissionNames(oldMask)}
 		after := map[string]interface{}{"permission": newMask, "permissions": groupPermissionNames(newMask)}
-		if err := recordTenantPermissionChange(tx, tenantID, actorUserID, "group.member.permissions.updated", "user_tenant", memberID,
+		if err := recordTenantPermissionChange(ctx, tx, permission.TenantIDFromContext(ctx), "group.member.permissions.updated", "user_tenant", memberID,
 			groupPermissionResourceType, groupID, "update", oldMask, newMask, before, after); err != nil {
 			return oldMask, err
 		}

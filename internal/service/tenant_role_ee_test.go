@@ -309,7 +309,8 @@ func TestAcceptTenantInvitationAssignsDefaultRoleAndAudits(t *testing.T) {
 		t.Fatalf("seed pending Tenant invitation: %v", err)
 	}
 	service := &TenantService{userTenantDAO: dao.NewUserTenantDAO()}
-	if code, err := service.AcceptInvite(t.Context(), "invitee-user", "tenant-1"); err != nil || code != common.CodeSuccess {
+	ctx := permission.WithIdentity(t.Context(), "invitee-user", "tenant-1")
+	if code, err := service.AcceptInvite(ctx, "tenant-1"); err != nil || code != common.CodeSuccess {
 		t.Fatalf("AcceptInvite() = (%v, %v), want success", code, err)
 	}
 	var membership entity.UserTenant

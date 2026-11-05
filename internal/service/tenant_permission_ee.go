@@ -22,14 +22,16 @@ import (
 
 	"ragflow/internal/dao"
 	"ragflow/internal/entity"
+	"ragflow/internal/permission"
 )
 
-func resolveDefaultTenantIDEE(context.Context, string) (string, bool, error) {
+func resolveDefaultTenantIDEE(context.Context) (string, bool, error) {
 	return "", false, nil
 }
 
 func resolveCurrentUserTenantEE(ctx context.Context, userID string) (*entity.UserTenant, bool, error) {
-	tenantID, err := requireCurrentTenantID(ctx, userID)
+	ctx = permission.WithIdentity(ctx, userID, permission.TenantIDFromContext(ctx))
+	tenantID, err := requireCurrentTenantID(ctx)
 	if err != nil {
 		return nil, true, err
 	}

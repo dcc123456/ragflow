@@ -23,8 +23,9 @@ import (
 	"ragflow/internal/permission"
 )
 
-func prepareAgentCreation(ctx context.Context, userID string) (string, error) {
-	tenantID, err := requireCurrentTenantID(ctx, userID)
+func prepareAgentCreation(ctx context.Context) (string, error) {
+	userID := permission.UserIDFromContext(ctx)
+	tenantID, err := requireCurrentTenantID(ctx)
 	if err != nil {
 		return "", err
 	}

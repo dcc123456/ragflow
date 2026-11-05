@@ -24,6 +24,7 @@ import (
 	"ragflow/internal/common"
 	"ragflow/internal/dao"
 	"ragflow/internal/entity"
+	"ragflow/internal/permission"
 
 	"gorm.io/gorm"
 )
@@ -33,7 +34,8 @@ func TestTenantSelfRemovalAuditUsesMembershipIDEE(t *testing.T) {
 	seedTenantMembership(t, db, "member-link", "member-user", "tenant-1", "normal")
 	s := &TenantService{userTenantDAO: dao.NewUserTenantDAO()}
 
-	code, err := s.RemoveMember(t.Context(), "member-user", "tenant-1", "member-user")
+	ctx := permission.WithIdentity(t.Context(), "member-user", "tenant-1")
+	code, err := s.RemoveMember(ctx, "tenant-1", "member-user")
 	if err != nil || code != common.CodeSuccess {
 		t.Fatalf("RemoveMember(self) = (%v, %v), want success", code, err)
 	}
@@ -48,7 +50,8 @@ func TestTenantInviteDeclineAuditUsesMembershipIDEE(t *testing.T) {
 	}
 	s := &TenantService{userTenantDAO: dao.NewUserTenantDAO()}
 
-	code, err := s.RemoveMember(t.Context(), "invitee-user", "tenant-1", "invitee-user")
+	ctx := permission.WithIdentity(t.Context(), "invitee-user", "tenant-1")
+	code, err := s.RemoveMember(ctx, "tenant-1", "invitee-user")
 	if err != nil || code != common.CodeSuccess {
 		t.Fatalf("RemoveMember(invitation self-decline) = (%v, %v), want success", code, err)
 	}

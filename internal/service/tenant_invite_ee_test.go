@@ -24,6 +24,7 @@ import (
 	"ragflow/internal/common"
 	"ragflow/internal/dao"
 	"ragflow/internal/entity"
+	"ragflow/internal/permission"
 )
 
 func TestAddMemberRejectsWhenTenantInvitesAreDisabled(t *testing.T) {
@@ -40,7 +41,8 @@ func TestAddMemberRejectsWhenTenantInvitesAreDisabled(t *testing.T) {
 	}
 	s := &TenantService{userTenantDAO: dao.NewUserTenantDAO()}
 
-	_, code, err := s.AddMember(t.Context(), "owner-user", "tenant-xyz", &AddMemberRequest{Email: "invitee@example.com"})
+	ctx := permission.WithIdentity(t.Context(), "owner-user", "tenant-xyz")
+	_, code, err := s.AddMember(ctx, "tenant-xyz", &AddMemberRequest{Email: "invitee@example.com"})
 	if err == nil || code != common.CodeForbidden {
 		t.Fatalf("AddMember() = (%v, %v), want invitation disabled forbidden", code, err)
 	}
