@@ -256,6 +256,13 @@ func isOIDCChannel(cfg config.OAuthChannel) bool {
 // Models the relevant fields the email-password Register path sets so the
 // rest of the app (kbs, files, llm config) sees a fully-shaped tenant.
 func (s *UserService) registerOAuthUser(ctx context.Context, channel string, info *oauth.UserInfo) (*entity.User, common.ErrorCode, error) {
+	if err := CheckRegistrationWhitelist(ctx, info.Email); err != nil {
+		var coded *common.CodedError
+		if errors.As(err, &coded) {
+			return nil, coded.Code, err
+		}
+		return nil, common.CodeServerError, err
+	}
 	cfg := server.GetConfig()
 	userID := common.GenerateToken()
 	accessToken := common.GenerateToken()

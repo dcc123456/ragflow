@@ -25,7 +25,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// permissionDataModelsEE returns the entities included in the enterprise schema.
+// permissionDataModelsEE returns the enterprise authorization entities.
 func permissionDataModelsEE() []interface{} {
 	return []interface{}{
 		&entity.Role{},
@@ -41,5 +41,8 @@ func permissionDataModelsEE() []interface{} {
 }
 
 func initializeSystemSettingsEE(ctx context.Context, db *gorm.DB) error {
-	return ensureDefaultTenantInviteEnabled(ctx, db)
+	if err := ensureDefaultTenantInviteEnabled(ctx, db); err != nil {
+		return err
+	}
+	return ensureWhitelistSetting(ctx, db)
 }

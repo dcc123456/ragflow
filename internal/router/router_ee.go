@@ -31,6 +31,7 @@ func SetupEERouter(engine *gin.Engine) {
 	serverName := server.GetServerName()
 	engine.Use(otelgin.Middleware(serverName))
 	engine.Use(utility.GetRateLimit().Middleware())
+	engine.Use(handler.RegistrationWhitelist())
 }
 
 func RegisterEENoAuthRouter(_ *gin.Engine, apiNoAuth *gin.RouterGroup, r *Router) {

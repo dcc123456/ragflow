@@ -1,0 +1,102 @@
+//
+// Copyright 2026 The InfiniFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+
+//go:build ee
+
+package admin
+
+import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"reflect"
+	"runtime"
+	"testing"
+
+	"ragflow/internal/common"
+
+	"github.com/gin-gonic/gin"
+)
+
+func TestWhitelistRoutes(t *testing.T) {
+	originalMode := gin.Mode()
+	gin.SetMode(gin.TestMode)
+	t.Cleanup(func() { gin.SetMode(originalMode) })
+
+	handler := &Handler{}
+	type routeMatch struct {
+		Handler string
+		ID      string
+		Email   string
+	}
+	engine := gin.New()
+	group := engine.Group("/api/v1/admin", func(c *gin.Context) {
+		// Observe route dispatch independently of service behavior.
+		c.AbortWithStatusJSON(http.StatusOK, routeMatch{
+			Handler: c.HandlerName(), ID: c.Param("id"), Email: c.Param("email"),
+		})
+	})
+	RegisterEERouter(group, NewRouter(handler))
+
+	protected := gin.New()
+	RegisterEERouter(protected.Group("/api/v1/admin", handler.AuthMiddleware()), NewRouter(handler))
+
+	for _, tc := range []struct {
+		name    string
+		method  string
+		path    string
+		handler gin.HandlerFunc
+		id      string
+		email   string
+	}{
+		{name: "list", method: http.MethodGet, path: "/whitelist", handler: handler.ShowWhiteList},
+		{name: "add", method: http.MethodPost, path: "/whitelist/add", handler: handler.AddWhiteList},
+		{name: "import", method: http.MethodPost, path: "/whitelist/batch", handler: handler.BatchAddWhiteList},
+		{name: "update by id", method: http.MethodPut, path: "/whitelist/42", handler: handler.UpdateWhiteList, id: "42"},
+		{name: "delete by email", method: http.MethodDelete, path: "/whitelist/alice@example.com", handler: handler.DeleteWhiteList, email: "alice@example.com"},
+		{name: "delete encoded email", method: http.MethodDelete, path: "/whitelist/alice%2Btag%40example.com", handler: handler.DeleteWhiteList, email: "alice+tag@example.com"},
+		{name: "batch delete", method: http.MethodDelete, path: "/whitelist/batch", handler: handler.BatchDeleteWhiteList},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := "/api/v1/admin" + tc.path
+			response := httptest.NewRecorder()
+			engine.ServeHTTP(response, httptest.NewRequest(tc.method, path, nil))
+			if response.Code != http.StatusOK {
+				t.Fatalf("%s %s status = %d, body = %s", tc.method, path, response.Code, response.Body.String())
+			}
+			var got routeMatch
+			if err := json.Unmarshal(response.Body.Bytes(), &got); err != nil {
+				t.Fatal(err)
+			}
+			want := routeMatch{Handler: runtime.FuncForPC(reflect.ValueOf(tc.handler).Pointer()).Name(), ID: tc.id, Email: tc.email}
+			if got != want {
+				t.Fatalf("%s %s matched %+v, want %+v", tc.method, path, got, want)
+			}
+
+			response = httptest.NewRecorder()
+			protected.ServeHTTP(response, httptest.NewRequest(tc.method, path, nil))
+			var result struct {
+				Code common.ErrorCode `json:"code"`
+			}
+			if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+				t.Fatal(err)
+			}
+			if result.Code != common.CodeUnauthorized {
+				t.Fatalf("%s %s without authorization = %s, want unauthorized", tc.method, path, response.Body.String())
+			}
+		})
+	}
+}

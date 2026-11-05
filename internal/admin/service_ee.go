@@ -2218,68 +2218,6 @@ func (s *Service) ShowVerificationEmail(ctx context.Context) (map[string]interfa
 	return result, nil
 }
 
-// ShowWhiteList show white list
-func (s *Service) ShowWhiteList(ctx context.Context) ([]map[string]interface{}, error) {
-	result := []map[string]interface{}{
-		{
-			"command": "show_white_list",
-			"error":   "'Show white list' is not supported",
-		},
-	}
-	return result, nil
-}
-
-// AddWhiteList add white list
-func (s *Service) AddWhiteList(ctx context.Context, email string) (map[string]interface{}, error) {
-	result := map[string]interface{}{
-		"command": "add_white_list",
-		"email":   email,
-		"error":   "'Add white list' is not supported",
-	}
-	return result, nil
-}
-
-// BatchAddWhiteList batch add white list
-func (s *Service) BatchAddWhiteList(ctx context.Context, file *multipart.FileHeader) (map[string]interface{}, error) {
-	result := map[string]interface{}{
-		"command":  "batch_add_white_list",
-		"filename": file.Filename,
-		"error":    "'Batch add white list' is not supported",
-	}
-	return result, nil
-}
-
-// UpdateWhiteList update white list
-func (s *Service) UpdateWhiteList(ctx context.Context, id, email string) (map[string]interface{}, error) {
-	result := map[string]interface{}{
-		"command": "update_white_list",
-		"id":      id,
-		"email":   email,
-		"error":   "'Update white list' is not supported",
-	}
-	return result, nil
-}
-
-// DeleteWhiteList delete white list
-func (s *Service) DeleteWhiteList(ctx context.Context, id int) (map[string]interface{}, error) {
-	result := map[string]interface{}{
-		"command": "delete_white_list",
-		"id":      id,
-		"error":   "'Delete white list' is not supported",
-	}
-	return result, nil
-}
-
-// BatchDeleteWhiteList batch delete white list
-func (s *Service) BatchDeleteWhiteList(ctx context.Context, ids []int) (map[string]interface{}, error) {
-	result := map[string]interface{}{
-		"command": "batch_delete_white_list",
-		"ids":     ids,
-		"error":   "'Batch delete white list' is not supported",
-	}
-	return result, nil
-}
-
 // GetTokenStats returns API token statistics for the user.
 func (s *Service) GetTokenStats(ctx context.Context, userName, fromDate, toDate, granularity string) ([]map[string]interface{}, error) {
 	user, err := s.userDAO.GetByEmail(ctx, dao.DB, userName)
