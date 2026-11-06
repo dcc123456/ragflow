@@ -74,6 +74,40 @@ jobs:
           fetch-tags: false
           allow-unsafe-pr-checkout: true
 
+      # The checkout above is shallow (fetch-depth: 1), so the diff endpoints
+      # below are usually missing from the local object store -- e.g. right
+      # after "Update branch", when both are parents of the fetched merge
+      # ref. Fetch them once, up front, for every step that diffs them.
+      - name: Fetch diff endpoint commits
+        if: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          for sha in "$BASE_SHA" "$HEAD_SHA"; do
+            if ! git cat-file -e "$sha^{commit}" 2>/dev/null; then
+              git fetch --no-tags --depth=1 origin "$sha"
+            fi
+          done
+          # The depth-1 roots share no history locally, so a three-dot diff
+          # would fail with "fatal: ... no merge base". Deepen both shallow
+          # boundaries until the two histories connect. A PR's branch point is
+          # nearly always recent, so the first (cheap) round suffices; the
+          # second round exists only so the job fails with a truthful message
+          # instead of a bare git error.
+          connect() { git merge-base "$BASE_SHA" "$HEAD_SHA" >/dev/null 2>&1; }
+          if ! connect; then
+            git fetch --no-tags --deepen=100 origin "$BASE_SHA" "$HEAD_SHA"
+          fi
+          if ! connect; then
+            git fetch --no-tags --deepen=1000 origin "$BASE_SHA" "$HEAD_SHA"
+          fi
+          if ! connect; then
+            echo "::error::cannot compute the merge base of ${BASE_SHA} and ${HEAD_SHA} even after deepening; the PR diverged too far back for a shallow diff."
+            exit 1
+          fi
+
       - name: Check enterprise Go file changes
         if: ${{ github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'merge_oss') }}
         env:
@@ -82,12 +116,21 @@ jobs:
         run: |
           set -euo pipefail
           # Disable rename detection so renaming a shared Go file to an EE file is also rejected.
-          if ! git diff --exit-code --name-only --no-renames --no-ext-diff --no-textconv "${BASE_SHA}...${HEAD_SHA}" -- \
+          set +e
+          git diff --exit-code --name-only --no-renames --no-ext-diff --no-textconv "${BASE_SHA}...${HEAD_SHA}" -- \
             ':(top,glob)**/*.go' \
             ':(top,glob,exclude)**/*_ee.go' \
-            ':(top,glob,exclude)**/*_ee_test.go'; then
+            ':(top,glob,exclude)**/*_ee_test.go'
+          status=$?
+          set -e
+          # 1: offending files present; 128: git could not resolve the
+          # expression (infrastructure problem, not a policy violation).
+          if [ "$status" -eq 1 ]; then
             echo "::error::Only *_ee.go and *_ee_test.go Go files may be changed without the merge_oss label."
             exit 1
+          elif [ "$status" -ne 0 ]; then
+            echo "::error::preflight could not diff ${BASE_SHA}...${HEAD_SHA} (git exit $status); see the log above."
+            exit "$status"
           fi
 
       - name: Check workflow duplication
