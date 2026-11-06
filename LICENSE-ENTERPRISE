@@ -1,0 +1,359 @@
+RAGFlow Enterprise Edition Commercial License
+RAGFlow 企业版商业许可证
+Version 1.0
+
+Copyright (c) 2026 InfiniFlow. All rights reserved.
+版权所有 (c) 2026 InfiniFlow。保留所有权利。
+
+This file contains the license terms for the RAGFlow Enterprise Edition.
+本文件载明 RAGFlow 企业版的许可条款。
+
+RAGFlow Community Edition is licensed under the Apache License, Version 2.0.
+RAGFlow 社区版依据 Apache License 2.0 授权。
+
+This file is not a signature page. Commercial terms such as fees, term,
+seats, deployment scope, support and SLA are set forth in the applicable
+Order Form or commercial agreement. If there is a conflict between this file
+and an Order Form regarding commercial terms, the Order Form prevails.
+本文件不是签字页。费用、期限、席位、部署范围、支持与 SLA 等商业条款，
+以适用的订单或商业协议为准。本文件与订单就商业条款不一致的，以订单为准。
+
+================================================================================
+ENGLISH VERSION
+================================================================================
+
+1. DEFINITIONS
+
+1.1 "Licensor" means InfiniFlow and its authorized enterprise distribution
+entity.
+
+1.2 "Licensee" means the legal entity that installs, copies, accesses or uses
+the Enterprise Edition, or that has accepted an Order Form for the Enterprise
+Edition.
+
+1.3 "Enterprise Edition" means the proprietary enterprise software
+distribution, proprietary modules, modifications, integrations, enterprise
+features, packaging and accompanying documentation delivered by the Licensor,
+which may incorporate or link to open-source components, including RAGFlow
+Community Edition.
+
+1.4 "RAGFlow Community Edition" means the open-source version of RAGFlow made
+available by the Licensor under the Apache License, Version 2.0.
+
+1.5 "Order Form" means an order document, quotation, subscription
+confirmation or commercial agreement issued or accepted by the Licensor that
+specifies fees, term, scope, seats, deployment environment or other commercial
+terms.
+
+1.6 "Authorized Users" means the Licensee's employees, individual contractors
+and agents who are bound by written confidentiality obligations at least as
+protective as those in this file, and who use the Enterprise Edition solely
+for the Licensee's internal business purposes.
+
+2. RELATIONSHIP TO OPEN-SOURCE LICENSE
+
+2.1 RAGFlow Community Edition is licensed under the Apache License, Version
+2.0. Nothing in this file restricts, modifies or supersedes the rights granted
+to the Licensee under the Apache License, Version 2.0 with respect to RAGFlow
+Community Edition source code.
+
+2.2 This file governs only the Enterprise Edition, namely the proprietary
+additions, modifications, modules, distribution packaging, enterprise features
+and commercial services provided by the Licensor that are not part of RAGFlow
+Community Edition.
+
+2.3 To the extent any Enterprise Edition component is derived from or
+incorporates RAGFlow Community Edition code, the Licensee's use of such
+underlying code remains subject to the Apache License, Version 2.0, including
+its notice and attribution requirements. The Licensee must retain all
+applicable copyright, patent, trademark and attribution notices.
+
+3. LICENSE GRANT
+
+3.1 Subject to payment of all applicable fees and continued compliance with
+this file and the applicable Order Form, the Licensor grants the Licensee a
+limited, non-exclusive, non-transferable, non-sublicensable and revocable
+license to:
+
+(a) install, execute and use the Enterprise Edition in object-code or
+delivered form, solely for the Licensee's internal business purposes within
+the scope set forth in the Order Form;
+
+(b) reproduce the Enterprise Edition solely as necessary for backup, disaster
+recovery and internal deployment within the authorized scope;
+
+(c) permit Authorized Users to access and use the Enterprise Edition, provided
+such access is under the Licensee's control and solely for the Licensee's
+internal business purposes.
+
+3.2 The Licensee is responsible for all acts and omissions of its Authorized
+Users.
+
+3.3 No rights are granted by implication, estoppel or otherwise. The license
+is limited to the product, brand, deployment environment, seat count, storage
+quota and term specified in the Order Form.
+
+4. RESTRICTIONS
+
+The Licensee shall not, and shall not permit any third party to:
+
+4.1 sell, resell, sublicense, lease, rent, distribute or otherwise transfer
+the Enterprise Edition, or make it available to any third party as a
+standalone product, except as expressly authorized in the Order Form;
+
+4.2 modify, adapt, translate, reverse engineer, decompile, disassemble or
+create derivative works of the Enterprise Edition, except for configuration
+through documented interfaces or to the extent such restriction is prohibited
+by applicable law;
+
+4.3 remove, alter or obscure any copyright, trademark, patent or other
+proprietary notice contained in or on the Enterprise Edition;
+
+4.4 use the Enterprise Edition to build a competing product or service, or to
+develop a substitute for the Enterprise Edition;
+
+4.5 use the Enterprise Edition for time-sharing, service-bureau or outsourced
+processing purposes for third parties, unless expressly authorized in the
+Order Form;
+
+4.6 disclose or make the Enterprise Edition available to any entity outside
+the Licensee's corporate group, except to Authorized Users as permitted under
+Section 1.6;
+
+4.7 use the Enterprise Edition in any manner that violates applicable export
+control, sanctions, data protection or other laws.
+
+5. FEES AND PAYMENT
+
+5.1 The Licensee shall pay the fees specified in the Order Form in accordance
+with the payment terms stated therein. All fees are exclusive of taxes,
+duties and withholdings, which shall be borne by the Licensee, except for
+taxes based on the Licensor's net income.
+
+5.2 Except as expressly provided in the Order Form or required by applicable
+law, fees are non-refundable. Overdue amounts may accrue interest at the
+lesser of 1.5% per month or the maximum rate permitted by law.
+
+6. OWNERSHIP AND INTELLECTUAL PROPERTY
+
+6.1 The Enterprise Edition is licensed, not sold. The Licensor and its
+licensors retain all right, title and interest in and to the Enterprise
+Edition, including all intellectual property rights therein.
+
+6.2 The Licensee retains ownership of its own data, configurations and
+independently developed applications that do not incorporate the Enterprise
+Edition.
+
+6.3 No trademark or service mark license is granted under this file. The
+Licensee may not use the Licensor's names, logos or trademarks without prior
+written consent, except as necessary for accurate factual reference.
+
+7. CONFIDENTIALITY
+
+7.1 "Confidential Information" means non-public information disclosed by one
+party to the other that is marked as confidential or that a reasonable person
+would understand to be confidential given the nature of the information and
+the circumstances of disclosure, including the Enterprise Edition, its source
+code, architecture and trade secrets.
+
+7.2 The receiving party shall: (a) use Confidential Information solely for
+performing its obligations under this file and the Order Form; (b) protect it
+with at least the same degree of care it uses for its own confidential
+information, and in no event less than reasonable care; and (c) not disclose
+it to third parties without the disclosing party's prior written consent.
+
+7.3 The obligations in this Section do not apply to information that: (a) is
+or becomes publicly available without breach; (b) was lawfully known to the
+receiving party before disclosure; (c) is received from a third party without
+breach of confidentiality; or (d) is independently developed without use of
+Confidential Information.
+
+8. WARRANTY DISCLAIMER
+
+THE ENTERPRISE EDITION IS PROVIDED "AS IS" AND "AS AVAILABLE," WITHOUT
+WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE AND
+NON-INFRINGEMENT. THE LICENSOR DOES NOT WARRANT THAT THE ENTERPRISE EDITION
+WILL BE ERROR-FREE, UNINTERRUPTED OR COMPLETELY SECURE.
+
+9. LIMITATION OF LIABILITY
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, THE LICENSOR SHALL NOT BE
+LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL OR PUNITIVE
+DAMAGES, OR FOR ANY LOSS OF PROFITS, REVENUE, DATA OR BUSINESS OPPORTUNITY,
+ARISING OUT OF OR RELATED TO THIS FILE OR THE ENTERPRISE EDITION, EVEN IF
+ADVISED OF THE POSSIBILITY OF SUCH DAMAGES. THE LICENSOR'S TOTAL CUMULATIVE
+LIABILITY UNDER THIS FILE SHALL NOT EXCEED THE FEES ACTUALLY PAID BY THE
+LICENSEE FOR THE ENTERPRISE EDITION DURING THE TWELVE (12) MONTHS PRECEDING
+THE EVENT GIVING RISE TO THE CLAIM.
+
+10. TERM AND TERMINATION
+
+10.1 This license commences on the effective date stated in the Order Form or,
+if earlier, when the Licensee installs, copies or uses the Enterprise
+Edition, and continues for the term specified in the Order Form.
+
+10.2 Either party may terminate this license immediately upon written notice
+if the other party materially breaches this file or the Order Form and fails
+to cure the breach within thirty (30) days after receiving written notice.
+
+10.3 Upon termination or expiry, the Licensee shall cease all use of the
+Enterprise Edition, destroy or return all copies in its possession or control,
+and certify such destruction or return in writing if requested by the
+Licensor. Sections 4, 6, 7, 8, 9 and 11 survive termination.
+
+11. GOVERNING LAW AND DISPUTE RESOLUTION
+
+11.1 This file shall be governed by and construed in accordance with the laws
+of the People's Republic of China, without regard to its conflict-of-laws
+principles.
+
+11.2 Any dispute arising out of or in connection with this file shall be
+submitted to the competent court at the place where the Licensor is
+domiciled.
+
+12. MISCELLANEOUS
+
+12.1 This file, together with the applicable Order Form, constitutes the
+entire agreement between the parties regarding the Enterprise Edition and
+supersedes all prior or contemporaneous agreements and understandings.
+
+12.2 The Licensee may not assign or transfer this license, in whole or in
+part, without the Licensor's prior written consent. The Licensor may assign
+this license in connection with a merger, acquisition or sale of all or
+substantially all of its assets.
+
+12.3 If any provision of this file is held invalid or unenforceable, the
+remaining provisions shall continue in full force and effect.
+
+12.4 Failure to enforce any provision is not a waiver.
+
+13. ACCEPTANCE
+
+By installing, copying, accessing or using the Enterprise Edition, the
+Licensee accepts this file and the applicable Order Form. If the Licensee does
+not agree, it must cease use and delete all copies of the Enterprise Edition.
+
+For commercial licensing inquiries: sales@infiniflow.ai
+
+================================================================================
+中文版本
+================================================================================
+
+1. 定义
+
+1.1 “许可方”指 InfiniFlow 及其授权的企业发行主体。
+
+1.2 “被许可方”指安装、复制、访问或使用企业版，或已接受企业版订单的法律实体。
+
+1.3 “企业版”指许可方交付的专有企业软件发行版、专有模块、修改、集成、企业功能、封装及随附文档，其中可能包含或链接 RAGFlow 社区版等开源组件。
+
+1.4 “RAGFlow 社区版”指许可方依据 Apache License 2.0 发布的开源版本。
+
+1.5 “订单”指许可方发出或接受的、载明费用、期限、范围、席位、部署环境或其他商业条款的订单、报价单、订阅确认或商业协议。
+
+1.6 “授权用户”指受至少与本文件同等保护程度的书面保密义务约束，且仅为被许可方内部商业目的使用企业版的被许可方员工、个人承包商和代理人。
+
+2. 与开源许可证的关系
+
+2.1 RAGFlow 社区版依据 Apache License 2.0 授权。本文件不限制、不修改、也不取代 Apache License 2.0 就被许可方对 RAGFlow 社区版源代码所授予的权利。
+
+2.2 本文件仅管辖企业版，即许可方提供的、不属于 RAGFlow 社区版的专有增补、修改、模块、发行封装、企业功能及商业服务。
+
+2.3 若企业版任何组件衍生自或包含 RAGFlow 社区版代码，被许可方对该底层代码的使用仍受 Apache License 2.0 约束，包括其通知与署名要求。被许可方必须保留所有适用的版权、专利、商标及署名通知。
+
+3. 许可授予
+
+3.1 在支付全部适用费用并持续遵守本文件及适用订单的前提下，许可方授予被许可方一项有限、非独占、不可转让、不可转授权且可撤销的许可，用于：
+
+(a) 以目标代码或交付形式安装、运行和使用企业版，且仅用于订单载明范围内的被许可方内部商业目的；
+
+(b) 仅为备份、灾难恢复及授权范围内的内部部署之必要而复制企业版；
+
+(c) 允许授权用户访问和使用企业版，但该等访问须处于被许可方控制之下，且仅为被许可方内部商业目的。
+
+3.2 被许可方对其授权用户的一切作为和不作为负责。
+
+3.3 不授予任何默示权利、禁反言权利或其他权利。许可仅限于订单载明的产品、品牌、部署环境、席位数、存储配额和期限。
+
+4. 限制
+
+被许可方不得，也不得允许任何第三方：
+
+4.1 销售、转售、转授权、出租、分发或以其他方式转让企业版，或将企业版作为独立产品提供给任何第三方，但订单明确授权的除外；
+
+4.2 修改、改编、翻译、反向工程、反编译、反汇编企业版或创建其衍生作品，但通过文档化接口进行配置，或适用法律禁止该等限制的除外；
+
+4.3 移除、更改或遮盖企业版中包含的任何版权、商标、专利或其他专有通知；
+
+4.4 使用企业版构建竞争性产品或服务，或开发企业版的替代品；
+
+4.5 将企业版用于为第三方提供分时服务、服务局或外包处理，但订单明确授权的除外；
+
+4.6 向被许可方公司集团以外的任何实体披露或提供企业版，但依据第 1.6 条允许的授权用户除外；
+
+4.7 以违反适用出口管制、制裁、数据保护或其他法律的方式使用企业版。
+
+5. 费用与付款
+
+5.1 被许可方应按照订单载明的付款条件支付订单中规定的费用。所有费用均不含税费、关税和代扣代缴款项，该等款项由被许可方承担，但基于许可方净收入的税费除外。
+
+5.2 除订单明确约定或适用法律要求外，费用不予退还。逾期款项可按每月 1.5% 或法律允许的最高利率（以较低者为准）计息。
+
+6. 所有权与知识产权
+
+6.1 企业版系许可使用，而非出售。许可方及其许可方保留企业版的一切权利、所有权和利益，包括其中的所有知识产权。
+
+6.2 被许可方保留其自身数据、配置以及未包含企业版的独立开发应用的所有权。
+
+6.3 本文件不授予任何商标或服务标志许可。未经事先书面同意，被许可方不得使用许可方的名称、标识或商标，但为准确事实性指称所必需者除外。
+
+7. 保密
+
+7.1 “保密信息”指一方披露给另一方的、被标记为保密的信息，或根据信息性质和披露情形合理理解为保密的信息，包括企业版、其源代码、架构和商业秘密。
+
+7.2 接收方应：(a) 仅为履行本文件及订单项下义务使用保密信息；(b) 以不低于其对自身保密信息所用的谨慎程度（且无论如何不低于合理谨慎）保护保密信息；以及 (c) 未经披露方事先书面同意不向第三方披露。
+
+7.3 本条义务不适用于以下信息：(a) 非因违约而公开或变为公开的信息；(b) 接收方在披露前已合法知悉的信息；(c) 从第三方接收且未违反保密义务的信息；或 (d) 未使用保密信息而独立开发的信息。
+
+8. 保证免责声明
+
+企业版按“现状”和“现有可用”提供，不附带任何明示或默示的保证，包括但不限于适销性、特定用途适用性、所有权和不侵权的保证。许可方不保证企业版无错误、不中断或完全安全。
+
+9. 责任限制
+
+在适用法律允许的最大范围内，许可方不对因本文件或企业版引起或与之相关的任何间接、附带、特殊、后果性或惩罚性损害，或任何利润、收入、数据或商业机会损失承担责任，即使已被告知该等损害的可能性。许可方在本文件项下的总累计责任不超过被许可方在引起索赔的事件发生前十二（12）个月内就企业版实际支付的费用。
+
+10. 期限与终止
+
+10.1 本许可自订单载明的生效日期起生效；若被许可方更早安装、复制或使用企业版，则自该等行为发生之日起生效，并在订单规定的期限内持续有效。
+
+10.2 任何一方可在另一方实质性违反本文件或订单且未在收到书面通知后三十（30）日内纠正该违约的情况下，经书面通知立即终止本许可。
+
+10.3 本许可终止或到期后，被许可方应停止一切企业版使用，销毁或返还其持有或控制的所有副本，并应在许可方要求时书面证明该等销毁或返还。第 4、6、7、8、9 和 11 条在本许可终止后继续有效。
+
+11. 适用法律与争议解决
+
+11.1 本文件应受中华人民共和国法律管辖并依其解释，不考虑其法律冲突原则。
+
+11.2 因本文件引起或与之相关的任何争议，应提交许可方住所地有管辖权的法院解决。
+
+12. 其他条款
+
+12.1 本文件连同适用订单构成双方就企业版达成的完整协议，并取代所有先前或同期的协议和谅解。
+
+12.2 未经许可方事先书面同意，被许可方不得全部或部分转让本许可。许可方可因合并、收购或出售全部或实质全部资产而转让本许可。
+
+12.3 如果本文件任何条款被认定无效或不可执行，其余条款应继续完全有效。
+
+12.4 未执行任何条款不构成对该条款的放弃。
+
+13. 接受
+
+被许可方安装、复制、访问或使用企业版，即表示其接受本文件及适用订单。如被许可方不同意，必须停止使用并删除企业版的所有副本。
+
+商业授权咨询：sales@infiniflow.ai
+
+================================================================================
+END OF TERMS / 条款结束
+================================================================================
