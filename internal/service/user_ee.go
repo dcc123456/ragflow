@@ -39,13 +39,24 @@ type LoginChannel struct {
 // The caller is the render-facing handler, which has no request-scoped purpose
 // of its own to thread through, so the settings read uses a background context.
 func (s *UserService) GetLoginChannels() ([]*LoginChannel, common.ErrorCode, error) {
-	configured := loadSSOChannels(context.Background())
+	ctx := context.Background()
+	configured := loadSSOChannels(ctx)
 	channels := make([]*LoginChannel, 0, len(configured))
 	for channel := range configured {
 		channels = append(channels, &LoginChannel{
 			Channel:     channel,
 			DisplayName: strings.Title(channel),
 			Icon:        "sso",
+		})
+	}
+	// Directory servers log in with a form of their own rather than by
+	// redirect, but they are advertised through the same list so the login page
+	// knows which servers to offer and what to call them.
+	for _, server := range loadLDAPServers(ctx) {
+		channels = append(channels, &LoginChannel{
+			Channel:     server.Channel,
+			DisplayName: server.DisplayName,
+			Icon:        "ldap",
 		})
 	}
 	sort.Slice(channels, func(i, j int) bool {

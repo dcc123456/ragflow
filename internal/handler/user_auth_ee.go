@@ -113,6 +113,14 @@ func (h *UserHandler) OAuthLogin(c *gin.Context) {
 		return
 	}
 
+	// A directory channel shares this route with the OAuth providers because
+	// the login page posts a channel name either way, but it authenticates
+	// inline instead of redirecting to a provider.
+	if service.IsLDAPChannel(channel) {
+		h.ldapLogin(c, channel)
+		return
+	}
+
 	init, code, err := h.userService.OAuthLoginInitiate(c.Request.Context(), channel, kvrocks.Get())
 	if err != nil {
 		// Mirror Python's oauth_login: the raised ValueError propagates to
@@ -128,6 +136,35 @@ func (h *UserHandler) OAuthLogin(c *gin.Context) {
 
 	setOAuthStateCookie(c, channel, init.State, int(init.CookieMaxAge.Seconds()))
 	c.Redirect(http.StatusFound, init.AuthURL)
+}
+
+// ldapLogin serves the directory branch of GET /auth/login/:channel. The login
+// form sends the credentials as query parameters and expects the same `?auth=`
+// redirect the OAuth callback produces, because the SPA reads the token off the
+// redirect target. Failures answer with a JSON envelope instead, which is what
+// the form turns into an error toast.
+func (h *UserHandler) ldapLogin(c *gin.Context, channel string) {
+	user, code, err := h.userService.LDAPLogin(c.Request.Context(), channel, c.Query("username"), c.Query("password"))
+	if err != nil {
+		common.RespondError(c, code, err.Error())
+		return
+	}
+
+	frontendBase := frontendRedirectBase()
+	secretKey, kerr := server.GetSecretKey(c.Request.Context(), kvrocks.Get())
+	if kerr != nil {
+		c.Redirect(http.StatusFound, frontendBase+"?error=server_error")
+		return
+	}
+	authToken, terr := issueUserAccessToken(user, secretKey)
+	if terr != nil {
+		c.Redirect(http.StatusFound, frontendBase+"?error=server_error")
+		return
+	}
+
+	c.Header("Authorization", authToken)
+	c.Header("Access-Control-Expose-Headers", "Authorization")
+	c.Redirect(http.StatusFound, frontendBase+"?auth="+url.QueryEscape(authToken))
 }
 
 func (h *UserHandler) OAuthChannelCallback(c *gin.Context) {
