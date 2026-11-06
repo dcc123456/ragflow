@@ -16,14 +16,13 @@
 
 import { useTranslate } from '@/hooks/common-hooks';
 import { LLMFactory } from '@/constants/llm';
-import { useFetchAllAddedModels } from '@/hooks/use-llm-request';
 import { cn } from '@/lib/utils';
 import { parseModelValue } from '@/utils/llm-util';
 import { camelCase } from 'lodash';
 import { ReactNode, useEffect, useMemo } from 'react';
 import { useFormContext, useWatch } from 'react-hook-form';
 import { MinerUOptionsFormField } from './mineru-options-form-field';
-import { buildModelTree } from './model-tree-select';
+import { useModelTree } from './model-tree-select';
 import { PaddleOCROptionsFormField } from './paddleocr-options-form-field';
 import { TreeSelect, TreeSelectNode } from './tree-select';
 import {
@@ -43,10 +42,19 @@ export const enum ParseDocumentType {
   MonkeyOCRv2 = 'MonkeyOCRv2',
 }
 
-const hiddenDefaultParserTypes = [
-  ParseDocumentType.Docling,
-  ParseDocumentType.TCADPParser,
-];
+// Stable reference: useModelTree keys its memoized tree on its identity.
+const LayoutRecognizeModelTypes = ['image2text', 'ocr', 'vision'];
+
+function renderExperimentalLeaf(node: TreeSelectNode) {
+  return (
+    <div className="flex justify-between items-center gap-2 w-full">
+      <span className="flex items-center gap-1.5 truncate">{node.label}</span>
+      <span className="text-state-error text-sm flex-shrink-0">
+        Experimental
+      </span>
+    </div>
+  );
+}
 
 /** Selects a parser model and scopes provider-specific options to its form path. */
 export function LayoutRecognizeFormField({
@@ -86,10 +94,15 @@ export function LayoutRecognizeFormField({
   }, [form, name, optionsWithoutLLM, selectedParser]);
 
   const {
-    data: allAddedModels,
+    treeData: modelTree,
+    allAddedModels,
     isFetched: modelsFetched,
     isError: modelsError,
-  } = useFetchAllAddedModels(undefined, ownerTenantId);
+  } = useModelTree({
+    modelTypes: LayoutRecognizeModelTypes,
+    renderLeafLabel: renderExperimentalLeaf,
+    ownerTenantId,
+  });
 
   const treeData = useMemo(() => {
     const list = optionsWithoutLLM
@@ -111,23 +124,8 @@ export function LayoutRecognizeFormField({
       title: x.label,
     }));
 
-    const modelTree = buildModelTree(
-      allAddedModels,
-      ['image2text', 'ocr', 'vision'],
-      (node) => (
-        <div className="flex justify-between items-center gap-2 w-full">
-          <span className="flex items-center gap-1.5 truncate">
-            {node.label}
-          </span>
-          <span className="text-state-error text-sm flex-shrink-0">
-            Experimental
-          </span>
-        </div>
-      ),
-    );
-
     return [...prependNodes, ...modelTree];
-  }, [allAddedModels, optionsWithoutLLM, t]);
+  }, [modelTree, optionsWithoutLLM, t]);
 
   return (
     <FormField
