@@ -156,6 +156,23 @@ func grantServiceTestResource(t *testing.T, tenantID, resourceType, resourceID, 
 	}
 }
 
+func revokeServiceTestResource(t *testing.T, tenantID, resourceType, resourceID, userID string) {
+	t.Helper()
+	var membership entity.UserTenant
+	if err := dao.DB.Where("user_id = ? AND tenant_id = ? AND status = ?", userID, tenantID, entity.TenantMembershipStatusJoined).
+		Take(&membership).Error; err != nil {
+		t.Fatalf("load resource grantee membership for revoke: %v", err)
+	}
+	result := dao.DB.Where("tenant_id = ? AND resource_type = ? AND resource_id = ? AND member_id = ?",
+		tenantID, resourceType, resourceID, membership.ID).Delete(&entity.Permission{})
+	if result.Error != nil {
+		t.Fatalf("revoke test resource permission: %v", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		t.Fatalf("revoke test resource permission: no grant found for %s/%s", resourceType, resourceID)
+	}
+}
+
 func restrictServiceTestFeatureRole(t *testing.T, tenantID, resourceType string, action int32) {
 	t.Helper()
 	resourceTypes := map[string]int64{
