@@ -109,7 +109,6 @@ export const enum KnowledgeApiAction {
   FetchWikiCommits = 'fetchWikiCommits',
   FetchWikiCommit = 'fetchWikiCommit',
   FetchMetadata = 'fetchMetadata',
-  FetchMetadataKeys = 'fetchMetadataKeys',
   FetchKnowledgeList = 'fetchKnowledgeList',
   RemoveKnowledgeGraph = 'removeKnowledgeGraph',
   TraceDuplicate = 'traceDuplicate',
@@ -955,18 +954,8 @@ export function useFetchKnowledgeMetadata(kbIds: string[] = []) {
 
 export function useFetchKnowledgeMetadataKeys(kbIds: string[] = []) {
   const sortedKbIds = useMemo(() => [...kbIds].sort(), [kbIds]);
-  const { data, isFetching: loading } = useQuery<string[]>({
-    queryKey: [KnowledgeApiAction.FetchMetadataKeys, sortedKbIds],
-    initialData: [],
-    enabled: sortedKbIds.length > 0,
-    gcTime: 0,
-    queryFn: async () => {
-      const { data } = await kbService.getMetaKeys({
-        kb_ids: sortedKbIds.join(','),
-      });
-      return data?.data ?? [];
-    },
-  });
+  const { data: metadata, loading } = useFetchKnowledgeMetadata(sortedKbIds);
+  const data = useMemo(() => Object.keys(metadata), [metadata]);
 
   return { data, loading };
 }

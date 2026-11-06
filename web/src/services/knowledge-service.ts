@@ -39,7 +39,6 @@ const {
   listTagByKnowledgeIds,
   listPipelines,
   getMeta,
-  getMetaKeys,
   retrievalTestShare,
   check_embedding,
   duplicate_kb,
@@ -73,10 +72,6 @@ const methods = {
   },
   getMeta: {
     url: getMeta,
-    method: 'get',
-  },
-  getMetaKeys: {
-    url: getMetaKeys,
     method: 'get',
   },
   retrievalTestShare: {
