@@ -229,9 +229,13 @@ jobs:
             else
               BASE_SHA="${{ github.event.before }}"
               if [[ -n "${BASE_SHA}" && ! "${BASE_SHA}" =~ ^0+$ ]]; then
+                if ! git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+                  git fetch --no-tags --depth=1 origin "$BASE_SHA"
+                fi
                 CHANGED_FILES=$(git diff --name-only "${BASE_SHA}" "${GITHUB_SHA}")
               else
-                CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD)
+                # New branches have no previous SHA; include the full tree.
+                CHANGED_FILES=$(git ls-tree -r --name-only "${GITHUB_SHA}")
               fi
             fi
 
