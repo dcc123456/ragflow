@@ -19,6 +19,7 @@
 package admin
 
 import (
+	"ragflow/internal/observability"
 	"ragflow/internal/server"
 	"ragflow/internal/utility"
 
@@ -30,6 +31,7 @@ func SetupEERouter(engine *gin.Engine) {
 	serverName := server.GetServerName()
 	engine.Use(otelgin.Middleware(serverName))
 	engine.Use(utility.GetRateLimit().Middleware())
+	engine.GET("/metrics", gin.WrapH(observability.MetricsHandler()))
 }
 
 func RegisterEERouter(protected *gin.RouterGroup, r *Router) {

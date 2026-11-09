@@ -20,6 +20,7 @@ package router
 
 import (
 	"ragflow/internal/handler"
+	"ragflow/internal/observability"
 	"ragflow/internal/server"
 	"ragflow/internal/utility"
 
@@ -28,13 +29,15 @@ import (
 )
 
 func SetupEERouter(engine *gin.Engine) {
+	engine.Use(apiRetrievalMetrics())
 	serverName := server.GetServerName()
 	engine.Use(otelgin.Middleware(serverName))
 	engine.Use(utility.GetRateLimit().Middleware())
 	engine.Use(handler.RegistrationWhitelist())
 }
 
-func RegisterEENoAuthRouter(_ *gin.Engine, apiNoAuth *gin.RouterGroup, r *Router) {
+func RegisterEENoAuthRouter(engine *gin.Engine, apiNoAuth *gin.RouterGroup, r *Router) {
+	engine.GET("/metrics", gin.WrapH(observability.MetricsHandler()))
 	// Banner and feature-exposure settings the web client reads before login.
 	apiNoAuth.GET("/notification", r.systemHandler.Notification)
 	apiNoAuth.GET("/expose-model-provider", r.systemHandler.ExposeModelProvider)
@@ -63,8 +66,9 @@ func RegisterEENoAuthRouter(_ *gin.Engine, apiNoAuth *gin.RouterGroup, r *Router
 	apiNoAuth.POST("/billing/webhooks/stripe", billingHandler.Webhook)
 }
 
-// RegisterEEAuthRouter registers the authenticated billing routes.
+// RegisterEEAuthRouter registers authenticated enterprise routes.
 func RegisterEEAuthRouter(authorized *gin.RouterGroup, r *Router) {
+	authorized.GET("/api/v1/heartbeat", userHeartbeat)
 	billingHandler := handler.NewBillingHandler()
 	{
 		group := authorized.Group("/api/v1/billing")
