@@ -40,11 +40,6 @@ export default {
   traceDuplicate: (id: string) => `${webAPI}/kb/trace_clone?kb_id=${id}`,
   switchEmbeddingModel: '/v1/kb/switch_embedding',
   traceEmbedding: (id: string) => `${webAPI}/kb/trace_embedding?kb_id=${id}`,
-  joinCanvasPresence: '/v1/canvas/presence/join',
-  heartbeatCanvasPresence: '/v1/canvas/presence/heartbeat',
-  leaveCanvasPresence: '/v1/canvas/presence/leave',
-  fetchCanvasPresence: (canvasId: string) =>
-    `${webAPI}/canvas/${canvasId}/presence`,
   listTemplates: '/v1/canvas/templates',
   listCanvas: '/v1/canvas/list',
   getCanvas: '/v1/canvas/get',
