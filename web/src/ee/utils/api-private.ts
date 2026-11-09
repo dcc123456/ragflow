@@ -11,6 +11,7 @@ const webAPI = '/v1';
 const restAPIv1 = '/api/v1';
 
 export default {
+  heartBeat: `${restAPIv1}/heartbeat`,
   notification: '/api/v1/notification',
   exposeModelProvider: '/api/v1/expose-model-provider',
   exposeApi: '/api/v1/expose-api',

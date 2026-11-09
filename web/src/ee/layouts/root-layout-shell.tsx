@@ -1,3 +1,4 @@
+import { useHeartBeat } from '@/ee/hooks/use-heart-beat-request';
 import { NotificationBanner } from '@/ee/layouts/components/notification-banner';
 import { UpgradeModalProvider } from '@/ee/pages/price/global';
 import { isBillingEnabled } from '@/ee/services/billingStatus';
@@ -27,6 +28,7 @@ export function RootLayoutContent({ children }: PropsWithChildren) {
 
 /** The pricing page ships its own hero, so the shared header is hidden there. */
 export function useRootLayoutChrome(): RootLayoutChrome {
+  useHeartBeat();
   const { pathname } = useLocation();
 
   return useMemo(
