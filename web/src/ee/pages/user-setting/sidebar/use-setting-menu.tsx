@@ -1,8 +1,6 @@
 import {
-  useFetchEnableAdmin,
   useFetchExposeApi,
   useFetchExposeModelProvider,
-  useFetchIsAdmin,
 } from '@/ee/hooks/use-private-llm-request';
 import { PriceName } from '@/ee/pages/price/constant';
 import { useFetchCurrentPlan } from '@/ee/pages/price/hook/use-price-hooks';
@@ -22,15 +20,12 @@ export type SettingMenuEntry = {
 
 /**
  * Extends the upstream settings menu with the enterprise entries: billing when
- * billing is active, and hiding the model-provider page from users who are not
- * allowed to manage providers while an administrator is.
+ * billing is active, and hiding the model-provider page when it is not exposed.
  */
 export function useSettingMenuItems<T extends SettingMenuEntry>(
   items: T[],
 ): T[] {
   const { t } = useTranslation();
-  const { data: isAdmin } = useFetchIsAdmin();
-  const { data: enableAdmin } = useFetchEnableAdmin();
   const { data: exposeModelProvider } = useFetchExposeModelProvider();
   const { data: exposeApi } = useFetchExposeApi();
   const { data: currentPlan } = useFetchCurrentPlan();
@@ -61,23 +56,10 @@ export function useSettingMenuItems<T extends SettingMenuEntry>(
       }
 
       if (x.key === Routes.Model) {
-        if (exposeModelProvider) {
-          return true;
-        }
-        if (enableAdmin && !isAdmin) {
-          return false;
-        }
+        return exposeModelProvider;
       }
 
       return true;
     }) as T[];
-  }, [
-    items,
-    t,
-    currentPlan,
-    exposeApi,
-    exposeModelProvider,
-    enableAdmin,
-    isAdmin,
-  ]);
+  }, [items, t, currentPlan, exposeApi, exposeModelProvider]);
 }

@@ -1,24 +1,18 @@
-import {
-  useFetchEnableAdmin,
-  useFetchIsAdmin,
-} from '@/ee/hooks/use-private-llm-request';
+import { useFetchExposeModelProvider } from '@/ee/hooks/use-private-llm-request';
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 /**
- * When the tenant lets an administrator manage model providers, a normal user
- * is told to ask that administrator instead of being sent to a settings page
- * they cannot use. The check waits for both admin flags to settle.
+ * When model-provider settings are hidden, users are told to ask their
+ * administrator instead of being sent to that settings page.
  */
 export function useEmptyModelWarning() {
   const { t } = useTranslation();
-  const { data: isAdmin, loading: isAdminLoading } = useFetchIsAdmin();
-  const { data: enableAdmin, loading: enableAdminLoading } =
-    useFetchEnableAdmin();
+  const { data: exposeModelProvider, loading } = useFetchExposeModelProvider();
 
   const showWarning = useCallback(() => {
-    if (!enableAdmin || isAdmin) {
+    if (exposeModelProvider) {
       return false;
     }
 
@@ -30,10 +24,10 @@ export function useEmptyModelWarning() {
     });
 
     return true;
-  }, [enableAdmin, isAdmin, t]);
+  }, [exposeModelProvider, t]);
 
   return {
-    isChecking: isAdminLoading || enableAdminLoading,
+    isChecking: loading,
     showWarning,
   };
 }
