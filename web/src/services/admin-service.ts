@@ -172,8 +172,8 @@ export const logout = () => request.get<ResponseData<boolean>>(API.adminLogout);
 
 export const listUsers = (params?: {
   keyword?: string;
-  sort?: string;
-  order?: 'asc' | 'desc';
+  sort?: 'asc' | 'desc';
+  order?: string;
   page?: number;
   page_size?: number;
   role?: string;

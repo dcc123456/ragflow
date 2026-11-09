@@ -1096,42 +1096,7 @@ func (s *Service) ShowUsersActivity(ctx context.Context, days, windows *int) (ma
 	return result, nil
 }
 
-func (s *Service) listUsersInactiveByPlan(ctx context.Context, days int) ([]map[string]interface{}, int64, error) {
-	rows, err := s.userDAO.ListInactiveByPlan(ctx, dao.DB, days)
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to query inactive users: %w", err)
-	}
-
-	var totalInactive int64
-	for _, r := range rows {
-		totalInactive += r.InactiveCount
-	}
-
-	result := make([]map[string]interface{}, 0, len(rows)+1)
-	for _, r := range rows {
-		result = append(result, map[string]interface{}{
-			"plan":           r.PlanName,
-			"inactive_users": common.FormatNumber(r.InactiveCount),
-		})
-	}
-
-	result = append(result, map[string]interface{}{
-		"plan":           "Total",
-		"inactive_users": common.FormatNumber(totalInactive),
-	})
-
-	return result, totalInactive, nil
-}
-
 func (s *Service) ListUsersEE(ctx context.Context, pageIndex, pageSize int, name string, status, role, sort, orderBy, plan string, top, days int, quota *int) ([]map[string]interface{}, int64, error) {
-	if status != "" && strings.EqualFold(status, "inactive") {
-		daysVal := 90
-		if days > 0 {
-			daysVal = days
-		}
-		return s.listUsersInactiveByPlan(ctx, daysVal)
-	}
-
 	if orderBy != "" && strings.EqualFold(orderBy, "storage") {
 		topVal := 10
 		if top > 0 {
@@ -1176,50 +1141,27 @@ func (s *Service) ListUsersEE(ctx context.Context, pageIndex, pageSize int, name
 		return s.listUsersQuotaRows(ctx, topVal, *quota)
 	}
 
-	if plan != "" {
-		topVal := 30
-		if top > 0 {
-			topVal = top
-		}
-		daysVal := 30
-		if days > 0 {
-			daysVal = days
-		}
-		return s.listUsersPlanRows(ctx, topVal, plan, daysVal)
+	opts, err := parseUserListOptions(pageIndex, pageSize, name, status, sort, orderBy)
+	if err != nil {
+		return nil, 0, err
 	}
-
-	// No special filter matched: fall back to the standard paginated user list
-	// (same behavior as the open-source version for plain "LIST USERS").
-	return s.ListUsers(ctx, pageIndex, pageSize, name, status, sort, orderBy)
-}
-
-// ListUsersReports list users reports for enterprise edition
-func (s *Service) ListUsersReports(ctx context.Context, pageIndex, pageSize int, status, plan *string, days *int) (map[string]interface{}, error) {
-
-	statusStr := "all"
-	if status != nil {
-		statusStr = *status
+	rows, total, err := s.userDAO.ListForAdmin(ctx, dao.DB, opts, plan)
+	if err != nil {
+		return nil, 0, err
 	}
-	planStr := "all"
-	daysInt := 0
-	if days != nil {
-		daysInt = *days
+	users := make([]map[string]interface{}, 0, len(rows))
+	for _, row := range rows {
+		users = append(users, map[string]interface{}{
+			"email":           row.Email,
+			"nickname":        row.Nickname,
+			"create_date":     row.CreateTime,
+			"is_active":       row.IsActive,
+			"is_superuser":    row.IsSuperuser,
+			"last_login_time": row.LastLoginTime,
+			"plan":            row.Plan,
+		})
 	}
-	if plan != nil {
-		planStr = *plan
-	}
-
-	result := map[string]interface{}{
-		"page_index": pageIndex,
-		"page_size":  pageSize,
-		"status":     statusStr,
-		"plan":       planStr,
-		"days":       daysInt,
-		"command":    "list_users_reports",
-		"error":      "'List users reports' is not supported",
-	}
-
-	return result, nil
+	return users, total, nil
 }
 
 // ListUsersStorage list users storage for enterprise edition
@@ -1444,33 +1386,6 @@ func (s *Service) listUsersQuotaRows(ctx context.Context, top, quotaThreshold in
 			"plan":       r.PlanName,
 			"used":       common.FormatBytes(r.StorageUsed),
 			"limit":      limitDisplay,
-			"last_login": lastLogin,
-		})
-	}
-
-	return result, int64(len(rows)), nil
-}
-
-// listUsersPlanRows returns active users filtered by plan name within the last N days.
-// Active users are defined by last_login_time >= now - days.
-// Results are sorted by last_login_time descending, limited to top N.
-func (s *Service) listUsersPlanRows(ctx context.Context, top int, planName string, days int) ([]map[string]interface{}, int64, error) {
-	rows, err := s.userDAO.ListPlanRows(ctx, dao.DB, top, planName, days)
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to query users by plan: %w", err)
-	}
-
-	result := make([]map[string]interface{}, 0, len(rows))
-	for i, r := range rows {
-		lastLogin := "-"
-		if r.LastLoginTime != nil {
-			lastLogin = r.LastLoginTime.Format("2006-01-02 15:04:05")
-		}
-
-		result = append(result, map[string]interface{}{
-			"rank":       i + 1,
-			"user":       r.Email,
-			"plan":       r.PlanName,
 			"last_login": lastLogin,
 		})
 	}

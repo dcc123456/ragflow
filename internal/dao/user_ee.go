@@ -20,12 +20,49 @@ package dao
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"ragflow/internal/entity"
+	"ragflow/internal/server/config"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
+
+// AdminUserListRow contains a user and its current plan.
+type AdminUserListRow struct {
+	entity.User `gorm:"embedded"`
+	Plan        string
+}
+
+// ListForAdmin returns users matching the list filters and their full total.
+func (dao *UserDAO) ListForAdmin(ctx context.Context, db *gorm.DB, opts UserListOptions, plan string) ([]AdminUserListRow, int64, error) {
+	order, err := userListOrder(opts.OrderBy, opts.Desc)
+	if err != nil {
+		return nil, 0, err
+	}
+	query := userListQuery(ctx, db, opts.Keyword, opts.Active).
+		Joins("LEFT JOIN ? AS admin_subscription ON admin_subscription.tenant_id = ?", clause.Table{Name: "billing_subscription"}, clause.Column{Table: "user", Name: "id"})
+	if plan = strings.TrimSpace(plan); plan != "" {
+		query = query.Where("COALESCE(admin_subscription.plan_name, ?) = ?", config.BillingPlanTrialName, plan)
+	}
+	var total int64
+	if err := query.Session(&gorm.Session{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	query = query.Order(order).
+		Order(clause.OrderByColumn{Column: clause.Column{Table: "user", Name: "id"}})
+	if opts.Offset > 0 {
+		query = query.Offset(opts.Offset)
+	}
+	if opts.Limit > 0 {
+		query = query.Limit(opts.Limit)
+	}
+	rows := make([]AdminUserListRow, 0)
+	err = query.Select("user.*, COALESCE(admin_subscription.plan_name, ?) AS plan", config.BillingPlanTrialName).Find(&rows).Error
+	return rows, total, err
+}
 
 // UserCountRow holds total/active/new user counts.
 type UserCountRow struct {
@@ -46,27 +83,6 @@ func (dao *UserDAO) UserCountTotalActiveNew(ctx context.Context, db *gorm.DB, da
 		WHERE status != ? AND is_anonymous = ?
 	`, days, days, "0", "0").Scan(&row).Error
 	return row, err
-}
-
-// UserInactiveByPlanRow holds per-plan inactive user counts.
-type UserInactiveByPlanRow struct {
-	PlanName      string `gorm:"column:plan_name"`
-	InactiveCount int64  `gorm:"column:inactive_count"`
-}
-
-// ListInactiveByPlan returns inactive user counts grouped by plan.
-func (dao *UserDAO) ListInactiveByPlan(ctx context.Context, db *gorm.DB, days int) ([]UserInactiveByPlanRow, error) {
-	var rows []UserInactiveByPlanRow
-	err := db.WithContext(ctx).Raw(`
-		SELECT COALESCE(sub.plan_name, 'Free') AS plan_name, COUNT(DISTINCT u.id) AS inactive_count
-		FROM user u
-		LEFT JOIN billing_subscription sub ON u.id = sub.tenant_id AND sub.subscription_status = 'active'
-		WHERE u.status != ? AND u.is_anonymous = ?
-			AND (u.last_login_time IS NULL OR u.last_login_time < DATE_SUB(NOW(), INTERVAL ? DAY))
-		GROUP BY COALESCE(sub.plan_name, 'Free')
-		ORDER BY plan_name
-	`, "0", "0", days).Scan(&rows).Error
-	return rows, err
 }
 
 // UserStorageRow holds per-user storage usage.
@@ -192,31 +208,6 @@ func (dao *UserDAO) ListQuotaRows(ctx context.Context, db *gorm.DB, top, quotaTh
 		ORDER BY storage_used DESC
 		LIMIT ?
 	`, string(entity.StatusValid), "0", "0", quotaThreshold, top).Scan(&rows).Error
-	return rows, err
-}
-
-// UserPlanRow holds per-user plan assignment.
-type UserPlanRow struct {
-	Email         string     `gorm:"column:email"`
-	PlanName      string     `gorm:"column:plan_name"`
-	LastLoginTime *time.Time `gorm:"column:last_login_time"`
-}
-
-// ListPlanRows returns active users of a given plan within the last N days.
-func (dao *UserDAO) ListPlanRows(ctx context.Context, db *gorm.DB, top int, planName string, days int) ([]UserPlanRow, error) {
-	var rows []UserPlanRow
-	err := db.WithContext(ctx).Raw(`
-		SELECT u.email AS email,
-			COALESCE(sub.plan_name, 'Free') AS plan_name,
-			u.last_login_time AS last_login_time
-		FROM user u
-		LEFT JOIN billing_subscription sub ON u.id = sub.tenant_id AND sub.subscription_status = 'active'
-		WHERE u.status != ? AND u.is_anonymous = ?
-			AND COALESCE(sub.plan_name, 'Free') = ?
-			AND u.last_login_time >= DATE_SUB(NOW(), INTERVAL ? DAY)
-		ORDER BY u.last_login_time DESC
-		LIMIT ?
-	`, "0", "0", planName, days, top).Scan(&rows).Error
 	return rows, err
 }
 

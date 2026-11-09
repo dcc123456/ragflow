@@ -1,4 +1,4 @@
-import { useContext, useMemo, useState } from 'react';
+import { ChangeEvent, useContext, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
 
@@ -111,7 +111,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useDebounce } from 'ahooks';
+import { useDebounceFn } from 'ahooks';
 import EnterpriseFeature from './components/enterprise-feature';
 import { CurrentUserInfoContext } from './layouts/root-layout';
 
@@ -158,7 +158,36 @@ function AdminUserManagement() {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [pagination, setPagination] = useState({ page: 1, pageSize: 10 });
   const [filters, setFilters] = useState({ role: '', status: '', plan: '' });
-  const debouncedKeyword = useDebounce(keyword, { wait: 500 });
+  const [debouncedKeyword, setDebouncedKeyword] = useState('');
+
+  const resetPagination = () => {
+    setPagination((prev) => ({ ...prev, page: 1 }));
+  };
+
+  const updateFilters = (values: Partial<typeof filters>) => {
+    setFilters((prev) => ({ ...prev, ...values }));
+    resetPagination();
+  };
+
+  const handleRoleChange = (role: string) => updateFilters({ role });
+  const handleStatusChange = (status: string) => updateFilters({ status });
+  const handlePlanChange = (plan: string) => updateFilters({ plan });
+  const handleResetFilters = () =>
+    updateFilters({ role: '', status: '', plan: '' });
+
+  const { run: applyKeyword } = useDebounceFn(
+    (value: string) => {
+      setDebouncedKeyword(value);
+      resetPagination();
+    },
+    { wait: 500 },
+  );
+
+  const handleKeywordChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const value = event.target.value;
+    setKeyword(value);
+    applyKeyword(value);
+  };
 
   const changePasswordForm = useChangePasswordForm();
   const createUserForm = useCreateUserForm();
@@ -182,8 +211,8 @@ function AdminUserManagement() {
     queryFn: async () => {
       const { data } = await listUsers({
         keyword: debouncedKeyword || undefined,
-        sort: sorting[0]?.id,
-        order: sorting[0]?.desc ? 'desc' : 'asc',
+        sort: sorting[0] ? (sorting[0].desc ? 'desc' : 'asc') : undefined,
+        order: sorting[0]?.id,
         page: pagination.page,
         page_size: pagination.pageSize,
         role: filters.role || undefined,
@@ -630,9 +659,7 @@ function AdminUserManagement() {
 
                           <RadioGroup
                             value={filters.role}
-                            onValueChange={(value) =>
-                              setFilters((prev) => ({ ...prev, role: value }))
-                            }
+                            onValueChange={handleRoleChange}
                           >
                             <Label className="flex items-center space-x-2">
                               <RadioGroupItem value="" />
@@ -661,9 +688,7 @@ function AdminUserManagement() {
 
                       <RadioGroup
                         value={filters.status}
-                        onValueChange={(value) =>
-                          setFilters((prev) => ({ ...prev, status: value }))
-                        }
+                        onValueChange={handleStatusChange}
                       >
                         {STATUS_FILTER_OPTIONS.map(({ label, value }) => (
                           <Label
@@ -685,9 +710,7 @@ function AdminUserManagement() {
 
                       <RadioGroup
                         value={filters.plan}
-                        onValueChange={(value) =>
-                          setFilters((prev) => ({ ...prev, plan: value }))
-                        }
+                        onValueChange={handlePlanChange}
                       >
                         {PLAN_FILTER_OPTIONS.map(({ label, value }) => (
                           <Label
@@ -709,9 +732,7 @@ function AdminUserManagement() {
                     <Button
                       variant="outline"
                       className="dark:bg-bg-input dark:border-border-button text-text-secondary"
-                      onClick={() =>
-                        setFilters({ role: '', status: '', plan: '' })
-                      }
+                      onClick={handleResetFilters}
                     >
                       {t('admin.reset')}
                     </Button>
@@ -726,7 +747,7 @@ function AdminUserManagement() {
                   className="pl-10 h-10 bg-bg-input border-border-button"
                   placeholder={t('header.search')}
                   value={keyword}
-                  onChange={(e) => setKeyword(e.target.value)}
+                  onChange={handleKeywordChange}
                 />
               </div>
 

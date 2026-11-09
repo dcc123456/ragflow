@@ -1389,51 +1389,6 @@ func (h *Handler) ShowUsersActivity(c *gin.Context) {
 	common.RespondSuccess(c, usersActivity, "")
 }
 
-type ListUsersReportsRequest struct {
-	Status *string `json:"status"`
-	Days   *int    `json:"days"`
-	Plan   *string `json:"plan"`
-}
-
-// ListUsersReports handle show users reports
-func (h *Handler) ListUsersReports(c *gin.Context) {
-	var req ListUsersReportsRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		println("JSON bind error: %v (type: %T)", err, err)
-		common.RespondError(c, common.CodeBadRequest, err.Error())
-		return
-	}
-
-	var err error
-	pageIndex := 0
-	pageIndexStr := c.Param("page")
-	if pageIndexStr != "" {
-		pageIndex, err = strconv.Atoi(pageIndexStr)
-		if err != nil {
-			common.RespondError(c, common.CodeBadRequest, "Page index must be an integer")
-			return
-		}
-	}
-	pageSize := 10
-	pageSizeStr := c.Param("page_size")
-	if pageSizeStr != "" {
-		pageSize, err = strconv.Atoi(pageSizeStr)
-		if err != nil {
-			common.RespondError(c, common.CodeBadRequest, "Page size must be an integer")
-			return
-		}
-	}
-	ctx := c.Request.Context()
-
-	usersReports, err := h.service.ListUsersReports(ctx, pageIndex, pageSize, req.Status, req.Plan, req.Days)
-	if err != nil {
-		common.RespondError(c, common.CodeServerError, err.Error())
-		return
-	}
-
-	common.RespondSuccess(c, usersReports, "")
-}
-
 // ListUsersStorage handle show users storage
 func (h *Handler) ListUsersStorage(c *gin.Context) {
 
