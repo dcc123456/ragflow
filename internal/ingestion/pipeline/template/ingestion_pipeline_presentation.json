@@ -54,7 +54,6 @@
                             }
                         },
                         "pdf": {
-                            "flatten_media_to_text": false,
                             "parse_method": "DeepDOC",
                             "preprocess": [
                                 "main_content"
@@ -71,9 +70,7 @@
                             ],
                             "suffix": [
                                 "pptx",
-                                "ppt",
-                                "dps",
-                                "dpt"
+                                "ppt"
                             ]
                         }
                     }
@@ -233,7 +230,6 @@
                             "setups": [
                                 {
                                     "fileFormat": "pdf",
-                                    "flatten_media_to_text": false,
                                     "parse_method": "DeepDOC",
                                     "preprocess": [
                                         "main_content"
