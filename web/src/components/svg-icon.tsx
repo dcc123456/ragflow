@@ -124,6 +124,7 @@ const svgIcons = [
   LLMFactory.EmpirioLabs,
   LLMFactory.AIStupidLevel,
   LLMFactory.Runcrate,
+  LLMFactory.Nace,
   LLMFactory.WorldRouter,
   LLMFactory.CloudGPU,
   LLMFactory.Obscurify,
