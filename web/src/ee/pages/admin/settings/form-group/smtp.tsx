@@ -290,13 +290,24 @@ SMTPSettingsFormGroup.mapValuesFromData = (
 ): SMTPSettingsFormGroup.SchemaType => {
   return {
     server: data['mail.server']?.value,
-    port: data['mail.port']?.value as number,
-    timeout: data['mail.timeout']?.value as number,
+    port: Number(
+      data['mail.port']?.value ?? SMTPSettingsFormGroup.defaultValues.port,
+    ),
+    timeout: Number(
+      data['mail.timeout']?.value ??
+        SMTPSettingsFormGroup.defaultValues.timeout,
+    ),
     username: data['mail.username']?.value,
     password: data['mail.password']?.value,
     defaultSender: data['mail.default_sender']?.value,
-    ssl: data['mail.use_ssl']?.value,
-    tls: data['mail.use_tls']?.value,
+    ssl:
+      String(
+        data['mail.use_ssl']?.value ?? SMTPSettingsFormGroup.defaultValues.ssl,
+      ).toLowerCase() === 'true',
+    tls:
+      String(
+        data['mail.use_tls']?.value ?? SMTPSettingsFormGroup.defaultValues.tls,
+      ).toLowerCase() === 'true',
   };
 };
 

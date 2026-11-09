@@ -79,15 +79,72 @@ func (h *UserHandler) OAuthCallback(c *gin.Context) {
 }
 
 func (h *UserHandler) Captcha(c *gin.Context) {
-	common.RespondError(c, common.CodeNotImplemented, "Captcha not implemented")
+	var request struct {
+		Email string `json:"email"`
+	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 64<<10)
+	if c.ShouldBindJSON(&request) != nil {
+		respondEmailVerification(c, common.CodeArgumentError, "invalid request")
+		return
+	}
+	image, err := h.userService.IssueRegistrationCaptcha(c.Request.Context(), request.Email)
+	if err != nil {
+		respondRegistrationVerificationError(c, err)
+		return
+	}
+	c.Header("Cache-Control", "no-store")
+	c.Data(http.StatusOK, "image/png", image)
 }
 
 func (h *UserHandler) SendOTP(c *gin.Context) {
-	common.RespondError(c, common.CodeNotImplemented, "SendOTP not implemented")
+	var request struct {
+		Email   string `json:"email"`
+		Captcha string `json:"captcha"`
+	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 64<<10)
+	if c.ShouldBindJSON(&request) != nil {
+		respondEmailVerification(c, common.CodeArgumentError, "invalid request")
+		return
+	}
+	if err := h.userService.SendRegistrationOTP(c.Request.Context(), request.Email, request.Captcha); err != nil {
+		respondRegistrationVerificationError(c, err)
+		return
+	}
+	respondEmailVerification(c, common.CodeSuccess, "verification passed, email sent")
 }
 
 func (h *UserHandler) VerifyOTP(c *gin.Context) {
-	common.RespondError(c, common.CodeNotImplemented, "VerifyOTP not implemented")
+	var request struct {
+		Email string `json:"email"`
+		OTP   string `json:"otp"`
+	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 64<<10)
+	if c.ShouldBindJSON(&request) != nil {
+		respondEmailVerification(c, common.CodeArgumentError, "invalid request")
+		return
+	}
+	proof, err := h.userService.VerifyRegistrationOTP(c.Request.Context(), request.Email, request.OTP)
+	if err != nil {
+		respondRegistrationVerificationError(c, err)
+		return
+	}
+	setRegistrationProofCookie(c, proof)
+	respondEmailVerification(c, common.CodeSuccess, "otp verified")
+}
+
+func respondEmailVerification(c *gin.Context, code common.ErrorCode, message string) {
+	c.Header("Content-Type", "application/json")
+	c.JSON(http.StatusOK, gin.H{"code": code, "data": code == common.CodeSuccess, "message": message})
+}
+
+func respondRegistrationVerificationError(c *gin.Context, err error) {
+	var coded *common.CodedError
+	if errors.As(err, &coded) {
+		respondEmailVerification(c, coded.Code, coded.Message)
+		return
+	}
+	common.Error("Registration verification failed", err)
+	respondEmailVerification(c, common.CodeServerError, "email verification is temporarily unavailable")
 }
 
 // IsAdmin reports whether the caller holds the superuser flag. The web client
@@ -307,69 +364,63 @@ func frontendRedirectBase() string {
 }
 
 type forgotCaptchaRequest struct {
-	Email string `form:"email" json:"email"`
+	Email string `json:"email"`
 }
 
 // ForgotCaptcha POST /api/v1/auth/password/forgot/captcha
 // @Summary Issue forgot-password captcha
-// @Description Generates a captcha for the email and stores it in Redis
-// for 60 seconds keyed by a server-issued captcha_id. Returns the id
-// and a PNG image (data URL) the FE renders inside <img src>. The
-// plaintext code never appears in the response — only as raster
-// pixels — so a scripted client can't regex it out (fixes the
-// SVG-text leak from the previous iteration, per PR #15290 review).
+// @Description Returns a PNG captcha bound to the email for 60 seconds.
 // @Tags auth
-// @Param email query string false "user email (also accepted in JSON body)"
-// @Success 200 {object} map[string]interface{}
+// @Accept json
+// @Produce png
+// @Param request body forgotCaptchaRequest true "email"
+// @Success 200 {file} binary
 // @Router /api/v1/auth/password/forgot/captcha [post]
 func (h *UserHandler) ForgotCaptcha(c *gin.Context) {
 	var req forgotCaptchaRequest
-	// Python reads from request.args (query string), accept both for parity.
-	if v := c.Query("email"); v != "" {
-		req.Email = v
-	} else {
-		_ = c.ShouldBindJSON(&req)
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 64<<10)
+	if c.ShouldBindJSON(&req) != nil {
+		respondEmailVerification(c, common.CodeArgumentError, "invalid request")
+		return
 	}
 
 	ctx := c.Request.Context()
-	captchaID, captchaImage, errCode, err := h.userService.ForgotIssueCaptcha(ctx, req.Email)
+	image, errCode, err := h.userService.ForgotIssueCaptcha(ctx, req.Email)
 	if err != nil {
-		common.RespondError(c, errCode, err.Error())
+		respondEmailVerification(c, errCode, err.Error())
 		return
 	}
-	common.RespondSuccess(c, gin.H{
-		"captcha_id":    captchaID,
-		"captcha_image": captchaImage,
-	}, "captcha issued")
+	c.Header("Cache-Control", "no-store")
+	c.Data(http.StatusOK, "image/png", image)
 }
 
 type forgotSendOTPRequest struct {
-	Email     string `json:"email"`
-	CaptchaID string `json:"captcha_id"`
-	Captcha   string `json:"captcha"`
+	Email   string `json:"email"`
+	Captcha string `json:"captcha"`
 }
 
 // ForgotSendOTP POST /api/v1/auth/password/forgot/otp
 // @Summary Send forgot-password OTP
-// @Description Validates the captcha (looked up by captcha_id), then
+// @Description Validates the captcha bound to the email, then
 // mints a one-time code, stores a salted hash in Redis (5 min TTL,
 // attempt cap, resend cooldown), and emails the OTP to the user.
-// @Param request body forgotSendOTPRequest true "email + captcha_id + captcha"
+// @Param request body forgotSendOTPRequest true "email + captcha"
 // @Success 200 {object} map[string]interface{}
 // @Router /api/v1/auth/password/forgot/otp [post]
 func (h *UserHandler) ForgotSendOTP(c *gin.Context) {
 	var req forgotSendOTPRequest
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 64<<10)
 	if err := c.ShouldBindJSON(&req); err != nil {
-		common.RespondError(c, common.CodeArgumentError, err.Error())
+		respondEmailVerification(c, common.CodeArgumentError, "invalid request")
 		return
 	}
 	ctx := c.Request.Context()
-	errCode, err := h.userService.ForgotSendOTP(ctx, req.Email, req.CaptchaID, req.Captcha)
+	errCode, err := h.userService.ForgotSendOTP(ctx, req.Email, req.Captcha)
 	if err != nil {
-		common.RespondError(c, errCode, err.Error())
+		respondEmailVerification(c, errCode, err.Error())
 		return
 	}
-	common.RespondSuccess(c, true, "verification passed, email sent")
+	respondEmailVerification(c, common.CodeSuccess, "verification passed, email sent")
 }
 
 type forgotVerifyOTPRequest struct {
@@ -389,51 +440,47 @@ type forgotVerifyOTPRequest struct {
 func (h *UserHandler) ForgotVerifyOTP(c *gin.Context) {
 	var req forgotVerifyOTPRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		common.RespondError(c, common.CodeArgumentError, err.Error())
+		respondEmailVerification(c, common.CodeArgumentError, err.Error())
 		return
 	}
 	ctx := c.Request.Context()
 	errCode, err := h.userService.ForgotVerifyOTP(ctx, req.Email, req.OTP)
 	if err != nil {
-		common.RespondError(c, errCode, err.Error())
+		respondEmailVerification(c, errCode, err.Error())
 		return
 	}
-	c.JSON(200, gin.H{"code": common.CodeSuccess,
-
-		// ForgotResetPassword POST /api/v1/auth/password/reset
-		// @Summary Reset password after OTP verification
-		// @Description Requires a successful prior verify call (verified flag
-		// set in Redis). Updates the password hash and rotates the access
-		// token so the response can auto-login the user.
-		// @Tags auth
-		// @Param request body service.ForgotResetPasswordRequest true "email + new password"
-		// @Success 200 {object} map[string]interface{}
-		// @Router /api/v1/auth/password/reset [post]
-		"data": true, "message": "otp verified"})
+	respondEmailVerification(c, common.CodeSuccess, "otp verified")
 }
 
+// ForgotResetPassword POST /api/v1/auth/password/reset
+// @Summary Reset password after OTP verification
+// @Description Updates the password and logs in after successful email verification.
+// @Tags auth
+// @Param request body service.ForgotResetPasswordRequest true "email and new passwords"
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/auth/password/reset [post]
 func (h *UserHandler) ForgotResetPassword(c *gin.Context) {
 	ctx := c.Request.Context()
 	var req service.ForgotResetPasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		common.RespondError(c, common.CodeArgumentError, err.Error())
+		respondEmailVerification(c, common.CodeArgumentError, err.Error())
 		return
 	}
 
 	user, code, err := h.userService.ForgotResetPassword(ctx, &req)
 	if err != nil {
-		common.RespondError(c, code, err.Error())
+		respondEmailVerification(c, code, err.Error())
 		return
 	}
 
 	secretKey, err := server.GetSecretKey(ctx, kvrocks.Get())
 	if err != nil {
-		common.RespondError(c, common.CodeServerError, fmt.Sprintf("Failed to get secret key: %s", err.Error()))
+		respondEmailVerification(c, common.CodeServerError, fmt.Sprintf("Failed to get secret key: %s", err.Error()))
 		return
 	}
 	authToken, err := issueUserAccessToken(user, secretKey)
 	if err != nil {
-		common.RespondError(c, common.CodeServerError, "Failed to generate auth token")
+		respondEmailVerification(c, common.CodeServerError, "Failed to generate auth token")
 		return
 	}
 	c.Header("Authorization", authToken)

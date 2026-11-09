@@ -59,7 +59,10 @@ EmailVerificationFormGroup.mapValuesFromData = (
   data: AdminService.SystemVariables,
 ): EmailVerificationFormGroup.SchemaType => {
   return {
-    enabled: !!data['email_verification.enabled']?.value,
+    enabled:
+      String(data['email_verification.enabled']?.value ?? false)
+        .trim()
+        .toLowerCase() === 'true',
   };
 };
 

@@ -35,6 +35,8 @@ func SetupEERouter(engine *gin.Engine) {
 }
 
 func RegisterEERouter(protected *gin.RouterGroup, r *Router) {
+	protected.POST("/validate_mail", r.handler.validateMail)
+
 	// Tenant administration and global permission audit
 	protected.GET("/tenants", r.handler.ListTenants)
 	protected.PATCH("/tenants/:tenant_id", r.handler.UpdateTenantInviteSetting)

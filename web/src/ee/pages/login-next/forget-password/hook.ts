@@ -25,7 +25,7 @@ export const useCaptcha = () => {
       email,
     });
 
-    if (res?.data && res.data.type === 'image/jpeg') {
+    if (res?.data && res.data.type === 'image/png') {
       return res.data;
     } else {
       if (res.data instanceof Blob) {
