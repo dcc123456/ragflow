@@ -19,6 +19,7 @@
 package router
 
 import (
+	"ragflow/internal/common"
 	"ragflow/internal/handler"
 	"ragflow/internal/observability"
 	"ragflow/internal/server"
@@ -101,6 +102,33 @@ func RegisterEEAuthRouter(authorized *gin.RouterGroup, r *Router) {
 }
 
 func RegisterEEProtectedRouter(authorized *gin.RouterGroup, r *Router) {
+	evaluation := handler.NewEvaluationHandler()
+	evaluations := authorized.Group("/api/v1/evaluations", ToggleEvaluation())
+	evaluations.GET("/collections", evaluation.Collections)
+	evaluations.POST("/collections", evaluation.CreateCollection)
+	evaluations.DELETE("/collections", evaluation.DeleteCollection)
+	evaluations.GET("/collections/:collection_id", evaluation.Collection)
+	evaluations.PATCH("/collections/:collection_id", evaluation.UpdateCollection)
+	evaluations.DELETE("/collections/:collection_id", evaluation.DeleteCollection)
+	evaluations.GET("/collections/:collection_id/cases", evaluation.Cases)
+	evaluations.POST("/collections/:collection_id/cases", evaluation.CreateCase)
+	evaluations.PATCH("/collections/:collection_id/cases/:case_id", evaluation.UpdateCase)
+	evaluations.DELETE("/collections/:collection_id/cases/:case_id", evaluation.DeleteCase)
+	evaluations.POST("/collections/:collection_id/imports", evaluation.ImportCases)
+	evaluations.GET("/collections/:collection_id/export", evaluation.ExportCollection)
+	evaluations.GET("/runs", evaluation.Runs)
+	evaluations.POST("/runs", evaluation.CreateRun)
+	evaluations.GET("/runs/:run_id", evaluation.Run)
+	evaluations.PATCH("/runs/:run_id", evaluation.UpdateRun)
+	evaluations.DELETE("/runs/:run_id", evaluation.DeleteRun)
+	evaluations.POST("/runs/:run_id/executions", evaluation.StartExecution)
+	evaluations.GET("/runs/:run_id/results", evaluation.Results)
+	evaluations.DELETE("/runs/:run_id/results/:case_id", evaluation.ClearResult)
+	evaluations.DELETE("/runs/:run_id/results/:case_id/answer", evaluation.ClearResult)
+	evaluations.DELETE("/runs/:run_id/results/:case_id/metrics", evaluation.ClearResult)
+	evaluations.DELETE("/runs/:run_id/results/:case_id/metrics/:metric", evaluation.ClearResult)
+	evaluations.GET("/runs/:run_id/export", evaluation.ExportRun)
+
 	authorized.POST("/api/v1/tenants/:tenant_id/switch", r.tenantHandler.SwitchTenant)
 	authorized.POST("/api/v1/tenants/:tenant_id/invitation-links", r.tenantHandler.CreateTenantInviteLink)
 	authorized.POST("/api/v1/tenant-invitations/:token/accept", r.tenantHandler.AcceptTenantInviteLink)
@@ -188,6 +216,11 @@ func ToggleGroup() gin.HandlerFunc {
 
 func ToggleEvaluation() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if quota, ok := utility.GetAPIServiceQuota().(*utility.APIServiceQuota); ok && !quota.Features.Evaluation {
+			common.Respond(c, 403, common.CodeForbidden, nil, "Evaluation is not enabled")
+			c.Abort()
+			return
+		}
 		c.Next()
 	}
 }

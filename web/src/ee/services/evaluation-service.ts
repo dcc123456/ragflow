@@ -1,6 +1,5 @@
 import api from '@/utils/api';
 import { registerNextServer } from '@/utils/register-server';
-import request from '@/utils/request';
 
 const {
   evaluationCreateCollection,
@@ -21,19 +20,11 @@ const {
   evaluationDeleteRun,
   evaluationUpdateRun,
   evaluationDuplicateRun,
-  evaluationExecuteAll,
-  evaluationExecuteCase,
-  evaluationCalculateCaseMetric,
-  evaluationCalculateRunsMetrics,
-  evaluationCalculateRunsMetric,
-  evaluationCalculateCaseMetrics,
   evaluationClearCaseResult,
   evaluationClearCaseMetricResult,
   evaluationClearCaseAnswer,
-  evaluationGetRecommendations,
   evaluationExportRun,
   downloadEvaluationFile,
-  listEvaluationDetailFile,
   evaluationCancelRun,
 } = api;
 
@@ -41,7 +32,6 @@ const methods = {
   downloadEvaluationFile: {
     url: downloadEvaluationFile,
     method: 'get',
-    responseType: 'blob',
   },
   // Collection
   createCollection: {
@@ -58,11 +48,11 @@ const methods = {
   },
   updateCollection: {
     url: evaluationUpdateCollection,
-    method: 'put',
+    method: 'patch',
   },
   deleteCollection: {
     url: evaluationDeleteCollection,
-    method: 'post',
+    method: 'delete',
   },
 
   // Case
@@ -80,11 +70,11 @@ const methods = {
   },
   updateCase: {
     url: evaluationUpdateCase,
-    method: 'post',
+    method: 'patch',
   },
   deleteCase: {
     url: evaluationDeleteCase,
-    method: 'post',
+    method: 'delete',
   },
 
   // Run
@@ -94,7 +84,7 @@ const methods = {
   },
   run: {
     url: evaluationRun,
-    method: 'put',
+    method: 'post',
   },
 
   getRun: {
@@ -111,7 +101,7 @@ const methods = {
   },
   updateRun: {
     url: evaluationUpdateRun,
-    method: 'put',
+    method: 'patch',
   },
   deleteRun: {
     url: evaluationDeleteRun,
@@ -123,69 +113,105 @@ const methods = {
   },
   evaluationCancelRun: {
     url: evaluationCancelRun,
-    method: 'post',
-  },
-
-  // Execute
-  executeAll: {
-    url: evaluationExecuteAll,
-    method: 'post',
-  },
-  executeCase: {
-    url: evaluationExecuteCase,
-    method: 'post',
-  },
-
-  // Metrics
-  calculateCaseMetric: {
-    url: evaluationCalculateCaseMetric,
-    method: 'post',
-  },
-  calculateRunsMetrics: {
-    url: evaluationCalculateRunsMetrics,
-    method: 'post',
-  },
-  calculateRunsMetric: {
-    url: evaluationCalculateRunsMetric,
-    method: 'post',
-  },
-  calculateCaseMetrics: {
-    url: evaluationCalculateCaseMetrics,
-    method: 'post',
+    method: 'patch',
   },
 
   // Clear Results
   clearCaseResult: {
     url: evaluationClearCaseResult,
-    method: 'post',
+    method: 'delete',
   },
   clearCaseMetricResult: {
     url: evaluationClearCaseMetricResult,
-    method: 'post',
+    method: 'delete',
   },
   clearCaseAnswer: {
     url: evaluationClearCaseAnswer,
-    method: 'post',
+    method: 'delete',
   },
 
   // Other
-  getRecommendations: {
-    url: evaluationGetRecommendations,
-    method: 'get',
-  },
   exportRun: {
     url: evaluationExportRun,
-    method: 'post',
+    method: 'get',
   },
 } as const;
 
-const evaluationService = registerNextServer<keyof typeof methods>(methods);
-export const getListEvaluationDetailFile = (
-  id: string,
-  data: { page: number; page_size: number },
-) => {
-  return request.get(listEvaluationDetailFile(id), {
-    params: data,
-  });
+const requests = registerNextServer<keyof typeof methods>(methods);
+const evaluationService = {
+  ...requests,
+  updateCollection: (id: string, data: Record<string, unknown>) =>
+    requests.updateCollection(
+      { url: evaluationUpdateCollection(id), data },
+      true,
+    ),
+  addCase: (id: string, data: Record<string, unknown>) =>
+    requests.addCase({ url: evaluationAddCase(id), data }, true),
+  importCase: (id: string, data: Record<string, unknown>) =>
+    requests.importCase({ url: evaluationImportCase(id), data }, true),
+  listCase: (id: string, params: Record<string, unknown>) =>
+    requests.listCase({ url: evaluationListCase(id), params }, true),
+  updateCase: (
+    collectionId: string,
+    caseId: string,
+    data: Record<string, unknown>,
+  ) =>
+    requests.updateCase(
+      { url: evaluationUpdateCase(collectionId, caseId), data },
+      true,
+    ),
+  deleteCase: (collectionId: string, caseId: string) =>
+    requests.deleteCase(
+      { url: evaluationDeleteCase(collectionId, caseId) },
+      true,
+    ),
+  startRun: (id: string, data: Record<string, unknown>) =>
+    requests.startRun({ url: evaluationStartRun(id), data }, true),
+  getRunResults: (id: string, params: Record<string, unknown>) =>
+    requests.getRunResults({ url: evaluationGetRunResults(id), params }, true),
+  updateRun: (id: string, data: Record<string, unknown>) =>
+    requests.updateRun({ url: evaluationUpdateRun(id), data }, true),
+  evaluationCancelRun: (id: string) =>
+    requests.evaluationCancelRun(
+      { url: evaluationCancelRun(id), data: { status: 'CANCEL' } },
+      true,
+    ),
+  clearCaseResult: (runId: string, caseId: string) =>
+    requests.clearCaseResult(
+      { url: evaluationClearCaseResult(runId, caseId) },
+      true,
+    ),
+  clearCaseMetricResult: (runId: string, caseId: string, metric: string) =>
+    requests.clearCaseMetricResult(
+      { url: evaluationClearCaseMetricResult(runId, caseId, metric) },
+      true,
+    ),
+  clearCaseAnswer: (runId: string, caseId: string) =>
+    requests.clearCaseAnswer(
+      { url: evaluationClearCaseAnswer(runId, caseId) },
+      true,
+    ),
+  exportRun: (runId: string, caseIds?: string[]) =>
+    requests.exportRun(
+      {
+        url: evaluationExportRun(runId),
+        params: caseIds?.length ? { case_ids: caseIds.join(',') } : undefined,
+        responseType: 'blob',
+      },
+      true,
+    ),
+  downloadEvaluationFile: (id: string) =>
+    requests.downloadEvaluationFile(
+      { url: downloadEvaluationFile(id), responseType: 'blob' },
+      true,
+    ),
 };
 export default evaluationService;
+
+export async function evaluationExportBlob(blob: Blob): Promise<Blob> {
+  if (blob.type.includes('json') || blob.type.includes('text/')) {
+    const body = JSON.parse(await blob.text());
+    throw new Error(body.message || body.retmsg || 'Evaluation export failed');
+  }
+  return blob;
+}

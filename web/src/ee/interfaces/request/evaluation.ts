@@ -31,8 +31,7 @@ export interface IEvaluationUpdateCaseRequestBody {
 }
 
 export interface IEvaluationImportCaseRequestBody {
-  file?: File;
-  cases?: Array<{
+  cases: Array<{
     question: string;
     reference_answer?: string;
   }>;
@@ -55,5 +54,6 @@ export interface IEvaluationUpdateRunRequestBody {
 
 export interface IEvaluationStartRunRequestBody {
   case_ids?: string[];
-  metrics_name?: string[];
+  metrics?: string[];
+  mode?: 'generate_and_score' | 'generate' | 'score';
 }

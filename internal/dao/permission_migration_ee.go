@@ -52,6 +52,9 @@ type legacyTenantRole struct {
 
 // migratePermissionDataEE migrates enterprise data after schema setup.
 func migratePermissionDataEE(ctx context.Context, db *gorm.DB) error {
+	if err := migrateEvaluations(ctx, db); err != nil {
+		return fmt.Errorf("initialize enterprise evaluations: %w", err)
+	}
 	if err := ensureWhitelistSchema(ctx, db); err != nil {
 		return fmt.Errorf("migrate registration whitelist: %w", err)
 	}

@@ -340,6 +340,23 @@ The step updates tables individually rather than in one transaction. If a later 
 
 ---
 
+## Enterprise evaluation migration
+
+`migrateEvaluations` in `internal/dao/evaluation_migration_ee.go` uses its own
+`system_settings` marker, `mysql_migration.enterprise.evaluation.version`, with
+`evaluationMigrationTarget` set to `v1.0.0`. This marker is independent of both
+the shared database version and the enterprise permission migration version.
+
+During `--migrate`, a missing, unparsable, or older evaluation marker runs the
+schema reconciliation and historical-data conversion. A marker at `v1.0.0` or
+later skips the entire evaluation migration, including its preflight scans,
+backfills, and index reconciliation.
+
+The target version is recorded only after all evaluation migration steps
+succeed. A failure leaves the marker unchanged so the next `--migrate` retries
+the work. MySQL DDL is not rolled back by this gate, so a failed attempt may
+leave completed schema changes in place for the retry.
+
 ## Version-less steps
 
 These steps are not gated by the version marker. They use schema or data checks to make repeated execution safe. Steps in `RunMigrations` run during `ragflow_server --migrate`; ingestion helpers also run during server startup.

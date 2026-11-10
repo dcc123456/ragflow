@@ -62,7 +62,7 @@ export function RunDropdownButton({ rowSelection }: RunDropdownButtonProps) {
     if (type === RunType.All) {
       startEvaluationRun({ case_ids: caseIds });
     } else {
-      startEvaluationRun({ metrics_name: [type], case_ids: caseIds });
+      startEvaluationRun({ metrics: [type], case_ids: caseIds });
     }
   };
 
