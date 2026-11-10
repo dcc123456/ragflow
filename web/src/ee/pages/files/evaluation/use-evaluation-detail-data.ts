@@ -1,11 +1,11 @@
 import message from '@/components/ui/message';
-import { FileMimeType } from '@/constants/common';
 import {
   useFetchEvaluationCollection,
   useFetchEvaluationFileContent,
 } from '@/ee/hooks/use-evaluation-request';
-import evaluationService from '@/ee/services/evaluation-service';
-import api from '@/utils/api';
+import evaluationService, {
+  evaluationExportBlob,
+} from '@/ee/services/evaluation-service';
 import { downloadFileFromBlob } from '@/utils/file-util';
 import { useMutation } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -36,21 +36,9 @@ export function useFetchEvaluationDetailList() {
   };
 }
 
-async function fetchDocumentBlob(id: string, mimeType?: FileMimeType) {
-  console.log('fetchDocumentBlob', id);
-  const response = await evaluationService.downloadEvaluationFile(
-    {
-      url: api.downloadEvaluationFile(id),
-      method: 'get',
-      responseType: 'blob',
-    },
-    true,
-  );
-  const blob = new Blob([response.data], {
-    type: mimeType || response.data.type,
-  });
-
-  return blob;
+async function fetchDocumentBlob(id: string) {
+  const response = await evaluationService.downloadEvaluationFile(id);
+  return evaluationExportBlob(response.data);
 }
 
 export const downloadDocument = async ({
@@ -71,9 +59,9 @@ export const useDownloadDocument = () => {
 
   const { mutateAsync } = useMutation({
     mutationKey: [EvaluationFileApiAction.DownloadDocument, id],
+    onError: (error: Error) => message.error(error.message),
 
     mutationFn: async () => {
-      console.log('downloadDocument', id);
       await downloadDocument({ id: id as string });
       message.success(t('message.modified'));
     },

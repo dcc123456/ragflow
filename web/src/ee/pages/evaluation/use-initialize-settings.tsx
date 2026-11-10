@@ -46,7 +46,16 @@ export function useInitializeSettingsOnMount(form: UseFormReturn<any>) {
 
     if (isExistingRun) {
       baseData = data;
-      target = data?.config_snapshot?.target || {};
+      const snapshot = data?.config_snapshot?.target || {};
+      target = {
+        ...chat,
+        ...snapshot,
+        dataset_ids: snapshot.kb_ids ?? chat.dataset_ids ?? [],
+        keywords_similarity_weight:
+          typeof snapshot.vector_similarity_weight === 'number'
+            ? 1 - snapshot.vector_similarity_weight
+            : (chat.keywords_similarity_weight ?? 0.7),
+      };
     } else {
       const values = form.getValues();
       if (

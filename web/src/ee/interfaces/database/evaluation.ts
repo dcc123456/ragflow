@@ -24,8 +24,8 @@ export interface CaseItem {
   create_time: number;
   id: string;
   metadata: Record<string, any>;
-  relevant_doc_ids: Record<string, any>;
-  relevant_kb_ids: Record<string, any>;
+  relevant_doc_ids: string[];
+  relevant_kb_ids: string[];
   update_date: string;
   update_time: number;
   variable: Variable;
@@ -63,16 +63,9 @@ export interface IEvaluationRunResultData {
   total: number;
 }
 
-// Recommendations
-export interface IEvaluationRecommendation {
-  type: string;
-  message: string;
-  severity?: 'info' | 'warning' | 'error';
-}
-
 export interface IMetricsSummary {
   answer_length: AnswerLength;
-  bleu_score: AnswerLength;
+  blue_score: AnswerLength;
   context_relevance: AnswerLength;
   execution_time: AnswerLength;
   faithfulness: AnswerLength;
@@ -114,8 +107,8 @@ export interface IEvaluationRun {
 }
 
 interface IConfigSnapshot {
-  target: IDialog;
-  metrics: IMetrics;
+  target: IDialog & { kb_ids?: string[]; vector_similarity_weight?: number };
+  metrics: Record<string, { enable: boolean; llm_id: string }>;
 }
 
 export interface IMetrics {

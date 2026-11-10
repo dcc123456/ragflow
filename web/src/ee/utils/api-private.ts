@@ -69,61 +69,52 @@ export default {
     '/api/v1/admin/sensitive_word_filter/download',
   adminTestSMTPConnection: '/api/v1/admin/validate_mail',
   listEvaluationDetailFile: (id: string) =>
-    `${webAPI}/evaluation/collection/${id}/cases`,
+    `${restAPIv1}/evaluations/collections/${id}/cases`,
   downloadEvaluationFile: (id: string) =>
-    `${webAPI}/evaluation/collection/${id}/case/export`,
-  evaluationCreateCollection: '/v1/evaluation/collection/create',
-  evaluationListCollection: '/v1/evaluation/collection/list',
+    `${restAPIv1}/evaluations/collections/${id}/export`,
+  evaluationCreateCollection: `${restAPIv1}/evaluations/collections`,
+  evaluationListCollection: `${restAPIv1}/evaluations/collections`,
   evaluationGetCollection: (collectionId: string) =>
-    `${webAPI}/evaluation/collection/${collectionId}`,
+    `${restAPIv1}/evaluations/collections/${collectionId}`,
   evaluationUpdateCollection: (collectionId: string) =>
-    `${webAPI}/evaluation/collection/${collectionId}`,
-  evaluationDeleteCollection: '/v1/evaluation/collection/remove',
+    `${restAPIv1}/evaluations/collections/${collectionId}`,
+  evaluationDeleteCollection: `${restAPIv1}/evaluations/collections`,
   evaluationAddCase: (collectionId: string) =>
-    `${webAPI}/evaluation/collection/${collectionId}/case/add`,
+    `${restAPIv1}/evaluations/collections/${collectionId}/cases`,
   evaluationImportCase: (collectionId: string) =>
-    `${webAPI}/evaluation/collection/${collectionId}/case/import`,
+    `${restAPIv1}/evaluations/collections/${collectionId}/imports`,
   evaluationListCase: (collectionId: string) =>
-    `${webAPI}/evaluation/collection/${collectionId}/cases`,
-  evaluationDeleteCase: (caseId: string) =>
-    `${webAPI}/evaluation/case/${caseId}`,
-  evaluationUpdateCase: (caseId: string) =>
-    `${webAPI}/evaluation/case/${caseId}`,
+    `${restAPIv1}/evaluations/collections/${collectionId}/cases`,
+  evaluationDeleteCase: (collectionId: string, caseId: string) =>
+    `${restAPIv1}/evaluations/collections/${collectionId}/cases/${caseId}`,
+  evaluationUpdateCase: (collectionId: string, caseId: string) =>
+    `${restAPIv1}/evaluations/collections/${collectionId}/cases/${caseId}`,
   evaluationStartRun: (runId: string) =>
-    `${webAPI}/evaluation/run/${runId}/start`,
-  evaluationRun: '/v1/evaluation/run',
-  evaluationGetRun: (runId: string) => `${webAPI}/evaluation/run/${runId}`,
+    `${restAPIv1}/evaluations/runs/${runId}/executions`,
+  evaluationRun: `${restAPIv1}/evaluations/runs`,
+  evaluationGetRun: (runId: string) => `${restAPIv1}/evaluations/runs/${runId}`,
   evaluationGetRunResults: (runId: string) =>
-    `${webAPI}/evaluation/run/${runId}/results`,
-  evaluationListRun: '/v1/evaluation/run/list',
-  evaluationDeleteRun: (runId: string) => `${webAPI}/evaluation/run/${runId}`,
-  evaluationUpdateRun: (runId: string) => `${webAPI}/evaluation/run/${runId}`,
-  evaluationDuplicateRun: (runId: string) =>
-    `${webAPI}/evaluation/run/${runId}/duplicate`,
+    `${restAPIv1}/evaluations/runs/${runId}/results`,
+  evaluationListRun: `${restAPIv1}/evaluations/runs`,
+  evaluationDeleteRun: (runId: string) =>
+    `${restAPIv1}/evaluations/runs/${runId}`,
+  evaluationUpdateRun: (runId: string) =>
+    `${restAPIv1}/evaluations/runs/${runId}`,
+  evaluationDuplicateRun: `${restAPIv1}/evaluations/runs`,
   evaluationCancelRun: (runId: string) =>
-    `${webAPI}/evaluation/run/${runId}/cancel`,
-  evaluationExecuteAll: (runId: string) =>
-    `${webAPI}/evaluation/run/${runId}/execute_all`,
-  evaluationExecuteCase: (runId: string, caseId: string) =>
-    `${webAPI}/evaluation/run/${runId}/case/${caseId}/execute`,
-  evaluationCalculateCaseMetric: (runId: string, caseId: string) =>
-    `${webAPI}/evaluation/run/${runId}/case/${caseId}/metric`,
-  evaluationCalculateRunsMetrics: (runId: string) =>
-    `${webAPI}/evaluation/run/${runId}/metrics`,
-  evaluationCalculateRunsMetric: (runId: string) =>
-    `${webAPI}/evaluation/run/${runId}/metric`,
-  evaluationCalculateCaseMetrics: (runId: string, caseId: string) =>
-    `${webAPI}/evaluation/run/${runId}/case/${caseId}/metrics`,
+    `${restAPIv1}/evaluations/runs/${runId}`,
   evaluationClearCaseResult: (runId: string, caseId: string) =>
-    `${webAPI}/evaluation/run/${runId}/case/${caseId}/result`,
-  evaluationClearCaseMetricResult: (runId: string, caseId: string) =>
-    `${webAPI}/evaluation/run/${runId}/case/${caseId}/result/metric`,
+    `${restAPIv1}/evaluations/runs/${runId}/results/${caseId}`,
+  evaluationClearCaseMetricResult: (
+    runId: string,
+    caseId: string,
+    metric: string,
+  ) =>
+    `${restAPIv1}/evaluations/runs/${runId}/results/${caseId}/metrics/${metric}`,
   evaluationClearCaseAnswer: (runId: string, caseId: string) =>
-    `${webAPI}/evaluation/run/${runId}/case/${caseId}/result/answer`,
-  evaluationGetRecommendations: (runId: string) =>
-    `${webAPI}/evaluation/run/${runId}/recommendations`,
+    `${restAPIv1}/evaluations/runs/${runId}/results/${caseId}/answer`,
   evaluationExportRun: (runId: string) =>
-    `${webAPI}/evaluation/run/${runId}/export`,
+    `${restAPIv1}/evaluations/runs/${runId}/export`,
   adminLlmTraceSummary: '/api/v1/admin/llm_trace/stats/summary',
   adminLlmTraceByOrg: '/api/v1/admin/llm_trace/stats/by-org',
   adminLlmTraceTopConsumers: '/api/v1/admin/llm_trace/stats/top-consumers',
