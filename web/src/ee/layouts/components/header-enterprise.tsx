@@ -24,6 +24,13 @@ function useOpenPricePage() {
   );
 }
 
+export function EnterpriseHeaderTenantSwitcher(_props: {
+  isCompact?: boolean;
+}) {
+  void _props;
+  return null;
+}
+
 export function EnterpriseHeaderUpgradeBadge() {
   const { t } = useTranslation();
   const handleClick = useOpenPricePage();
