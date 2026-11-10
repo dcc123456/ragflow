@@ -1,7 +1,7 @@
 groups:
 - name: minio_disk_throughput_alerts
   rules:
-  # Disk write throughput alerts
+  # Silo process storage write throughput alerts
   - alert: MinIODiskWriteThroughputCritical
     expr: minio:disk:write_throughput_mb_sec > 400
     for: 2m
@@ -11,7 +11,7 @@ groups:
       metric_type: throughput
     annotations:
       summary: "MinIO Critical Disk Write Throughput ({{ $labels.instance }})"
-      description: "Disk write throughput critically high: {{ printf \"%.0f\" $value }} MB/s"
+      description: "Silo process storage write throughput critically high: {{ printf \"%.0f\" $value }} MiB/s"
 
   - alert: MinIODiskWriteThroughputWarning
     expr: minio:disk:write_throughput_mb_sec > 200
@@ -22,9 +22,9 @@ groups:
       metric_type: throughput
     annotations:
       summary: "MinIO High Disk Write Throughput ({{ $labels.instance }})"
-      description: "Disk write throughput high: {{ printf \"%.0f\" $value }} MB/s"
+      description: "Silo process storage write throughput high: {{ printf \"%.0f\" $value }} MiB/s"
 
-  # Disk read throughput alerts
+  # Silo process storage read throughput alerts
   - alert: MinIODiskReadThroughputCritical
     expr: minio:disk:read_throughput_mb_sec > 600
     for: 2m
@@ -34,7 +34,7 @@ groups:
       metric_type: throughput
     annotations:
       summary: "MinIO Critical Disk Read Throughput ({{ $labels.instance }})"
-      description: "Disk read throughput critically high: {{ printf \"%.0f\" $value }} MB/s"
+      description: "Silo process storage read throughput critically high: {{ printf \"%.0f\" $value }} MiB/s"
 
   - alert: MinIODiskReadThroughputWarning
     expr: minio:disk:read_throughput_mb_sec > 300
@@ -45,9 +45,9 @@ groups:
       metric_type: throughput
     annotations:
       summary: "MinIO High Disk Read Throughput ({{ $labels.instance }})"
-      description: "Disk read throughput high: {{ printf \"%.0f\" $value }} MB/s"
+      description: "Silo process storage read throughput high: {{ printf \"%.0f\" $value }} MiB/s"
 
-  # Total disk I/O throughput alerts - FIXED
+  # Total disk I/O throughput alerts
   - alert: MinIODiskTotalThroughputHigh
     expr: minio:disk:total_throughput_mb_sec > 800
     for: 3m
@@ -57,4 +57,4 @@ groups:
       metric_type: throughput
     annotations:
       summary: "MinIO High Total Disk Throughput ({{ $labels.instance }})"
-      description: "Total disk throughput high: {{ printf \"%.0f\" $value }} MB/s"
+      description: "Silo process total storage throughput high: {{ printf \"%.0f\" $value }} MiB/s"

@@ -1,8 +1,17 @@
 groups:
 - name: minio_critical_alerts
   rules:
+  - alert: MinIOMetricsUnavailable
+    expr: up{job="minio-job"} == 0
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "MinIO metrics endpoint unavailable"
+      description: "Cannot scrape {{ $labels.job }} at {{ $labels.instance }}. Check the service, network and monitoring token."
+
   - alert: MinIOClusterDown
-    expr: minio_cluster_nodes_offline_total > 0
+    expr: minio_cluster_health_nodes_offline_count{job="minio-job"} > 0
     for: 1m
     labels:
       severity: critical
@@ -11,27 +20,36 @@ groups:
       description: "{{ $value }} node(s) offline"
 
   - alert: MinIODiskSpaceCritical
-    expr: (minio_cluster_capacity_usable_total_bytes - minio_cluster_usage_total_bytes) / minio_cluster_capacity_usable_total_bytes < 0.1
+    expr: 100 * (minio_cluster_health_capacity_usable_free_bytes{job="minio-job"} or (0 * minio_cluster_health_capacity_usable_total_bytes{job="minio-job"})) / minio_cluster_health_capacity_usable_total_bytes{job="minio-job"} < 10
     for: 2m
     labels:
       severity: critical
     annotations:
       summary: "MinIO Disk Space Critical"
-      description: "Only {{ printf \"%.1f\" $value }}% space remaining"
+      description: 'Only {{ printf "%.1f" $value }}% space remaining'
 
 - name: minio_performance_alerts
   rules:
+  # Silo v3 omits zero errors. Seed each known API's counter before rate()
+  # so its first error burst is counted. Failed scrapes produce no samples.
+  - record: minio:api:errors_total
+    expr: |
+      (
+        minio_api_requests_errors_total{job="minio-job",type="s3"}
+        or (0 * minio_api_requests_total{job="minio-job",type="s3"})
+      ) and on (job, instance) (up{job="minio-job"} == 1)
+
   - alert: MinIOHighErrorRate
-    expr: rate(minio_s3_requests_errors_total[5m]) / rate(minio_s3_requests_total[5m]) > 0.05
+    expr: 100 * rate(minio:api:errors_total[5m]) / rate(minio_api_requests_total{job="minio-job",type="s3"}[5m]) > 5
     for: 3m
     labels:
       severity: warning
     annotations:
       summary: "MinIO High Error Rate"
-      description: "Error rate is {{ printf \"%.1f\" $value }}%"
+      description: 'Error rate is {{ printf "%.1f" $value }}% for {{ $labels.name }}'
 
   - alert: MinIOHighWriteLatency
-    expr: minio_node_drive_latency_us{api="storage.RenameData"}/1000 > 1000  # 1s
+    expr: minio_system_drive_api_latency_micros{job="minio-job",api="storage.RenameData"} / 1000 > 1000
     for: 2m
     labels:
       severity: critical
@@ -42,11 +60,11 @@ groups:
       description: |
         Write operation {{ $labels.api }} latency is too high
         Drive: {{ $labels.drive }}
-        Current latency: {{ printf "%.2f" ($value) }} ms
+        Current latency: {{ printf "%.2f" $value }} ms
         Threshold: 1000 ms
 
   - alert: MinIOHighReadLatency
-    expr: minio_node_drive_latency_us{api="storage.ReadXL"}/1000 > 500  # 500ms
+    expr: minio_system_drive_api_latency_micros{job="minio-job",api="storage.ReadXL"} / 1000 > 500
     for: 3m
     labels:
       severity: warning
@@ -57,11 +75,11 @@ groups:
       description: |
         Read operation {{ $labels.api }} latency is high
         Drive: {{ $labels.drive }}
-        Current latency: {{ printf "%.2f" ($value) }} ms
+        Current latency: {{ printf "%.2f" $value }} ms
         Threshold: 500 ms
 
   - alert: MinIOHighDeleteLatency
-    expr: minio_node_drive_latency_us{api="storage.Delete"}/1000 > 2000  # 2s
+    expr: minio_system_drive_api_latency_micros{job="minio-job",api="storage.Delete"} / 1000 > 2000
     for: 1m
     labels:
       severity: critical
@@ -72,22 +90,22 @@ groups:
       description: |
         Delete operation latency is critical
         Drive: {{ $labels.drive }}
-        Current latency: {{ printf "%.2f" ($value) }} ms
-        Action: Check disk I/O and filesystem performance
+        Current latency: {{ printf "%.2f" $value }} ms
+        Threshold: 2000 ms
 
 - name: minio_capacity_alerts
   rules:
   - alert: MinIODiskSpaceWarning
-    expr: (minio_cluster_capacity_usable_total_bytes - minio_cluster_usage_total_bytes) / minio_cluster_capacity_usable_total_bytes < 0.2
+    expr: 100 * (minio_cluster_health_capacity_usable_free_bytes{job="minio-job"} or (0 * minio_cluster_health_capacity_usable_total_bytes{job="minio-job"})) / minio_cluster_health_capacity_usable_total_bytes{job="minio-job"} < 20
     for: 5m
     labels:
       severity: warning
     annotations:
       summary: "MinIO Disk Space Low"
-      description: "Only {{ printf \"%.1f\" $value }}% space remaining"
+      description: 'Only {{ printf "%.1f" $value }}% space remaining'
 
   - alert: MinIORapidDataGrowth
-    expr: predict_linear(minio_cluster_usage_total_bytes[24h], 24 * 3600) > minio_cluster_capacity_usable_total_bytes
+    expr: predict_linear(minio_cluster_usage_objects_total_bytes{job="minio-job"}[24h], 24 * 3600) > minio_cluster_health_capacity_usable_total_bytes{job="minio-job"}
     for: 1h
     labels:
       severity: warning

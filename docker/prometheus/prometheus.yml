@@ -1,80 +1,51 @@
-# my global config
+# Same-host deployment: Prometheus uses Linux host networking.
+# Update the targets if MINIO_PORT or CLICKHOUSE_PROMETHEUS_PORT is changed.
+
+# Default intervals; individual scrape jobs and rule groups can override them.
 global:
-  scrape_interval: 60s # Set the scrape interval to every 15 seconds. Default is every 1 minute.
-  evaluation_interval: 60s # Evaluate rules every 15 seconds. The default is every 1 minute.
-  # scrape_timeout is set to the global default (10s).
+  scrape_interval: 60s       # Collect metrics from each target every 60 seconds.
+  scrape_timeout: 10s        # Maximum time allowed for one scrape.
+  evaluation_interval: 60s   # Evaluate recording and alerting rules every 60 seconds.
 
-# Alertmanager configuration
-alerting:
-  alertmanagers:
-    - static_configs:
-        - targets:
-          # - alertmanager:9093
+# Optional Alertmanager configuration for delivering alert notifications.
+# Rules are evaluated even without Alertmanager. Uncomment after deploying it
+# and replace the target with an address reachable from Prometheus.
+# This example assumes Alertmanager publishes port 9093 on the same host.
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets: ["localhost:9093"]
 
-# Load rules once and periodically evaluate them according to the global 'evaluation_interval'.
+# Load recording and alerting rules. Paths are relative to this configuration.
 rule_files:
-#  - "alerts.yml"
-  - "rabbitmq_alerts.yml"
-  - "minio_alerts.yml"
-  - "minio_throughput_recording.yml"
-  - "minio_throughput_alerts.yml"
-  - "minio_disk_throughput_alerts.yml"
-  - "mysql_alerts.yml"
-  - "redis_alerts.yml"
-  - "es_alerts.yml"
+  - minio_alerts.yml
+  - minio_throughput_recording.yml
+  - minio_throughput_alerts.yml
+  - minio_disk_throughput_alerts.yml
 
-# A scrape configuration containing exactly one endpoint to scrape:
-# Here it's Prometheus itself.
+# Each job adds a job label to its collected metrics.
+# The default scheme is http and the default metrics_path is /metrics.
 scrape_configs:
-  # The job name is added as a label `job=<job_name>` to any timeseries scraped from this config.
-  - job_name: "prometheus"
-
-    # metrics_path defaults to '/metrics'
-    # scheme defaults to 'http'.
-
+  # Monitor Prometheus itself.
+  - job_name: prometheus
     static_configs:
       - targets: ["localhost:9090"]
-       # The label name is added as a label `label_name=<label_value>` to any timeseries scraped from this config.
         labels:
-          app: "prometheus"
+          app: prometheus
 
-
+  # Collect MinIO/Silo native metrics, including cluster and process metrics.
   - job_name: minio-job
-    bearer_token: eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJwcm9tZXRoZXVzIiwic3ViIjoicmFnX2Zsb3ciLCJleHAiOjQ5MTU0ODExMjl9.J5ohqqeYTc7hnYPVBr7nsalEBmifVjnTD3LdalNxTeaaOYunEGVwUSDlHyVPcdziBbwHIJw3Yc3p4cTQN8-vuw
-    metrics_path: /minio/v2/metrics/cluster
-    scheme: http
+    # The v3 root path has no trailing slash.
+    metrics_path: /minio/metrics/v3
+    authorization:
+      type: Bearer
+      # The token file is mounted read-only by Compose.
+      credentials_file: /run/secrets/minio.token
     static_configs:
-      - targets: ['localhost:9000']
+      - targets: ["localhost:9000"]
 
-  - job_name: 'rabbitmq'
-    static_configs:
-     - targets: ['localhost:1674']
-       labels:
-         app: "rabbitmq"
-    metrics_path: "/metrics"
-    scrape_interval: 30s
-
-  - job_name: 'mysqld'
-    static_configs:
-      - targets: ['localhost:9104']
-        labels:
-          instance: 'localhost:3306'
-          mysql_host: 'localhost'
-          mysql_port: '3306'
-    scrape_interval: 30s
-    scrape_timeout: 10s
-
-  - job_name: 'redis'
-    static_configs:
-      - targets: ['localhost:9121']
-        labels:
-          instance: 'localhost:6379'
+  # Collect ClickHouse native metrics enabled by clickhouse/prometheus.xml.
+  - job_name: clickhouse
     metrics_path: /metrics
-
-  - job_name: 'elasticsearch'
     static_configs:
-      - targets: ['localhost:9114']
-        labels: 
-          instance: 'localhost:9200'
-    scrape_interval: 30s
-    metrics_path: '/metrics'
+      - targets: ["localhost:9363"]

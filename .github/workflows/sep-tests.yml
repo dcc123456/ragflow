@@ -625,7 +625,7 @@ jobs:
           # Engine-specific offset partitions keep concurrent engine jobs from
           # choosing the same host ports when they land on the same self-hosted runner.
           # A lock plus reservation file closes the check/start race between parallel jobs.
-               PORT_BASES=(1200 1201 23817 23820 5432 5455 9000 9001 6379 6380 6381 6601 9380 9381 9382 9385 80 443 4222 8222 9900 8123)
+               PORT_BASES=(1200 1201 23817 23820 5432 5455 9000 9001 6379 6380 6381 6601 9380 9381 9382 9385 80 443 4222 8222 9900 8123 9363)
                PARTITION_SIZE=3000
                # Keep every (base + offset) host port BELOW the Linux ephemeral
                # range (net.ipv4.ip_local_port_range, default 32768-60999). An
@@ -793,10 +793,11 @@ jobs:
                SVR_WEB_HTTPS_PORT=$((443 + PORT_OFFSET))
                EXPOSE_CLICKHOUSE_TCP_PORT=$((9900 + PORT_OFFSET))
                CLICKHOUSE_HTTP_PORT=$((8123 + PORT_OFFSET))
+               CLICKHOUSE_PROMETHEUS_PORT=$((9363 + PORT_OFFSET))
 
           # Persist computed ports into .env so docker-compose uses the correct host bindings.
           # Remove previous CI overrides first; docker compose uses the last duplicate key.
-               sed -i '/^ES_PORT=/d;/^OS_PORT=/d;/^INFINITY_THRIFT_PORT=/d;/^INFINITY_HTTP_PORT=/d;/^INFINITY_PSQL_PORT=/d;/^EXPOSE_MYSQL_PORT=/d;/^MINIO_PORT=/d;/^MINIO_CONSOLE_PORT=/d;/^REDIS_PORT=/d;/^KVROCKS_PORT=/d;/^EXPOSE_NATS_PORT=/d;/^EXPOSE_NATS_MONITORING_PORT=/d;/^NATS_MONITORING_PORT=/d;/^TEI_PORT=/d;/^KIBANA_PORT=/d;/^SVR_HTTP_PORT=/d;/^ADMIN_SVR_HTTP_PORT=/d;/^SVR_MCP_PORT=/d;/^SVR_WEB_HTTP_PORT=/d;/^SVR_WEB_HTTPS_PORT=/d;/^EXPOSE_CLICKHOUSE_TCP_PORT=/d;/^CLICKHOUSE_HTTP_PORT=/d;/^COMPOSE_PROFILES=/d;/^TEI_MODEL=/d;/^RAGFLOW_IMAGE=/d;/^DOC_ENGINE=/d' .env
+               sed -i '/^ES_PORT=/d;/^OS_PORT=/d;/^INFINITY_THRIFT_PORT=/d;/^INFINITY_HTTP_PORT=/d;/^INFINITY_PSQL_PORT=/d;/^EXPOSE_MYSQL_PORT=/d;/^MINIO_PORT=/d;/^MINIO_CONSOLE_PORT=/d;/^REDIS_PORT=/d;/^KVROCKS_PORT=/d;/^EXPOSE_NATS_PORT=/d;/^EXPOSE_NATS_MONITORING_PORT=/d;/^NATS_MONITORING_PORT=/d;/^TEI_PORT=/d;/^KIBANA_PORT=/d;/^SVR_HTTP_PORT=/d;/^ADMIN_SVR_HTTP_PORT=/d;/^SVR_MCP_PORT=/d;/^SVR_WEB_HTTP_PORT=/d;/^SVR_WEB_HTTPS_PORT=/d;/^EXPOSE_CLICKHOUSE_TCP_PORT=/d;/^CLICKHOUSE_HTTP_PORT=/d;/^CLICKHOUSE_PROMETHEUS_PORT=/d;/^COMPOSE_PROFILES=/d;/^TEI_MODEL=/d;/^RAGFLOW_IMAGE=/d;/^DOC_ENGINE=/d' .env
           # docker-compose-go.yml uses env_file: .env-go for the ragflow-cpu
           # container, so the Go server process reads COMPOSE_PROFILES and
           # TEI_MODEL from .env (not .env). Without syncing these two,
@@ -828,6 +829,7 @@ jobs:
                  echo "SVR_WEB_HTTPS_PORT=${SVR_WEB_HTTPS_PORT}"
                  echo "EXPOSE_CLICKHOUSE_TCP_PORT=${EXPOSE_CLICKHOUSE_TCP_PORT}"
                  echo "CLICKHOUSE_HTTP_PORT=${CLICKHOUSE_HTTP_PORT}"
+                 echo "CLICKHOUSE_PROMETHEUS_PORT=${CLICKHOUSE_PROMETHEUS_PORT}"
                  echo "COMPOSE_PROFILES=${DOC_ENGINE},cpu,ragflow-go,tei-cpu,deepdoc,metadata-mysql,clickhouse"
                  echo "TEI_MODEL=BAAI/bge-small-en-v1.5"
                  echo "RAGFLOW_IMAGE=${RAGFLOW_IMAGE}"
@@ -1107,7 +1109,7 @@ jobs:
           # Engine-specific offset partitions keep concurrent engine jobs from
           # choosing the same host ports when they land on the same self-hosted runner.
           # A lock plus reservation file closes the check/start race between parallel jobs.
-               PORT_BASES=(1200 1201 23817 23820 5432 5455 9000 9001 6379 6380 6381 6601 9380 9381 9382 9385 80 443 4222 8222 9900 8123)
+               PORT_BASES=(1200 1201 23817 23820 5432 5455 9000 9001 6379 6380 6381 6601 9380 9381 9382 9385 80 443 4222 8222 9900 8123 9363)
                PARTITION_SIZE=3000
                # Keep every (base + offset) host port BELOW the Linux ephemeral
                # range (net.ipv4.ip_local_port_range, default 32768-60999). An
@@ -1275,10 +1277,11 @@ jobs:
                SVR_WEB_HTTPS_PORT=$((443 + PORT_OFFSET))
                EXPOSE_CLICKHOUSE_TCP_PORT=$((9900 + PORT_OFFSET))
                CLICKHOUSE_HTTP_PORT=$((8123 + PORT_OFFSET))
+               CLICKHOUSE_PROMETHEUS_PORT=$((9363 + PORT_OFFSET))
 
           # Persist computed ports into .env so docker-compose uses the correct host bindings.
           # Remove previous CI overrides first; docker compose uses the last duplicate key.
-               sed -i '/^ES_PORT=/d;/^OS_PORT=/d;/^INFINITY_THRIFT_PORT=/d;/^INFINITY_HTTP_PORT=/d;/^INFINITY_PSQL_PORT=/d;/^EXPOSE_MYSQL_PORT=/d;/^MINIO_PORT=/d;/^MINIO_CONSOLE_PORT=/d;/^REDIS_PORT=/d;/^KVROCKS_PORT=/d;/^EXPOSE_NATS_PORT=/d;/^EXPOSE_NATS_MONITORING_PORT=/d;/^NATS_MONITORING_PORT=/d;/^TEI_PORT=/d;/^KIBANA_PORT=/d;/^SVR_HTTP_PORT=/d;/^ADMIN_SVR_HTTP_PORT=/d;/^SVR_MCP_PORT=/d;/^SVR_WEB_HTTP_PORT=/d;/^SVR_WEB_HTTPS_PORT=/d;/^EXPOSE_CLICKHOUSE_TCP_PORT=/d;/^CLICKHOUSE_HTTP_PORT=/d;/^COMPOSE_PROFILES=/d;/^TEI_MODEL=/d;/^RAGFLOW_IMAGE=/d;/^DOC_ENGINE=/d' .env
+               sed -i '/^ES_PORT=/d;/^OS_PORT=/d;/^INFINITY_THRIFT_PORT=/d;/^INFINITY_HTTP_PORT=/d;/^INFINITY_PSQL_PORT=/d;/^EXPOSE_MYSQL_PORT=/d;/^MINIO_PORT=/d;/^MINIO_CONSOLE_PORT=/d;/^REDIS_PORT=/d;/^KVROCKS_PORT=/d;/^EXPOSE_NATS_PORT=/d;/^EXPOSE_NATS_MONITORING_PORT=/d;/^NATS_MONITORING_PORT=/d;/^TEI_PORT=/d;/^KIBANA_PORT=/d;/^SVR_HTTP_PORT=/d;/^ADMIN_SVR_HTTP_PORT=/d;/^SVR_MCP_PORT=/d;/^SVR_WEB_HTTP_PORT=/d;/^SVR_WEB_HTTPS_PORT=/d;/^EXPOSE_CLICKHOUSE_TCP_PORT=/d;/^CLICKHOUSE_HTTP_PORT=/d;/^CLICKHOUSE_PROMETHEUS_PORT=/d;/^COMPOSE_PROFILES=/d;/^TEI_MODEL=/d;/^RAGFLOW_IMAGE=/d;/^DOC_ENGINE=/d' .env
           # docker-compose-go.yml uses env_file: .env-go for the ragflow-cpu
           # container, so the Go server process reads COMPOSE_PROFILES and
           # TEI_MODEL from .env (not .env). Without syncing these two,
@@ -1310,6 +1313,7 @@ jobs:
                  echo "SVR_WEB_HTTPS_PORT=${SVR_WEB_HTTPS_PORT}"
                  echo "EXPOSE_CLICKHOUSE_TCP_PORT=${EXPOSE_CLICKHOUSE_TCP_PORT}"
                  echo "CLICKHOUSE_HTTP_PORT=${CLICKHOUSE_HTTP_PORT}"
+                 echo "CLICKHOUSE_PROMETHEUS_PORT=${CLICKHOUSE_PROMETHEUS_PORT}"
                  echo "COMPOSE_PROFILES=${DOC_ENGINE},cpu,ragflow-go,tei-cpu,deepdoc,metadata-mysql,clickhouse"
                  echo "TEI_MODEL=BAAI/bge-small-en-v1.5"
                  echo "RAGFLOW_IMAGE=${RAGFLOW_IMAGE}"
@@ -1664,7 +1668,7 @@ jobs:
           # Engine-specific offset partitions keep concurrent engine jobs from
           # choosing the same host ports when they land on the same self-hosted runner.
           # A lock plus reservation file closes the check/start race between parallel jobs.
-               PORT_BASES=(1200 1201 23817 23820 5432 5455 9000 9001 6379 6380 6381 6601 9380 9381 9382 9385 80 443 4222 8222 9900 8123)
+               PORT_BASES=(1200 1201 23817 23820 5432 5455 9000 9001 6379 6380 6381 6601 9380 9381 9382 9385 80 443 4222 8222 9900 8123 9363)
                PARTITION_SIZE=3000
                # Keep every (base + offset) host port BELOW the Linux ephemeral
                # range (net.ipv4.ip_local_port_range, default 32768-60999). An
@@ -1832,10 +1836,11 @@ jobs:
                SVR_WEB_HTTPS_PORT=$((443 + PORT_OFFSET))
                EXPOSE_CLICKHOUSE_TCP_PORT=$((9900 + PORT_OFFSET))
                CLICKHOUSE_HTTP_PORT=$((8123 + PORT_OFFSET))
+               CLICKHOUSE_PROMETHEUS_PORT=$((9363 + PORT_OFFSET))
 
           # Persist computed ports into .env so docker-compose uses the correct host bindings.
           # Remove previous CI overrides first; docker compose uses the last duplicate key.
-               sed -i '/^ES_PORT=/d;/^OS_PORT=/d;/^INFINITY_THRIFT_PORT=/d;/^INFINITY_HTTP_PORT=/d;/^INFINITY_PSQL_PORT=/d;/^EXPOSE_MYSQL_PORT=/d;/^MINIO_PORT=/d;/^MINIO_CONSOLE_PORT=/d;/^REDIS_PORT=/d;/^KVROCKS_PORT=/d;/^EXPOSE_NATS_PORT=/d;/^EXPOSE_NATS_MONITORING_PORT=/d;/^NATS_MONITORING_PORT=/d;/^TEI_PORT=/d;/^KIBANA_PORT=/d;/^SVR_HTTP_PORT=/d;/^ADMIN_SVR_HTTP_PORT=/d;/^SVR_MCP_PORT=/d;/^SVR_WEB_HTTP_PORT=/d;/^SVR_WEB_HTTPS_PORT=/d;/^EXPOSE_CLICKHOUSE_TCP_PORT=/d;/^CLICKHOUSE_HTTP_PORT=/d;/^COMPOSE_PROFILES=/d;/^TEI_MODEL=/d;/^RAGFLOW_IMAGE=/d;/^DOC_ENGINE=/d' .env
+               sed -i '/^ES_PORT=/d;/^OS_PORT=/d;/^INFINITY_THRIFT_PORT=/d;/^INFINITY_HTTP_PORT=/d;/^INFINITY_PSQL_PORT=/d;/^EXPOSE_MYSQL_PORT=/d;/^MINIO_PORT=/d;/^MINIO_CONSOLE_PORT=/d;/^REDIS_PORT=/d;/^KVROCKS_PORT=/d;/^EXPOSE_NATS_PORT=/d;/^EXPOSE_NATS_MONITORING_PORT=/d;/^NATS_MONITORING_PORT=/d;/^TEI_PORT=/d;/^KIBANA_PORT=/d;/^SVR_HTTP_PORT=/d;/^ADMIN_SVR_HTTP_PORT=/d;/^SVR_MCP_PORT=/d;/^SVR_WEB_HTTP_PORT=/d;/^SVR_WEB_HTTPS_PORT=/d;/^EXPOSE_CLICKHOUSE_TCP_PORT=/d;/^CLICKHOUSE_HTTP_PORT=/d;/^CLICKHOUSE_PROMETHEUS_PORT=/d;/^COMPOSE_PROFILES=/d;/^TEI_MODEL=/d;/^RAGFLOW_IMAGE=/d;/^DOC_ENGINE=/d' .env
           # docker-compose-go.yml uses env_file: .env-go for the ragflow-cpu
           # container, so the Go server process reads COMPOSE_PROFILES and
           # TEI_MODEL from .env (not .env). Without syncing these two,
@@ -1867,6 +1872,7 @@ jobs:
                  echo "SVR_WEB_HTTPS_PORT=${SVR_WEB_HTTPS_PORT}"
                  echo "EXPOSE_CLICKHOUSE_TCP_PORT=${EXPOSE_CLICKHOUSE_TCP_PORT}"
                  echo "CLICKHOUSE_HTTP_PORT=${CLICKHOUSE_HTTP_PORT}"
+                 echo "CLICKHOUSE_PROMETHEUS_PORT=${CLICKHOUSE_PROMETHEUS_PORT}"
                  # NOTE: the engine profile (${DOC_ENGINE} -> "infinity") MUST be
                  # first, otherwise the engine service never starts. We drop
                  # `cpu` (the heavy ragflow-cpu server container) and `deepdoc`

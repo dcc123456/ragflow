@@ -392,6 +392,39 @@ services:
       retries: 120
 
 
+  prometheus:
+    profiles:
+      - prometheus
+    image: prom/prometheus:v3.16.0
+    network_mode: host
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.listen-address=localhost:9090
+    restart: unless-stopped
+    volumes:
+      - type: bind
+        source: ./prometheus
+        target: /etc/prometheus
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./prometheus/secrets/minio.token
+        target: /run/secrets/minio.token
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: volume
+        source: prometheus_data
+        target: /prometheus
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:9090/-/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
   jaeger:
     profiles:
       - jaeger
@@ -491,9 +524,12 @@ services:
     volumes:
       - clickhouse_data:/var/lib/clickhouse
       - ./init-clickhouse.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./clickhouse/prometheus.xml:/etc/clickhouse-server/config.d/prometheus.xml:ro
     ports:
       - ${EXPOSE_CLICKHOUSE_TCP_PORT:-9900}:9000
       - ${CLICKHOUSE_HTTP_PORT:-8123}:8123
+      # Docker requires an IP literal for the host bind address.
+      - "127.0.0.1:${CLICKHOUSE_PROMETHEUS_PORT:-9363}:9363"
     env_file: .env
     environment:
       - CLICKHOUSE_USER=${CLICKHOUSE_USER:-ragflow}
@@ -516,6 +552,8 @@ services:
 
 
 volumes:
+  prometheus_data:
+    driver: local
   esdata01:
     driver: local
   osdata01:

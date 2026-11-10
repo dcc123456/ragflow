@@ -14,7 +14,7 @@ groups:
       summary: "MinIO Critical Network Write Throughput ({{ $labels.instance }})"
       description: |
         Network write throughput critically high
-        Current: {{ printf "%.0f" $value }} MB/s
+        Current: {{ printf "%.0f" $value }} MiB/s
         Action: Check network bandwidth and application load
 
   - alert: MinIONetworkWriteThroughputWarning
@@ -26,7 +26,7 @@ groups:
       metric_type: throughput
     annotations:
       summary: "MinIO High Network Write Throughput ({{ $labels.instance }})"
-      description: "Network write throughput high: {{ printf \"%.0f\" $value }} MB/s"
+      description: "Network write throughput high: {{ printf \"%.0f\" $value }} MiB/s"
 
   # Network read throughput alerts
   - alert: MinIONetworkReadThroughputCritical
@@ -40,7 +40,7 @@ groups:
       summary: "MinIO Critical Network Read Throughput ({{ $labels.instance }})"
       description: |
         Network read throughput critically high
-        Current: {{ printf "%.0f" $value }} MB/s
+        Current: {{ printf "%.0f" $value }} MiB/s
         Action: Check network bandwidth and client demand
 
   - alert: MinIONetworkReadThroughputWarning
@@ -52,9 +52,9 @@ groups:
       metric_type: throughput
     annotations:
       summary: "MinIO High Network Read Throughput ({{ $labels.instance }})"
-      description: "Network read throughput high: {{ printf \"%.0f\" $value }} MB/s"
+      description: "Network read throughput high: {{ printf \"%.0f\" $value }} MiB/s"
 
-  # Total network throughput alerts - FIXED
+  # Total network throughput alerts
   - alert: MinIONetworkTotalThroughputHigh
     expr: minio:network:total_throughput_mb_sec > 1000
     for: 3m
@@ -64,4 +64,4 @@ groups:
       metric_type: throughput
     annotations:
       summary: "MinIO High Total Network Throughput ({{ $labels.instance }})"
-      description: "Total network throughput high: {{ printf \"%.0f\" $value }} MB/s"
+      description: "Total network throughput high: {{ printf \"%.0f\" $value }} MiB/s"
