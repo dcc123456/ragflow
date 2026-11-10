@@ -1,8 +1,12 @@
 export default {
   translation: {
     permission: {
+      myTeam: '我的团队',
       member: '成员',
       group: '群组',
+      expand: '展开',
+      collapse: '收起',
+      role: '角色',
       department: '部门',
       teamManagement: '团队管理',
       membersInTotal: '成员总数',
@@ -40,6 +44,24 @@ export default {
       deleteConfirmMessage: '{{id}} 正被 {{type}} 使用，如下所示',
       pleaseShareTheModelFirst: '请先分享以下知识库或模型',
       type: '类型',
+      createSubgroup: '新建子用户组',
+      parentGroup: '上级用户组',
+      rootGroup: '根用户组（无上级）',
+      groupNameLength: '用户组名称最多 100 个字符',
+      addSubgroup: '新建子用户组',
+      deleteSubgroup: '删除子用户组',
+      addMember: '添加成员',
+      removeMember: '移除成员',
+      configureMemberPermissions: '配置成员权限',
+      pending: '待确认',
+      memberPermissions: '成员权限',
+      noInvitableMembers: '暂无可邀请的成员',
+      teamInvitation: '团队邀请',
+      pendingInviteMembers:
+        '有 {{count}} 位成员尚未接受团队邀请，接受后才能加入用户组',
+      selectMember: '选择成员',
+      transferOwnerHint: '选择的成员将成为用户组所有者并获得全部用户组权限。',
+      switchTenant: '切换租户',
     },
     privateLLM: {
       resetDefaultLLMTip: '重置所有用户为默认设置',

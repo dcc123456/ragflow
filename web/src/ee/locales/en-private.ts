@@ -476,8 +476,12 @@ export default {
       },
     },
     permission: {
+      myTeam: 'My team',
       member: 'Member',
       group: 'Group',
+      expand: 'Expand',
+      collapse: 'Collapse',
+      role: 'Role',
       department: 'Department',
       teamManagement: 'Team Management',
       membersInTotal: 'members in total',
@@ -515,6 +519,25 @@ export default {
       pleaseShareTheModelFirst:
         'Please share the following knowledge base or model first',
       type: 'Type',
+      createSubgroup: 'Create subgroup',
+      parentGroup: 'Parent group',
+      rootGroup: 'Root group',
+      groupNameLength: 'Group name must be at most 100 characters',
+      addSubgroup: 'Add subgroup',
+      deleteSubgroup: 'Delete subgroup',
+      addMember: 'Add member',
+      removeMember: 'Remove member',
+      configureMemberPermissions: 'Configure member permissions',
+      pending: 'Pending',
+      memberPermissions: 'Member permissions',
+      noInvitableMembers: 'No members available to invite',
+      teamInvitation: 'Team invitations',
+      pendingInviteMembers:
+        '{{count}} member(s) have not accepted the team invitation yet. They can join a group after accepting.',
+      selectMember: 'Select member',
+      transferOwnerHint:
+        'The selected member will become the group owner and gain all group permissions.',
+      switchTenant: 'Switch tenant',
     },
     privateLLM: {
       resetDefaultLLMTip: 'reset as default all users',

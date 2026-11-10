@@ -29,6 +29,29 @@ export default {
   transferGroupOwner: (tenantId: string) =>
     `${webAPI}/team/${tenantId}/group/owner`,
 
+  // tenant groups
+  tenantGroups: `${restAPIv1}/tenant/groups`,
+  tenantGroup: (groupId: string) => `${restAPIv1}/tenant/groups/${groupId}`,
+  tenantGroupParent: (groupId: string) =>
+    `${restAPIv1}/tenant/groups/${groupId}/parent`,
+  tenantGroupMembers: (groupId: string) =>
+    `${restAPIv1}/tenant/groups/${groupId}/members`,
+  tenantGroupMember: (groupId: string, userId: string) =>
+    `${restAPIv1}/tenant/groups/${groupId}/members/${userId}`,
+  tenantGroupMemberPermissions: (groupId: string, userId: string) =>
+    `${restAPIv1}/tenant/groups/${groupId}/members/${userId}/permissions`,
+  tenantGroupOwner: (groupId: string) =>
+    `${restAPIv1}/tenant/groups/${groupId}/owner`,
+
+  // tenant switching
+  tenantSwitch: (tenantId: string) => `${restAPIv1}/tenants/${tenantId}/switch`,
+
+  // tenant roles
+  tenantRoles: `${restAPIv1}/tenant/roles`,
+  tenantMemberRole: (userId: string) =>
+    `${restAPIv1}/tenant/members/${userId}/role`,
+  tenantMyPermissions: `${restAPIv1}/tenant/me/permissions`,
+
   // permission
   updatePermission: `${restAPIv1}/permission/update`,
   listPermission: `${restAPIv1}/permission/list`,

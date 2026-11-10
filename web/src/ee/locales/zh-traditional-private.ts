@@ -1,8 +1,12 @@
 export default {
   translation: {
     permission: {
+      myTeam: '我的團隊',
       member: '成員',
       group: '群組',
+      expand: '展開',
+      collapse: '收合',
+      role: '角色',
       department: '部門',
       teamManagement: '團隊管理',
       membersInTotal: '總成員數',
@@ -39,6 +43,25 @@ export default {
       avatar: '頭像',
       deleteConfirmMessage: '{{id}} 正被 {{type}} 使用，如下所示',
       pleaseShareTheModelFirst: '請先分享以下知識庫或模型',
+      type: '類型',
+      createSubgroup: '新建子用戶組',
+      parentGroup: '上級用戶組',
+      rootGroup: '根用戶組（無上級）',
+      groupNameLength: '用戶組名稱最多 100 個字元',
+      addSubgroup: '新建子用戶組',
+      deleteSubgroup: '刪除子用戶組',
+      addMember: '新增成員',
+      removeMember: '移除成員',
+      configureMemberPermissions: '設定成員權限',
+      pending: '待確認',
+      memberPermissions: '成員權限',
+      noInvitableMembers: '暫無可邀請的成員',
+      teamInvitation: '團隊邀請',
+      pendingInviteMembers:
+        '有 {{count}} 位成員尚未接受團隊邀請，接受後才能加入用戶組',
+      selectMember: '選擇成員',
+      transferOwnerHint: '選擇的成員將成為用戶組擁有者並獲得全部用戶組權限。',
+      switchTenant: '切換租戶',
     },
     billing: {
       nextMonthlyCost: '下月費用',

@@ -1,4 +1,6 @@
 import {
+  GroupPermission,
+  GroupPermissionName,
   Permission,
   getResourcePermissionActions,
   hasResourceOwnerPermission,
@@ -40,5 +42,37 @@ describe('resource permission masks', () => {
     expect(hasResourcePermission(mask, Permission.Read)).toBe(true);
     expect(hasResourcePermission(mask, Permission.Manage)).toBe(true);
     expect(hasResourcePermission(mask, Permission.Write)).toBe(false);
+  });
+});
+
+describe('group permission masks', () => {
+  test('mirrors the backend bit values', () => {
+    expect(GroupPermission).toMatchObject({
+      AddSubgroup: 1,
+      DeleteSubgroup: 2,
+      AddMember: 4,
+      RemoveMember: 8,
+      ConfigureMemberPermissions: 16,
+      Owner: 32,
+    });
+  });
+
+  test('exposes the wire names the API accepts', () => {
+    expect(GroupPermissionName).toMatchObject({
+      AddSubgroup: 'add_subgroup',
+      DeleteSubgroup: 'delete_subgroup',
+      AddMember: 'add_member',
+      RemoveMember: 'remove_member',
+      ConfigureMemberPermissions: 'configure_member_permissions',
+      Owner: 'owner',
+    });
+  });
+
+  test('checks a group permission by bit', () => {
+    const mask = GroupPermission.AddMember | GroupPermission.Owner;
+    expect(hasResourcePermission(mask, GroupPermission.AddMember)).toBe(true);
+    expect(hasResourcePermission(mask, GroupPermission.RemoveMember)).toBe(
+      false,
+    );
   });
 });

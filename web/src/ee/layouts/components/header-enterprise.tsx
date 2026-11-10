@@ -1,15 +1,108 @@
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import type { MouseEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router';
 
 import { IconFontFill } from '@/components/icon-font';
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { RAGFlowTooltip } from '@/components/ui/tooltip';
-import { cn } from '@/lib/utils';
+import { useSwitchTenant } from '@/ee/hooks/use-switch-tenant';
 import { PriceName } from '@/ee/pages/price/constant';
 import { useFetchCurrentPlan } from '@/ee/pages/price/hook/use-price-hooks';
 import { PrivateRoutes } from '@/ee/private-routes';
 import { isBillingEnabled } from '@/ee/services/billingStatus';
+import {
+  useFetchTenantInfo,
+  useListTenant,
+} from '@/hooks/use-user-setting-request';
+import { ITenant } from '@/interfaces/database/user-setting';
+import { cn } from '@/lib/utils';
+import { TenantMembershipStatus } from '@/pages/user-setting/constants';
+import { Building2, LucideChevronDown } from 'lucide-react';
+
+const getTenantLabel = (tenant?: ITenant) =>
+  tenant ? tenant.nickname || tenant.email || tenant.tenant_id : '';
+
+export function EnterpriseHeaderTenantSwitcher({
+  isCompact = false,
+}: {
+  isCompact?: boolean;
+}) {
+  const { t } = useTranslation();
+  const { data: tenants } = useListTenant();
+  const { data: tenantInfo } = useFetchTenantInfo();
+  const { switching, switchToTenant } = useSwitchTenant();
+
+  const currentTenantId = tenantInfo.tenant_id;
+  const joinedTenants = useMemo(
+    () =>
+      tenants.filter(
+        (tenant) => tenant.status === TenantMembershipStatus.Joined,
+      ),
+    [tenants],
+  );
+  const currentLabel = useMemo(() => {
+    const currentTenant = joinedTenants.find(
+      (tenant) => tenant.tenant_id === currentTenantId,
+    );
+
+    return getTenantLabel(currentTenant) || currentTenantId;
+  }, [currentTenantId, joinedTenants]);
+
+  if (joinedTenants.length === 0) {
+    return null;
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          className={cn(
+            'h-10 shrink-0 text-text-primary',
+            isCompact ? 'size-10 px-0' : 'ms-2 max-w-[220px] gap-1 px-2',
+          )}
+          aria-label={t('permission.switchTenant')}
+          title={isCompact ? t('permission.switchTenant') : currentLabel}
+          disabled={switching}
+        >
+          {isCompact ? (
+            <Building2 className="size-5" />
+          ) : (
+            <>
+              <span className="truncate">{currentLabel}</span>
+              <LucideChevronDown className="size-[1em] shrink-0" />
+            </>
+          )}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="max-w-[280px]">
+        <DropdownMenuRadioGroup
+          value={currentTenantId}
+          onValueChange={switchToTenant}
+        >
+          {joinedTenants.map((tenant) => (
+            <DropdownMenuRadioItem
+              key={tenant.tenant_id}
+              value={tenant.tenant_id}
+              textValue={getTenantLabel(tenant)}
+              className="max-w-[260px]"
+            >
+              <span className="truncate">{getTenantLabel(tenant)}</span>
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 /** Navigate to the pricing page; shared by the upgrade and plan badges. */
 function useOpenPricePage() {

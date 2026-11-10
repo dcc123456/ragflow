@@ -13,6 +13,7 @@ export enum PrivateRoutes {
   AdminSettings = '/admin/settings',
   AdminSSOProviders = '/admin/sso',
   AdminModelProviders = '/admin/model-providers',
+  Team = '/team',
 }
 
 export type PrivateRoute = {
@@ -156,6 +157,14 @@ export const privateRoutes: PrivateRoute[] = [
           {
             path: `${Routes.UserSetting}${PrivateRoutes.Billing}`,
             Component: () => import('@/ee/pages/billing'),
+          },
+          {
+            // Substitute upstream's `/user-setting/team` page with the
+            // enterprise team page; the shared page stays untouched.
+            replace: [`${Routes.UserSetting}${PrivateRoutes.Team}`],
+            path: `${Routes.UserSetting}${PrivateRoutes.Team}`,
+            Component: () => import('@/ee/pages/user-setting/team'),
+            errorElement: <FallbackComponent />,
           },
         ],
         errorElement: <FallbackComponent />,

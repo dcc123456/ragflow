@@ -31,7 +31,7 @@ export const PermissionList = [
   Permission.Manage,
 ];
 
-export function hasResourcePermission(permission: number, action: Permission) {
+export function hasResourcePermission(permission: number, action: number) {
   return (permission & action) === action;
 }
 
@@ -77,4 +77,35 @@ export enum TenantRole {
   Owner = 'owner',
   Invite = 'invite',
   Normal = 'normal',
+}
+
+/**
+ * Group-management bits returned by the Tenant groups API in the numeric
+ * `permission` field. They mirror `entity.GroupPermission*` in the Go backend.
+ */
+export enum GroupPermission {
+  AddSubgroup = 1 << 0,
+  DeleteSubgroup = 1 << 1,
+  AddMember = 1 << 2,
+  RemoveMember = 1 << 3,
+  ConfigureMemberPermissions = 1 << 4,
+  Owner = 1 << 5,
+}
+
+/** Wire names accepted by the group member permission update endpoint. */
+export enum GroupPermissionName {
+  AddSubgroup = 'add_subgroup',
+  DeleteSubgroup = 'delete_subgroup',
+  AddMember = 'add_member',
+  RemoveMember = 'remove_member',
+  ConfigureMemberPermissions = 'configure_member_permissions',
+  Owner = 'owner',
+}
+
+/** Group membership states returned by the Tenant group APIs. */
+export enum GroupMemberStatus {
+  Removed = '0',
+  Joined = '1',
+  Invited = '2',
+  Rejected = '3',
 }

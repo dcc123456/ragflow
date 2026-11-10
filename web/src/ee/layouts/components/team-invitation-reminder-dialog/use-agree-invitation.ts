@@ -1,40 +1,37 @@
-import { useShowDeleteConfirm } from '@/hooks/common-hooks';
 import {
   useAgreeTenant,
   useDeleteTenantUser,
   useFetchUserInfo,
 } from '@/hooks/use-user-setting-request';
-import { useTranslation } from 'react-i18next';
+import { useCallback } from 'react';
 
-export const useHandleAgreeTenant = () => {
-  const { agreeTenant } = useAgreeTenant();
-  const { deleteTenantUser } = useDeleteTenantUser();
-  const { data: user } = useFetchUserInfo();
+/**
+ * Accept an invitation: `PATCH /api/v1/tenants/{tenant_id}` joins the Tenant.
+ * Declining removes the current user's own membership row.
+ */
+export const useAcceptTenantInvitation = () => {
+  const { agreeTenant, loading: accepting } = useAgreeTenant();
 
-  const handleAgree = (tenantId: string, isAgree: boolean) => () => {
-    if (isAgree) {
+  const acceptInvitation = useCallback(
+    (tenantId: string) => {
       agreeTenant(tenantId);
-    } else {
-      deleteTenantUser({ tenantId, userId: user.id });
-    }
-  };
+    },
+    [agreeTenant],
+  );
 
-  return { handleAgree };
+  return { acceptInvitation, accepting };
 };
 
-export const useHandleQuitUser = () => {
-  const { deleteTenantUser, loading } = useDeleteTenantUser();
-  const showDeleteConfirm = useShowDeleteConfirm();
-  const { t } = useTranslation();
+export const useDeclineTenantInvitation = () => {
+  const { deleteTenantUser, loading: declining } = useDeleteTenantUser();
+  const { data: user } = useFetchUserInfo();
 
-  const handleQuitTenantUser = (userId: string, tenantId: string) => () => {
-    showDeleteConfirm({
-      title: t('setting.sureQuit'),
-      onOk: async () => {
-        deleteTenantUser({ userId, tenantId });
-      },
-    });
-  };
+  const declineInvitation = useCallback(
+    (tenantId: string) => {
+      deleteTenantUser({ tenantId, userId: user.id });
+    },
+    [deleteTenantUser, user.id],
+  );
 
-  return { handleQuitTenantUser, loading };
+  return { declineInvitation, declining };
 };
