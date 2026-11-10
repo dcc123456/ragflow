@@ -4,14 +4,34 @@ package config
 
 import "github.com/spf13/viper"
 
-// ParseIngestLogConfig is the EE-build counterpart of the OSS/non-ee stub in
-// stub.go (//go:build !ee). The shared config loader (internal/server/config.go)
-// calls globalConfig.ParseIngestLogConfig(v) once the OSS ingestion-log
-// configuration lands in EE via the OSS->EE sync.
+// ParseIngestLogConfig reads the [ingestion_log] section of service_conf.yaml
+// into the EE Config, reusing the shared IngestLogConfig type. The parsed Type
+// is dispatched by server.wireIngestLogSink; only "clickhouse" currently has a
+// sink implementation.
 //
-// This is a no-op placeholder so the EE build links whether or not the caller is
-// present. It is temporary: the ingestion-log feature branch provides the real
-// parser that wires ingestion lifecycle events into ClickHouse. Both branches add
-// this same file name, so merging that branch must resolve the conflict in favor
-// of the real implementation (replacing this no-op).
-func (c *Config) ParseIngestLogConfig(v *viper.Viper) error { return nil }
+// The type defaults to "clickhouse" (on): the ingestion sink is wired unless an
+// operator opts out. Only an explicit [ingestion_log].type key overrides it. A
+// [ingestion_log] section present without a type key keeps the default-on value
+// rather than flipping to the zero value.
+func (c *Config) ParseIngestLogConfig(v *viper.Viper) error {
+	c.ingestLog.Type = "clickhouse" // default on
+	if sub := v.Sub("ingestion_log"); sub != nil {
+		if err := sub.Unmarshal(&c.ingestLog); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// IngestLogType returns the configured [ingestion_log].type, the single source
+// of truth for sink dispatch.
+func (c *Config) IngestLogType() string {
+	return c.ingestLog.Type
+}
+
+// IngestLogSettings returns the parsed [ingestion_log] section for sink
+// installers (Path/MaxSize/...). Do NOT use GetIngestLogConfig() for sinks:
+// that returns the separate [ingestor].log config.
+func (c *Config) IngestLogSettings() *IngestLogConfig {
+	return &c.ingestLog
+}

@@ -66,6 +66,13 @@ func StartServer(ctx context.Context, cancel context.CancelFunc, serverName stri
 		return err
 	}
 
+	// Install the ingestion lifecycle sink selected by [ingestion_log].type.
+	// The dispatcher owns all type handling; unhandled types are a no-op. This
+	// runs after clickhouse.Init succeeds so the driver is always available.
+	if err = wireIngestLogSink(config, serverName); err != nil {
+		return err
+	}
+
 	// Init service quota instance
 	utility.InitServiceQuota(serverType)
 

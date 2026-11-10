@@ -127,13 +127,14 @@ jobs:
           git diff --exit-code --name-only --no-renames --no-ext-diff --no-textconv "${BASE_SHA}...${HEAD_SHA}" -- \
             ':(top,glob)**/*.go' \
             ':(top,glob,exclude)**/*_ee.go' \
-            ':(top,glob,exclude)**/*_ee_test.go'
+            ':(top,glob,exclude)**/*_ee_test.go' \
+            ':(top,glob,exclude)**/*_ee_integration_test.go'
           status=$?
           set -e
           # 1: offending files present; 128: git could not resolve the
           # expression (infrastructure problem, not a policy violation).
           if [ "$status" -eq 1 ]; then
-            echo "::error::Only *_ee.go and *_ee_test.go Go files may be changed without the merge_oss label."
+            echo "::error::Only *_ee.go, *_ee_test.go and *_ee_integration_test.go Go files may be changed without the merge_oss label."
             exit 1
           elif [ "$status" -ne 0 ]; then
             echo "::error::preflight could not diff ${BASE_SHA}...${HEAD_SHA} (git exit $status); see the log above."

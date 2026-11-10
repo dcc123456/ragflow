@@ -140,6 +140,11 @@ func Close() error {
 	return globalDriver.conn.Close()
 }
 
+// consumerIdleInterval is the pause between drain attempts when the channel is
+// empty. Without it the consumer spins calling drainAndFlush in a tight loop,
+// pegging a CPU core at 100% while nothing is queued.
+const consumerIdleInterval = 500 * time.Millisecond
+
 func (d *Driver) consumer() {
 	defer d.wg.Done()
 
@@ -153,52 +158,59 @@ func (d *Driver) consumer() {
 
 		default:
 			d.drainAndFlush()
+			// When the channel is empty drainAndFlush returns immediately; pause so
+			// we do not busy-loop at 100% CPU.
+			time.Sleep(consumerIdleInterval)
 		}
 	}
 }
 
 func (d *Driver) drainAndFlush() {
-	usageBatch, logBatch := d.drainChannel()
+	usageBatch, logBatch, ingestBatch := d.drainChannel()
 
-	if len(usageBatch)+len(logBatch) == 0 {
+	if len(usageBatch)+len(logBatch)+len(ingestBatch) == 0 {
 		return
 	}
 
 	d.flushModelUsage(usageBatch)
 	d.flushOperationLog(logBatch)
+	d.flushIngestionEvents(ingestBatch)
 }
 
-func (d *Driver) drainChannel() ([]*common.ModelUsage, []*common.OperationLog) {
+func (d *Driver) drainChannel() ([]*common.ModelUsage, []*common.OperationLog, []*common.IngestionLog) {
 	var usageBatch []*common.ModelUsage
 	var logBatch []*common.OperationLog
+	var ingestBatch []*common.IngestionLog
 
 	for {
 		select {
 		case message, ok := <-d.channel:
 			if !ok {
 				// channel is closed
-				return usageBatch, logBatch
+				return usageBatch, logBatch, ingestBatch
 			}
 			switch record := message.(type) {
 			case *common.ModelUsage:
 				usageBatch = append(usageBatch, record)
 			case *common.OperationLog:
 				logBatch = append(logBatch, record)
+			case *common.IngestionLog:
+				ingestBatch = append(ingestBatch, record)
 			default:
 				common.Error("Invalid record type", errors.New("invalid type"))
 			}
 
-			if len(usageBatch)+len(logBatch) >= d.batchSize {
+			if len(usageBatch)+len(logBatch)+len(ingestBatch) >= d.batchSize {
 				common.Info(fmt.Sprintf("Reach batch size limit, flush batch, batchSize: %d", d.batchSize))
-				return usageBatch, logBatch
+				return usageBatch, logBatch, ingestBatch
 			}
 
 		default:
 			// Drain channel, flush batch
-			if len(usageBatch)+len(logBatch) > 0 {
-				common.Info("Drain channel, flush batch", zap.Int("batchSize", len(usageBatch)+len(logBatch)))
+			if len(usageBatch)+len(logBatch)+len(ingestBatch) > 0 {
+				common.Info("Drain channel, flush batch", zap.Int("batchSize", len(usageBatch)+len(logBatch)+len(ingestBatch)))
 			}
-			return usageBatch, logBatch
+			return usageBatch, logBatch, ingestBatch
 		}
 	}
 }
@@ -340,20 +352,14 @@ func (d *Driver) flushOperationLog(batch []*common.OperationLog) {
 }
 
 func (d *Driver) InitDB() error {
-	tableName := "model_usage_fact"
-	// 1. Check if table exists
-	exists, err := d.tableExists(tableName)
-	if err != nil {
-		return fmt.Errorf("check table exists failed: %w", err)
-	}
-
-	if exists {
-		common.Info(fmt.Sprintf("Table '%s' already exists, skip create", tableName))
-		return nil
-	}
-
-	// 2. Create table and view
-	common.Info("Start create tables and views...")
+	// Every statement returned by getCreateSQLs uses IF NOT EXISTS, so this call
+	// is idempotent: on a fresh database it creates everything, and on an
+	// upgraded database it converges any analytics table that is missing
+	// (e.g. ingestion_events_fact on a deployment that already had
+	// model_usage_fact). The previous early-return on model_usage_fact's
+	// presence skipped getCreateSQLs entirely, silently dropping ingestion
+	// events on every upgraded database.
+	common.Info("Start create tables and views (idempotent)...")
 
 	statements := getCreateSQLs()
 	for _, stmt := range statements {
@@ -362,7 +368,7 @@ func (d *Driver) InitDB() error {
 			continue
 		}
 
-		err = d.conn.Exec(d.ctx, stmt)
+		err := d.conn.Exec(d.ctx, stmt)
 		if err != nil {
 			common.Error("Execute statement failed", err)
 		}
@@ -729,6 +735,54 @@ GROUP BY
     PARTITION BY event_date
     ORDER BY (event_time, user_id, resource_type)
     TTL event_date + INTERVAL 30 DAY DELETE
+    `,
+		`
+    CREATE TABLE IF NOT EXISTS ingestion_events_fact
+    (
+        event_at DateTime64(3) CODEC(Delta(8), ZSTD(1)),
+        event_date Date DEFAULT toDate(event_at) CODEC(ZSTD(1)),
+
+        tenant_id LowCardinality(String) CODEC(ZSTD(1)),
+        dataset_id LowCardinality(String) CODEC(ZSTD(1)),
+        doc_id String CODEC(ZSTD(1)),
+        user_id LowCardinality(String) CODEC(ZSTD(1)),
+        user_name String CODEC(ZSTD(1)),
+        tenant_name String CODEC(ZSTD(1)),
+        worker LowCardinality(String) CODEC(ZSTD(1)),
+        task_id String CODEC(ZSTD(1)),
+
+        event_type LowCardinality(String) CODEC(ZSTD(1)),
+        status LowCardinality(String) CODEC(ZSTD(1)),
+        error_info String CODEC(ZSTD(1)),
+
+        filename String CODEC(ZSTD(1)),
+        file_type LowCardinality(String) CODEC(ZSTD(1)),
+        file_size Int64 CODEC(ZSTD(1)),
+        parser_id LowCardinality(String) CODEC(ZSTD(1)),
+
+        upload_time Nullable(DateTime64(3)) CODEC(ZSTD(1)),
+        enqueue_time Nullable(DateTime64(3)) CODEC(ZSTD(1)),
+        begin_time Nullable(DateTime64(3)) CODEC(ZSTD(1)),
+        end_time Nullable(DateTime64(3)) CODEC(ZSTD(1)),
+
+        duration_ms Int64 CODEC(ZSTD(1)),
+        wait_duration_s Float64 CODEC(ZSTD(1)),
+        parse_duration_s Float64 CODEC(ZSTD(1)),
+        progress Float64 CODEC(ZSTD(1)),
+        run_count Int32 CODEC(ZSTD(1)),
+        code Int32 CODEC(ZSTD(1)),
+
+        operation Nullable(String) CODEC(ZSTD(1)),
+
+        INDEX idx_dataset_id dataset_id TYPE bloom_filter(0.01) GRANULARITY 1,
+        INDEX idx_doc_id doc_id TYPE bloom_filter(0.01) GRANULARITY 1,
+        INDEX idx_user_id user_id TYPE bloom_filter(0.01) GRANULARITY 1,
+        INDEX idx_task_id task_id TYPE bloom_filter(0.01) GRANULARITY 1
+    )
+    ENGINE = MergeTree
+    PARTITION BY toYYYYMM(event_date)
+    ORDER BY (tenant_id, event_at, task_id)
+    SETTINGS index_granularity = 8192
     `,
 	}
 }
