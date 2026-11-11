@@ -74,7 +74,7 @@ func TestIngestionLifecycleCollectsAllEvents(t *testing.T) {
 
 	ctx := context.Background()
 	for _, ev := range events {
-		log := observability.BuildIngestLog(task, doc, run, ev.typ, ev.status, "", "", "")
+		log := observability.BuildIngestLog(ctx, task, doc, run, ev.typ, ev.status, "")
 		log.TaskID = taskID
 		common.LogIngest(&log)
 	}
