@@ -749,6 +749,8 @@ GROUP BY
         user_name String CODEC(ZSTD(1)),
         tenant_name String CODEC(ZSTD(1)),
         worker LowCardinality(String) CODEC(ZSTD(1)),
+        ingestor_name LowCardinality(String) CODEC(ZSTD(1)),
+        nats_queue LowCardinality(String) CODEC(ZSTD(1)),
         task_id String CODEC(ZSTD(1)),
 
         event_type LowCardinality(String) CODEC(ZSTD(1)),

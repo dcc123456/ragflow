@@ -31,8 +31,8 @@ func colIndex(name string) int {
 }
 
 func TestIngestionColumnsCount(t *testing.T) {
-	if len(ingestionColumns) != 27 {
-		t.Fatalf("expected 27 ingest columns, got %d", len(ingestionColumns))
+	if len(ingestionColumns) != 29 {
+		t.Fatalf("expected 29 ingest columns, got %d", len(ingestionColumns))
 	}
 	if ingestionColumns[0] != "event_at" {
 		t.Fatalf("first column must be event_at, got %q", ingestionColumns[0])
@@ -242,5 +242,27 @@ func TestCreateSQLsIncludesTenantName(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("ingestion_events_fact DDL must declare a tenant_name column")
+	}
+}
+
+// TestCreateSQLsIncludesIdentityRoutingColumns guards that the ingestion_events_fact
+// DDL declares the two routing identity columns (ingestor_name, nats_queue). On an
+// upgraded deployment the operator drops the stale table once before redeploy so that
+// InitDB's CREATE TABLE IF NOT EXISTS rebuilds it from this DDL with every current column.
+func TestCreateSQLsIncludesIdentityRoutingColumns(t *testing.T) {
+	var ddl string
+	for _, stmt := range getCreateSQLs() {
+		if strings.Contains(stmt, "CREATE TABLE IF NOT EXISTS ingestion_events_fact") {
+			ddl = stmt
+		}
+	}
+	if ddl == "" {
+		t.Fatal("ingestion_events_fact DDL not found in getCreateSQLs")
+	}
+	if !strings.Contains(ddl, "ingestor_name") {
+		t.Fatal("ingestion_events_fact DDL must declare an ingestor_name column")
+	}
+	if !strings.Contains(ddl, "nats_queue") {
+		t.Fatal("ingestion_events_fact DDL must declare a nats_queue column")
 	}
 }

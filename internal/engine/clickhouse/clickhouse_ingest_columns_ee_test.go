@@ -56,8 +56,8 @@ func TestIngestionInsertSQLUsesSingleSource(t *testing.T) {
 // TestIngestionColumnsAreWellFormed covers duplicate / malformed / derived-column
 // corner cases for the one source of truth.
 func TestIngestionColumnsAreWellFormed(t *testing.T) {
-	if len(ingestionColumns) != 27 {
-		t.Fatalf("expected 27 inserted columns, got %d", len(ingestionColumns))
+	if len(ingestionColumns) != 29 {
+		t.Fatalf("expected 29 inserted columns, got %d", len(ingestionColumns))
 	}
 	ident := regexp.MustCompile("^[a-z][a-z0-9_]*$")
 	seen := make(map[string]bool, len(ingestionColumns))
