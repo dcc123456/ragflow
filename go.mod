@@ -75,6 +75,7 @@ require (
 	github.com/spf13/viper v1.18.2
 	github.com/stripe/stripe-go/v87 v87.0.0
 	github.com/ucloud/ucloud-sandbox-sdk-go v0.0.0-20260807065450-08464aef9ed5
+	github.com/unitedrhino/go-cad v0.0.0-20261001090957-ddd91eea9618
 	github.com/xuri/excelize/v2 v2.11.1-0.20261003002531-6258dcebc4e2
 	github.com/yfedoseev/office_oxide/go v0.1.16
 	github.com/yfedoseev/pdf_oxide/go v0.3.78
