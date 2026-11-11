@@ -110,7 +110,7 @@ func TestSeedIngestionEvents(t *testing.T) {
 		}
 		task := &entity.IngestionTask{ID: taskID, DocumentID: dID, DatasetID: kbID, UserID: uID}
 
-		log := observability.BuildIngestLog(task, doc, run, typ, status, errInfo, "", "")
+		log := observability.BuildIngestLog(ctx, task, doc, run, typ, status, errInfo)
 		log.EventTime = base // backdate so events spread over the retention window
 		common.LogIngest(&log)
 
