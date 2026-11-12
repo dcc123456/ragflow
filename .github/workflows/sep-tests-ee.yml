@@ -1,4 +1,4 @@
-name: sep-tests
+name: sep-tests-ee
 permissions:
   contents: read
 
