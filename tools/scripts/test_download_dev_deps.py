@@ -1071,7 +1071,7 @@ def test_native_libs_dir_empty_override_falls_back():
     assert res.stdout.strip() == "/home/alice/ragflow-native-libs"
 
 
-SEP_TESTS_YML = os.path.join(native.REPO_ROOT, ".github", "workflows", "sep-tests.yml")
+SEP_TESTS_YML = os.path.join(native.REPO_ROOT, ".github", "workflows", "sep-tests-ee.yml")
 
 
 def test_sep_tests_mounts_native_libs_cache():
