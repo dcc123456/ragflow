@@ -131,6 +131,7 @@ const svgIcons = [
   LLMFactory.HostingerRouter,
   LLMFactory.Cheapaimodel,
   LLMFactory.Wally,
+  LLMFactory.Shengsuanyun,
   LLMFactory.Synap,
   LLMFactory.Wiro,
 ];
