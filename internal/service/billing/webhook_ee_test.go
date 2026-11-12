@@ -22,11 +22,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	"ragflow/internal/entity"
 	"ragflow/internal/server/config"
+
+	"github.com/stripe/stripe-go/v87"
 )
 
 func newWebhookTestService(t *testing.T) *Service {
@@ -361,5 +367,248 @@ func TestInvoiceParentSubscriptionIsResolved(t *testing.T) {
 	}
 	if order.PaymentSubscriptionID == nil || *order.PaymentSubscriptionID != "sub_p" {
 		t.Fatalf("order subscription = %v", order.PaymentSubscriptionID)
+	}
+}
+
+// stubStripeBackend routes the stripe-go package at a local handler so tests
+// can exercise SDK failure paths without network access.
+func stubStripeBackend(t *testing.T, handler http.HandlerFunc) {
+	t.Helper()
+	server := httptest.NewServer(handler)
+	previous := stripe.GetBackend(stripe.APIBackend)
+	stripe.SetBackend(stripe.APIBackend, stripe.GetBackendWithConfig(stripe.APIBackend, &stripe.BackendConfig{
+		URL:               stripe.String(server.URL),
+		MaxNetworkRetries: stripe.Int64(0),
+		LeveledLogger:     &stripe.LeveledLogger{Level: stripe.LevelNull},
+	}))
+	t.Cleanup(func() {
+		stripe.SetBackend(stripe.APIBackend, previous)
+		server.Close()
+	})
+}
+
+// enableStripe marks the service as configured without touching the network:
+// the SDK backend is replaced by the caller before the handler runs.
+func enableStripe(t *testing.T, service *Service) {
+	t.Helper()
+	service.cfg.StripeAPIKey = "sk_test_stub"
+	// Consume the one-time initializer so EnsureStripe keeps the stubbed
+	// backend instead of installing a client pointed at Stripe's API.
+	service.stripeOnce.Do(func() {})
+}
+
+func testSubscriptionObject(subscriptionID, tenantID, status string, periodStart, periodEnd int64) map[string]interface{} {
+	return map[string]interface{}{
+		"id": subscriptionID, "customer": "cus_" + subscriptionID, "status": status,
+		"current_period_start": periodStart, "current_period_end": periodEnd,
+		"metadata": map[string]string{"tenant_id": tenantID},
+		"items": map[string]interface{}{"data": []interface{}{
+			map[string]interface{}{"id": "si_" + subscriptionID, "quantity": 1, "price": map[string]string{"id": "price_starter"}},
+		}},
+	}
+}
+
+// A subscription snapshot without items used to be acknowledged as unhandled:
+// nothing was written, yet the event reached a terminal status and Stripe
+// never retried. It must fail so the retry drain can pick it up.
+func TestSubscriptionEventWithoutItemsFails(t *testing.T) {
+	service := newWebhookTestService(t)
+	ctx := context.Background()
+	object := testSubscriptionObject("sub_noitems", "tenant-noitems", "active", time.Now().Unix(), time.Now().Unix()+100)
+	object["items"] = map[string]interface{}{"data": []interface{}{}}
+	event := mustEvent(t, "evt_noitems", EventSubscriptionCreated, object)
+
+	err := service.HandleWebhookEvent(ctx, event)
+	if err == nil {
+		t.Fatal("a subscription event without items must fail")
+	}
+	row, rowErr := service.webhookDAO.GetByEventID(ctx, service.db, "evt_noitems")
+	if rowErr != nil {
+		t.Fatalf("event row: %v", rowErr)
+	}
+	if row.ProcessingStatus != "failed" {
+		t.Fatalf("status = %s, want failed", row.ProcessingStatus)
+	}
+	retryable, listErr := service.webhookDAO.ListRetryable(ctx, service.db, "", 10)
+	if listErr != nil || len(retryable) != 1 || retryable[0].EventID != "evt_noitems" {
+		t.Fatalf("retryable = %v %v", retryable, listErr)
+	}
+}
+
+// A snapshot without a usable billing period cannot be written. Acknowledging
+// it silently loses the upgrade; it must fail and stay retryable.
+func TestSubscriptionEventWithoutBillingPeriodFails(t *testing.T) {
+	service := newWebhookTestService(t)
+	ctx := context.Background()
+	object := testSubscriptionObject("sub_noperiod", "tenant-noperiod", "active", 0, 0)
+	event := mustEvent(t, "evt_noperiod", EventSubscriptionUpdated, object)
+
+	err := service.HandleWebhookEvent(ctx, event)
+	if err == nil {
+		t.Fatal("a subscription event without a billing period must fail")
+	}
+	row, rowErr := service.webhookDAO.GetByEventID(ctx, service.db, "evt_noperiod")
+	if rowErr != nil {
+		t.Fatalf("event row: %v", rowErr)
+	}
+	if row.ProcessingStatus != "failed" {
+		t.Fatalf("status = %s, want failed", row.ProcessingStatus)
+	}
+	if subscription, _ := service.Subscription(ctx, "tenant-noperiod"); subscription != nil {
+		t.Fatalf("no subscription may be written, got %+v", subscription)
+	}
+}
+
+// A price missing from the plan catalogue must fail the event instead of
+// keeping the locally stored plan: the old fallback left a tenant on Starter
+// forever when Stripe reported an unmapped (legacy) price.
+func TestSubscriptionUnknownPriceFailsWithoutStalePlanFallback(t *testing.T) {
+	service := newWebhookTestService(t)
+	ctx := context.Background()
+	staleStart := time.Now().Add(-48 * time.Hour).Unix()
+	if err := service.subscriptionDAO.UpsertSubscription(ctx, service.db, &entity.BillingSubscription{
+		ID: "sub-stale", TenantID: "tenant-stale", PlanName: "Starter",
+		CustomerID: "cus_stale", SubscriptionID: "sub_stale", SubscriptionStatus: "active",
+		StartTime: ptrTime(time.Unix(staleStart, 0).UTC()),
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	event := mustEvent(t, "evt_unknownprice", EventSubscriptionUpdated, map[string]interface{}{
+		"id": "sub_stale", "customer": "cus_stale", "status": "active",
+		"current_period_start": time.Now().Unix(), "current_period_end": time.Now().Unix() + 100,
+		"metadata": map[string]string{"tenant_id": "tenant-stale"},
+		"items": map[string]interface{}{"data": []interface{}{
+			map[string]interface{}{"id": "si_stale", "quantity": 1, "price": map[string]string{"id": "price_legacy_zero"}},
+		}},
+	})
+
+	err := service.HandleWebhookEvent(ctx, event)
+	if err == nil || !strings.Contains(err.Error(), "unknown stripe price") {
+		t.Fatalf("err = %v, want unknown price failure", err)
+	}
+	row, rowErr := service.webhookDAO.GetByEventID(ctx, service.db, "evt_unknownprice")
+	if rowErr != nil {
+		t.Fatalf("event row: %v", rowErr)
+	}
+	if row.ProcessingStatus != "failed" {
+		t.Fatalf("status = %s, want failed", row.ProcessingStatus)
+	}
+	subscription, _ := service.Subscription(ctx, "tenant-stale")
+	if subscription == nil || subscription.PlanName != "Starter" || subscription.PriceID != "" {
+		t.Fatalf("local row must stay untouched, got %+v", subscription)
+	}
+}
+
+// A permanently failing event must not hold the replay watermark back: the
+// failed row is stored locally, so the drain owns its retries and the later
+// events must still be replayed.
+func TestReplayAdvancesPastFailedEvent(t *testing.T) {
+	service := newWebhookTestService(t)
+	ctx := context.Background()
+	enableStripe(t, service)
+	if err := service.db.AutoMigrate(&entity.SystemSettings{}); err != nil {
+		t.Fatalf("migrate system settings: %v", err)
+	}
+
+	now := time.Now().Unix()
+	badObject := map[string]interface{}{
+		"id": "sub_replay_bad", "customer": "cus_replay_bad", "status": "active",
+		"current_period_start": now, "current_period_end": now + 100,
+		"metadata": map[string]string{"tenant_id": "tenant-replay-bad"},
+		"items": map[string]interface{}{"data": []interface{}{
+			map[string]interface{}{"id": "si_bad", "quantity": 1, "price": map[string]string{"id": "price_legacy_zero"}},
+		}},
+	}
+	goodObject := testSubscriptionObject("sub_replay_good", "tenant-replay-good", "active", now, now+100)
+	stubStripeBackend(t, func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.URL.Path, "/v1/events") {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"object":   "list",
+			"has_more": false,
+			"data": []interface{}{
+				map[string]interface{}{
+					"id": "evt_replay_bad", "object": "event", "type": EventSubscriptionUpdated,
+					"created": now - 20, "data": map[string]interface{}{"object": badObject},
+				},
+				map[string]interface{}{
+					"id": "evt_replay_good", "object": "event", "type": EventSubscriptionUpdated,
+					"created": now - 10, "data": map[string]interface{}{"object": goodObject},
+				},
+			},
+		})
+	})
+
+	if err := service.ReplayUndeliveredEvents(ctx); err == nil {
+		t.Fatal("the failed event must still be reported")
+	}
+	badRow, badErr := service.webhookDAO.GetByEventID(ctx, service.db, "evt_replay_bad")
+	if badErr != nil {
+		t.Fatalf("failed event row: %v", badErr)
+	}
+	if badRow.ProcessingStatus != "failed" {
+		t.Fatalf("failed event status = %s", badRow.ProcessingStatus)
+	}
+	goodRow, goodErr := service.webhookDAO.GetByEventID(ctx, service.db, "evt_replay_good")
+	if goodErr != nil {
+		t.Fatalf("later event must still be replayed: %v", goodErr)
+	}
+	if goodRow.ProcessingStatus != "completed" {
+		t.Fatalf("later event status = %s, want completed", goodRow.ProcessingStatus)
+	}
+	subscription, _ := service.Subscription(ctx, "tenant-replay-good")
+	if subscription == nil || subscription.PlanName != "Starter" {
+		t.Fatalf("later event must converge: %+v", subscription)
+	}
+	checkpoint, _ := service.settingValue(ctx, checkpointKey)
+	if checkpoint == "" {
+		t.Fatal("checkpoint must advance past the replayed events")
+	}
+	value, parseErr := strconv.ParseInt(checkpoint, 10, 64)
+	if parseErr != nil || value < now-10 {
+		t.Fatalf("checkpoint = %q, want >= %d", checkpoint, now-10)
+	}
+}
+
+// A paid invoice whose subscription cannot be read must fail the event: the
+// order is recorded, but acknowledging it would leave a paying tenant on the
+// old plan with no retry.
+func TestInvoicePaidSubscriptionRetrieveFailureMarksEventFailed(t *testing.T) {
+	service := newWebhookTestService(t)
+	ctx := context.Background()
+	enableStripe(t, service)
+	stubStripeBackend(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error":{"type":"api_error","message":"stripe unavailable"}}`))
+	})
+
+	if err := service.subscriptionDAO.UpsertSubscription(ctx, service.db, &entity.BillingSubscription{
+		ID: "sub-retrieve", TenantID: "tenant-retrieve", PlanName: "Starter",
+		CustomerID: "cus_retrieve", SubscriptionID: "sub_retrieve", SubscriptionStatus: "active",
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	event := mustEvent(t, "evt_retrieve_fail", EventInvoicePaid, map[string]interface{}{
+		"id": "in_retrieve_fail", "customer": "cus_retrieve", "subscription": "sub_retrieve",
+		"status": "paid", "amount_due": 2900, "amount_paid": 2900, "currency": "usd", "paid": true,
+	})
+
+	err := service.HandleWebhookEvent(ctx, event)
+	if err == nil {
+		t.Fatal("an unreadable subscription must fail the invoice event")
+	}
+	row, rowErr := service.webhookDAO.GetByEventID(ctx, service.db, "evt_retrieve_fail")
+	if rowErr != nil {
+		t.Fatalf("event row: %v", rowErr)
+	}
+	if row.ProcessingStatus != "failed" {
+		t.Fatalf("status = %s, want failed", row.ProcessingStatus)
+	}
+	subscription, _ := service.Subscription(ctx, "tenant-retrieve")
+	if subscription == nil || subscription.SubscriptionStatus != "active" {
+		t.Fatalf("entitlement must not converge on a failed retrieve: %+v", subscription)
 	}
 }

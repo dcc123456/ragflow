@@ -127,7 +127,8 @@ func (s *Service) ReplayUndeliveredEvents(ctx context.Context) error {
 	if err := iterator.Err(); err != nil {
 		return fmt.Errorf("list stripe events: %w", err)
 	}
-	// Oldest first so a failure leaves a safe, contiguous watermark.
+	var replayErr error
+	// Oldest first so the checkpoint advances monotonically as events apply.
 	sort.SliceStable(pending, func(i, j int) bool {
 		if pending[i].Created == pending[j].Created {
 			return pending[i].ID < pending[j].ID
@@ -140,16 +141,24 @@ func (s *Service) ReplayUndeliveredEvents(ctx context.Context) error {
 			continue
 		}
 		if err := s.HandleWebhookEvent(ctx, raw); err != nil {
-			// Do not advance past a failed event; it will be retried on the
-			// next startup and is also stored locally for the retry drain.
+			// Every event is stored before it is dispatched and a failure
+			// marks that row failed, so the local retry drain owns the
+			// retries. Stopping here instead would let one permanently
+			// unprocessable event (an unmapped price, say) hold the
+			// watermark back forever and hide every later event.
 			common.Warn("billing webhook replay failed", zap.String("event_id", stripeEvent.ID), zap.Error(err))
-			break
+			if replayErr == nil {
+				replayErr = fmt.Errorf("replay event %s: %w", stripeEvent.ID, err)
+			}
 		}
 		if stripeEvent.Created > 0 {
 			if err := s.saveCheckpoint(ctx, stripeEvent.Created); err != nil {
 				return fmt.Errorf("save billing checkpoint: %w", err)
 			}
 		}
+	}
+	if replayErr != nil && drainErr == nil {
+		return replayErr
 	}
 	return drainErr
 }

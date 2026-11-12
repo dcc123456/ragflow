@@ -429,7 +429,10 @@ func (s *Service) handleSubscriptionEvent(ctx context.Context, event StripeEvent
 		return s.convergeSubscriptionToTrial(ctx, object, event)
 	}
 	if len(object.Items.Data) == 0 {
-		return false, nil
+		// Nothing can be converged without a subscription item: there is no
+		// price to resolve and no period to write. Failing keeps the event
+		// retryable instead of acknowledging a snapshot that never applied.
+		return false, fmt.Errorf("subscription %s has no items", object.ID)
 	}
 	priceID := object.Items.Data[0].Price.ID
 	planName, ok := s.ResolvePlanName(priceID)
@@ -451,9 +454,13 @@ func (s *Service) handleSubscriptionEvent(ctx context.Context, event StripeEvent
 	}
 	periodStart, periodEnd := subscriptionPeriod(object)
 	if periodStart <= 0 || periodEnd <= 0 || periodEnd <= periodStart {
-		// Unusable cycle snapshot: applying it would reset consumption against
-		// an epoch period.
-		return false, nil
+		// Without a usable cycle the row cannot be written, and applying a
+		// zero period would reset consumption against an epoch cycle. Failing
+		// keeps the event retryable instead of acknowledging a no-op write.
+		return false, fmt.Errorf(
+			"subscription %s has no usable billing period: start=%d end=%d",
+			object.ID, periodStart, periodEnd,
+		)
 	}
 	if current != nil && current.SubscriptionID != "" && current.SubscriptionID != object.ID {
 		switch current.SubscriptionStatus {
@@ -664,6 +671,9 @@ func (s *Service) handleInvoicePaid(ctx context.Context, event StripeEvent) (boo
 	tenantID := ""
 	if subscriptionID != "" {
 		existing, err := s.subscriptionDAO.GetByCustomerID(ctx, s.db, invoice.Customer)
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, fmt.Errorf("resolve tenant for invoice %s: %w", invoice.ID, err)
+		}
 		if err == nil {
 			tenantID = existing.TenantID
 			if existing.SubscriptionID == "" || existing.SubscriptionID == subscriptionID {
@@ -678,6 +688,8 @@ func (s *Service) handleInvoicePaid(ctx context.Context, event StripeEvent) (boo
 		}
 	}
 	if tenantID == "" {
+		// An invoice of a customer this deployment does not track cannot be
+		// converged; there is no local row to repair.
 		return false, nil
 	}
 	currentSub, _ := s.subscriptionDAO.GetByCustomerID(ctx, s.db, invoice.Customer)
@@ -774,9 +786,11 @@ func (s *Service) convergePaidSubscription(ctx context.Context, customerID, subs
 	if err := s.EnsureStripe(); err == nil {
 		stripeSub, subErr := subscription.Get(subscriptionID, nil)
 		if subErr != nil {
-			// The authoritative invoice identity is unknown: record the order
-			// without granting entitlement.
-			return nil
+			// The subscription could not be read, so which invoice is current
+			// is unknown. Failing the event keeps it retryable: acknowledging
+			// it here would record the payment without granting entitlement
+			// and never retry, leaving a paid tenant on the old plan.
+			return fmt.Errorf("retrieve subscription %s for invoice %s: %w", subscriptionID, invoice.ID, subErr)
 		}
 		if stripeSub.LatestInvoice != nil && stripeSub.LatestInvoice.ID != "" && stripeSub.LatestInvoice.ID != invoice.ID {
 			return nil
