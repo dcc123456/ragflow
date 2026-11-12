@@ -29,6 +29,7 @@ import (
 	"ragflow/internal/entity"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type TenantListResult struct {
@@ -53,11 +54,15 @@ func (s *Service) ListTenants(ctx context.Context, filter dao.AdminTenantFilter,
 	return &TenantListResult{Tenants: tenants, Total: total, Page: page, PageSize: pageSize}, nil
 }
 
-func (s *Service) UpdateTenantInviteSetting(ctx context.Context, tenantID string, enabled bool, actorUserID string) (map[string]interface{}, error) {
+func (s *Service) UpdateTenantRole(ctx context.Context, tenantID string, roleID *int32, actorUserID string) (map[string]interface{}, error) {
 	actorUserID = strings.TrimSpace(actorUserID)
 	if actorUserID == "" {
 		return nil, common.NewCodedError(common.CodeUnauthorized, "Admin user is required")
 	}
+	if roleID == nil || *roleID <= 0 {
+		return nil, common.NewCodedError(common.CodeBadRequest, "A Tenant system role is required")
+	}
+	var result map[string]interface{}
 	err := dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		tenant, err := s.tenantDAO.GetByIDForAdmin(ctx, tx, tenantID)
 		if err != nil {
@@ -66,109 +71,140 @@ func (s *Service) UpdateTenantInviteSetting(ctx context.Context, tenantID string
 			}
 			return fmt.Errorf("load tenant: %w", err)
 		}
-		if tenant.InviteEnabled == enabled {
+		if roleID != nil {
+			var role entity.Role
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ? AND tenant_id IS NULL", *roleID).Take(&role).Error; err != nil {
+				if dao.IsNotFoundErr(err) {
+					return common.NewCodedError(common.CodeNotFound, "System role not found")
+				}
+				return fmt.Errorf("load system role: %w", err)
+			}
+			result = map[string]interface{}{"tenant_id": tenantID, "role_id": role.ID, "role_name": role.RoleName}
+		} else {
+			result = map[string]interface{}{"tenant_id": tenantID, "role_id": nil, "role_name": nil}
+		}
+		if equalAdminRoleIDs(tenant.RoleID, roleID) {
 			return nil
 		}
-		result := tx.Model(&entity.Tenant{}).Where("id = ?", tenantID).Update("invite_enabled", enabled)
-		if result.Error != nil {
-			return fmt.Errorf("update tenant invite setting: %w", result.Error)
+		if err := tx.Model(&entity.Tenant{}).Where("id = ?", tenantID).Update("role_id", roleID).Error; err != nil {
+			return fmt.Errorf("update tenant system role: %w", err)
 		}
-		if result.RowsAffected == 0 {
-			return common.NewCodedError(common.CodeNotFound, "Tenant not found")
+		beforeDataFields := map[string]interface{}{
+			"tenant_id": tenantID,
+			"role_id":   tenant.RoleID,
+			"role_name": nil,
 		}
-
-		beforeData, err := json.Marshal(map[string]bool{"invite_enabled": tenant.InviteEnabled})
+		if tenant.RoleID != nil {
+			var previousRole entity.Role
+			if err := tx.Where("id = ? AND tenant_id IS NULL", *tenant.RoleID).Take(&previousRole).Error; err != nil {
+				return fmt.Errorf("load previous Tenant system role: %w", err)
+			}
+			beforeDataFields["role_name"] = previousRole.RoleName
+		}
+		beforeData, err := json.Marshal(beforeDataFields)
 		if err != nil {
-			return fmt.Errorf("encode previous invite setting: %w", err)
+			return fmt.Errorf("encode previous tenant role: %w", err)
 		}
-		afterData, err := json.Marshal(map[string]bool{"invite_enabled": enabled})
+		afterData, err := json.Marshal(result)
 		if err != nil {
-			return fmt.Errorf("encode updated invite setting: %w", err)
+			return fmt.Errorf("encode updated tenant role: %w", err)
 		}
 		actorID := actorUserID
 		status := string(entity.StatusValid)
 		log := &entity.PermissionChangeLog{
 			ID:           common.GenerateUUID(),
 			TenantID:     tenantID,
-			OperatorID:   "",
+			TargetType:   "tenant",
+			TargetID:     tenantID,
+			ResourceType: "tenant_role",
+			ResourceID:   tenantID,
+			ActionType:   "update",
+			EventType:    "tenant.role.updated",
+			ActorUserID:  &actorID,
+			ScopeType:    "system",
+			BeforeData:   stringPointer(string(beforeData)),
+			AfterData:    stringPointer(string(afterData)),
+			Status:       &status,
+		}
+		if err := tx.Create(log).Error; err != nil {
+			return fmt.Errorf("record tenant role change: %w", err)
+		}
+		return nil
+	})
+	return result, err
+}
+
+// UpdateTenantStatus enables or disables a tenant and records the change.
+func (s *Service) UpdateTenantStatus(ctx context.Context, tenantID, status, actorUserID string) (map[string]interface{}, error) {
+	actorUserID = strings.TrimSpace(actorUserID)
+	if actorUserID == "" {
+		return nil, common.NewCodedError(common.CodeUnauthorized, "Admin user is required")
+	}
+	status = strings.TrimSpace(status)
+	if status != string(entity.StatusValid) && status != string(entity.StatusInvalid) {
+		return nil, common.NewCodedError(common.CodeBadRequest, "Tenant status must be 0 or 1")
+	}
+
+	var result map[string]interface{}
+	err := dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		tenant, err := s.tenantDAO.GetByIDForAdmin(ctx, tx, tenantID)
+		if err != nil {
+			if dao.IsNotFoundErr(err) {
+				return common.NewCodedError(common.CodeNotFound, "Tenant not found")
+			}
+			return fmt.Errorf("load tenant: %w", err)
+		}
+
+		previousStatus := string(entity.StatusValid)
+		if tenant.Status != nil {
+			previousStatus = *tenant.Status
+		}
+		result = map[string]interface{}{"tenant_id": tenantID, "status": status}
+		if previousStatus == status {
+			return nil
+		}
+		if err := tx.Model(&entity.Tenant{}).Where("id = ?", tenantID).Update("status", status).Error; err != nil {
+			return fmt.Errorf("update tenant status: %w", err)
+		}
+
+		beforeData, err := json.Marshal(map[string]string{"status": previousStatus})
+		if err != nil {
+			return fmt.Errorf("encode previous tenant status: %w", err)
+		}
+		afterData, err := json.Marshal(map[string]string{"status": status})
+		if err != nil {
+			return fmt.Errorf("encode updated tenant status: %w", err)
+		}
+		actorID := actorUserID
+		logStatus := string(entity.StatusValid)
+		log := &entity.PermissionChangeLog{
+			ID:           common.GenerateUUID(),
+			TenantID:     tenantID,
 			TargetType:   "tenant",
 			TargetID:     tenantID,
 			ResourceType: "tenant",
 			ResourceID:   tenantID,
 			ActionType:   "update",
-			EventType:    "tenant.invite_setting.updated",
+			EventType:    "tenant.status.updated",
 			ActorUserID:  &actorID,
 			ScopeType:    "system",
 			BeforeData:   stringPointer(string(beforeData)),
 			AfterData:    stringPointer(string(afterData)),
-			Status:       &status,
+			Status:       &logStatus,
 		}
 		if err := tx.Create(log).Error; err != nil {
-			return fmt.Errorf("record tenant invite setting change: %w", err)
+			return fmt.Errorf("record tenant status change: %w", err)
 		}
 		return nil
 	})
-	if err != nil {
-		return nil, err
-	}
-	return map[string]interface{}{"tenant_id": tenantID, "invite_enabled": enabled}, nil
+	return result, err
 }
 
-func (s *Service) GetDefaultTenantInviteEnabled(ctx context.Context) (bool, error) {
-	return dao.GetDefaultTenantInviteEnabled(ctx, dao.DB)
-}
-
-func (s *Service) UpdateDefaultTenantInviteEnabled(ctx context.Context, enabled bool, actorUserID string) (map[string]bool, error) {
-	actorUserID = strings.TrimSpace(actorUserID)
-	if actorUserID == "" {
-		return nil, common.NewCodedError(common.CodeUnauthorized, "Admin user is required")
+func equalAdminRoleIDs(left, right *int32) bool {
+	if left == nil || right == nil {
+		return left == right
 	}
-	err := dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		previous, err := dao.GetDefaultTenantInviteEnabled(ctx, tx)
-		if err != nil {
-			return err
-		}
-		if previous == enabled {
-			return nil
-		}
-		if err := dao.SetDefaultTenantInviteEnabled(ctx, tx, enabled); err != nil {
-			return fmt.Errorf("update default tenant invite setting: %w", err)
-		}
-
-		beforeData, err := json.Marshal(map[string]bool{"invite_enabled": previous})
-		if err != nil {
-			return fmt.Errorf("encode previous default invite setting: %w", err)
-		}
-		afterData, err := json.Marshal(map[string]bool{"invite_enabled": enabled})
-		if err != nil {
-			return fmt.Errorf("encode updated default invite setting: %w", err)
-		}
-		actorID := actorUserID
-		status := string(entity.StatusValid)
-		settingName := dao.DefaultTenantInviteEnabledSettingName
-		log := &entity.PermissionChangeLog{
-			ID:           common.GenerateUUID(),
-			TargetType:   "system_setting",
-			TargetID:     settingName,
-			ResourceType: "system_setting",
-			ResourceID:   settingName,
-			ActionType:   "update",
-			EventType:    "tenant.invite_default.updated",
-			ActorUserID:  &actorID,
-			ScopeType:    "system",
-			BeforeData:   stringPointer(string(beforeData)),
-			AfterData:    stringPointer(string(afterData)),
-			Status:       &status,
-		}
-		if err := tx.Create(log).Error; err != nil {
-			return fmt.Errorf("record default tenant invite setting change: %w", err)
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	return map[string]bool{"invite_enabled": enabled}, nil
+	return *left == *right
 }
 
 func stringPointer(value string) *string { return &value }

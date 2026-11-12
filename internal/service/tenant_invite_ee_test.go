@@ -27,15 +27,19 @@ import (
 	"ragflow/internal/permission"
 )
 
-func TestAddMemberRejectsWhenTenantInvitesAreDisabled(t *testing.T) {
+func TestAddMemberRejectsWhenTenantRoleDisablesInvitations(t *testing.T) {
 	db := setupTenantPermissionTestDB(t)
-	if err := db.AutoMigrate(&entity.Tenant{}); err != nil {
+	if err := db.AutoMigrate(&entity.Tenant{}, &entity.Role{}, &entity.RoleResource{}); err != nil {
 		t.Fatalf("migrate tenant table: %v", err)
 	}
 	seedTenantMembership(t, db, "owner", "owner-user", "tenant-xyz", TenantRoleOwner)
 	status := "1"
+	systemRoleID := int32(77)
+	if err := db.Create(&entity.Role{ID: systemRoleID, RoleName: "tenant-system"}).Error; err != nil {
+		t.Fatalf("seed Tenant system role: %v", err)
+	}
 	if err := db.Create(&entity.Tenant{
-		ID: "tenant-xyz", ParserIDs: "", InviteEnabled: false, Status: &status,
+		ID: "tenant-xyz", ParserIDs: "", RoleID: &systemRoleID, Status: &status,
 	}).Error; err != nil {
 		t.Fatalf("seed tenant: %v", err)
 	}
@@ -44,7 +48,7 @@ func TestAddMemberRejectsWhenTenantInvitesAreDisabled(t *testing.T) {
 	ctx := permission.WithIdentity(t.Context(), "owner-user", "tenant-xyz")
 	_, code, err := s.AddMember(ctx, "tenant-xyz", &AddMemberRequest{Email: "invitee@example.com"})
 	if err == nil || code != common.CodeForbidden {
-		t.Fatalf("AddMember() = (%v, %v), want invitation disabled forbidden", code, err)
+		t.Fatalf("AddMember() = (%v, %v), want forbidden because the Tenant system role does not enable invitations", code, err)
 	}
 	var count int64
 	if err := db.Model(&entity.UserTenant{}).Where("tenant_id = ? AND status = ?", "tenant-xyz", entity.TenantMembershipStatusInvited).Count(&count).Error; err != nil {

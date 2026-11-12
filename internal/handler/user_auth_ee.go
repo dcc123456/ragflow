@@ -19,6 +19,7 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -213,7 +214,7 @@ func (h *UserHandler) ldapLogin(c *gin.Context, channel string) {
 		c.Redirect(http.StatusFound, frontendBase+"?error=server_error")
 		return
 	}
-	authToken, terr := issueUserAccessToken(user, secretKey)
+	authToken, terr := issueUserAccessToken(c.Request.Context(), user, secretKey)
 	if terr != nil {
 		c.Redirect(http.StatusFound, frontendBase+"?error=server_error")
 		return
@@ -255,7 +256,7 @@ func (h *UserHandler) OAuthChannelCallback(c *gin.Context) {
 		c.Redirect(http.StatusFound, frontendBase+"?error=server_error")
 		return
 	}
-	authToken, terr := issueUserAccessToken(result.User, secretKey)
+	authToken, terr := issueUserAccessToken(c.Request.Context(), result.User, secretKey)
 	if terr != nil {
 		c.Redirect(http.StatusFound, frontendBase+"?error=server_error")
 		return
@@ -272,12 +273,15 @@ func (h *UserHandler) OAuthChannelCallback(c *gin.Context) {
 	c.Redirect(http.StatusFound, frontendBase+"?auth="+url.QueryEscape(authToken))
 }
 
-func issueUserAccessToken(user *entity.User, secretKey string) (string, error) {
+func issueUserAccessToken(ctx context.Context, user *entity.User, secretKey string) (string, error) {
 	if user == nil || user.AccessToken == nil {
 		return "", fmt.Errorf("user access token is missing")
 	}
-	// Users enter their own Tenant after login; the EE token keeps that context.
-	return common.DumpAccessToken(*user.AccessToken, user.ID, secretKey)
+	tenantID, err := service.ResolveLoginTenantID(ctx, user)
+	if err != nil {
+		return "", err
+	}
+	return common.DumpAccessToken(*user.AccessToken, tenantID, secretKey)
 }
 
 // oauthStateCookiePrefix namespaces the per-channel HttpOnly cookie that ties
@@ -292,14 +296,13 @@ func oauthStateCookieName(channel string) string {
 	return oauthStateCookiePrefix + channel
 }
 
-// callbackError maps the OAuth callback errors to the `?error=` strings
-// Python's oauth_callback emits. Python redirects with `?error={str(e)}`,
-// so an invalid channel surfaces the full "Invalid channel name: <channel>"
-// message (str of the ValueError), while the other failures use the short
-// tokens Python hard-codes. The value is intentionally not URL-encoded to
-// match Python's raw f-string redirect.
+// callbackError maps OAuth callback failures to the query values consumed by
+// the login page, preserving the provider and tenant error messages that need
+// to be shown directly.
 func callbackError(channel string, err error) string {
 	switch {
+	case errors.Is(err, service.ErrNoActiveLoginTenant):
+		return "No active tenant is available for login"
 	case errors.Is(err, service.ErrOAuthInvalidChannel):
 		return "Invalid channel name: " + channel
 	case errors.Is(err, service.ErrOAuthInvalidState):
@@ -478,7 +481,7 @@ func (h *UserHandler) ForgotResetPassword(c *gin.Context) {
 		respondEmailVerification(c, common.CodeServerError, fmt.Sprintf("Failed to get secret key: %s", err.Error()))
 		return
 	}
-	authToken, err := issueUserAccessToken(user, secretKey)
+	authToken, err := issueUserAccessToken(ctx, user, secretKey)
 	if err != nil {
 		respondEmailVerification(c, common.CodeServerError, "Failed to generate auth token")
 		return

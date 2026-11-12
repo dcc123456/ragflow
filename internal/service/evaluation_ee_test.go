@@ -60,7 +60,7 @@ func evaluationTestService(t *testing.T) (*EvaluationService, *gorm.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = db.AutoMigrate(&entity.EvaluationCollection{}, &entity.EvaluationCase{}, &entity.EvaluationRun{}, &entity.EvaluationResult{}, &entity.User{}, &entity.UserTenant{}, &entity.Role{}, &entity.RoleResource{})
+	err = db.AutoMigrate(&entity.EvaluationCollection{}, &entity.EvaluationCase{}, &entity.EvaluationRun{}, &entity.EvaluationResult{}, &entity.User{}, &entity.Tenant{}, &entity.UserTenant{}, &entity.Role{}, &entity.RoleResource{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,6 +72,9 @@ func evaluationTestService(t *testing.T) (*EvaluationService, *gorm.DB) {
 		t.Fatal(err)
 	}
 	if err = db.Create(&entity.UserTenant{ID: "membership", UserID: "owner", TenantID: "tenant", Role: "owner", Status: &valid}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err = db.Create(&entity.Tenant{ID: "tenant", ParserIDs: ""}).Error; err != nil {
 		t.Fatal(err)
 	}
 	return NewEvaluationService(), db

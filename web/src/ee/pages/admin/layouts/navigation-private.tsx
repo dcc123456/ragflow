@@ -1,7 +1,15 @@
 import { useMemo } from 'react';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { LucideBox, LucideSettings } from 'lucide-react';
+import {
+  Building2,
+  LucideBox,
+  LucideMonitor,
+  LucideSettings,
+  LucideSquareUserRound,
+  LucideUserStar,
+  LucideZap,
+} from 'lucide-react';
 
 import { LucideCloudKey } from '@/ee/pages/admin/components/icons/LucideCloudKey';
 import useAdminVariables from '@/ee/pages/admin/hooks/useAdminVariables';
@@ -20,9 +28,8 @@ export type AdminNavExtension = {
 };
 
 /**
- * Enterprise-only admin navigation: settings, SSO providers and model
- * providers. The whitelist entry upstream ships is hidden until the
- * corresponding admin variable is enabled.
+ * Enterprise admin navigation keeps tenant management beside Users and adds
+ * the remaining enterprise-only admin pages.
  */
 export function useEnterpriseAdminNav(): AdminNavExtension {
   const { t } = useTranslation();
@@ -32,6 +39,35 @@ export function useEnterpriseAdminNav(): AdminNavExtension {
 
   const items = useMemo<AdminNavItem[]>(
     () => [
+      {
+        path: PrivateRoutes.AdminTenants,
+        name: t('admin.tenants'),
+        icon: <Building2 className="size-[1em]" />,
+      },
+      {
+        path: Routes.AdminSandboxSettings,
+        name: t('admin.sandboxSettings'),
+        icon: <LucideZap className="size-[1em]" />,
+      },
+      ...(isWhitelistEnabled
+        ? [
+            {
+              path: Routes.AdminWhitelist,
+              name: t('admin.registrationWhitelist'),
+              icon: <LucideUserStar className="size-[1em]" />,
+            },
+          ]
+        : []),
+      {
+        path: Routes.AdminRoles,
+        name: t('admin.roles'),
+        icon: <LucideSquareUserRound className="size-[1em]" />,
+      },
+      {
+        path: Routes.AdminMonitoring,
+        name: t('admin.monitoring'),
+        icon: <LucideMonitor className="size-[1em]" />,
+      },
       {
         path: PrivateRoutes.AdminSettings,
         name: t('admin.settings'),
@@ -48,12 +84,17 @@ export function useEnterpriseAdminNav(): AdminNavExtension {
         icon: <LucideBox className="size-[1em]" />,
       },
     ],
-    [t],
+    [isWhitelistEnabled, t],
   );
 
   const hiddenPaths = useMemo(
-    () => (isWhitelistEnabled ? [] : [Routes.AdminWhitelist]),
-    [isWhitelistEnabled],
+    () => [
+      Routes.AdminSandboxSettings,
+      Routes.AdminWhitelist,
+      Routes.AdminRoles,
+      Routes.AdminMonitoring,
+    ],
+    [],
   );
 
   return { items, hiddenPaths };

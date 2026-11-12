@@ -65,12 +65,19 @@ func TestTenantInviteLinkCanBeUsedByMultipleUsersForSevenDays(t *testing.T) {
 	tenantName := "Link Tenant"
 	status := string(entity.StatusValid)
 	roleID := int32(45)
+	systemRoleID := int32(145)
+	if err := db.Create(&entity.Role{ID: systemRoleID, RoleName: "tenant-system"}).Error; err != nil {
+		t.Fatalf("create Tenant system role: %v", err)
+	}
+	if err := db.Create(&entity.RoleResource{RoleID: systemRoleID, ResourceType: entity.RoleResourceTypeInvitation, Action: entity.RoleActionEnable}).Error; err != nil {
+		t.Fatalf("enable invitations for Tenant system role: %v", err)
+	}
 	if err := db.Create(&entity.Role{ID: roleID, RoleName: "member", TenantID: &tenantID}).Error; err != nil {
 		t.Fatalf("create Tenant default role: %v", err)
 	}
 	if err := db.Create(&entity.Tenant{
 		ID: tenantID, Name: &tenantName, ParserIDs: "",
-		InviteEnabled: true, RoleID: &roleID, Status: &status,
+		RoleID: &systemRoleID, DefaultRoleID: &roleID, Status: &status,
 	}).Error; err != nil {
 		t.Fatalf("create Tenant: %v", err)
 	}
@@ -149,17 +156,21 @@ func TestTenantInviteLinkCanBeUsedByMultipleUsersForSevenDays(t *testing.T) {
 	}
 }
 
-func TestTenantInviteLinkAcceptanceRejectsDisabledTenant(t *testing.T) {
+func TestTenantInviteLinkAcceptanceRejectsWithoutRolePermission(t *testing.T) {
 	db := setupTenantRoleTestDB(t)
 	tenantID := "tenant-disabled-link"
 	status := string(entity.StatusValid)
 	roleID := int32(46)
+	systemRoleID := int32(146)
+	if err := db.Create(&entity.Role{ID: systemRoleID, RoleName: "tenant-system"}).Error; err != nil {
+		t.Fatalf("create Tenant system role: %v", err)
+	}
 	if err := db.Create(&entity.Role{ID: roleID, RoleName: "member", TenantID: &tenantID}).Error; err != nil {
 		t.Fatalf("create Tenant default role: %v", err)
 	}
 	if err := db.Create(&entity.Tenant{
 		ID: tenantID, ParserIDs: "",
-		InviteEnabled: false, RoleID: &roleID, Status: &status,
+		RoleID: &systemRoleID, DefaultRoleID: &roleID, Status: &status,
 	}).Error; err != nil {
 		t.Fatalf("create Tenant: %v", err)
 	}
@@ -175,11 +186,11 @@ func TestTenantInviteLinkAcceptanceRejectsDisabledTenant(t *testing.T) {
 	store.values[tenantInviteLinkKey(token)] = string(payload)
 	svc := NewTenantService()
 	if err := svc.AcceptTenantInviteLinkEE(permission.WithIdentity(t.Context(), "invitee", tenantID), "invitee", token, store); err == nil {
-		t.Fatal("AcceptTenantInviteLinkEE() succeeded for disabled Tenant")
+		t.Fatal("AcceptTenantInviteLinkEE() succeeded without Tenant invitation permission")
 	} else {
 		var coded *common.CodedError
 		if !errors.As(err, &coded) || coded.Code != common.CodeForbidden {
-			t.Fatalf("AcceptTenantInviteLinkEE() error = %v, want forbidden disabled Tenant rejection", err)
+			t.Fatalf("AcceptTenantInviteLinkEE() error = %v, want forbidden role-permission rejection", err)
 		}
 	}
 	var count int64
@@ -187,7 +198,7 @@ func TestTenantInviteLinkAcceptanceRejectsDisabledTenant(t *testing.T) {
 		t.Fatalf("count memberships: %v", err)
 	}
 	if count != 0 {
-		t.Fatalf("membership count = %d, want no membership for disabled Tenant", count)
+		t.Fatalf("membership count = %d, want no membership without Tenant invitation permission", count)
 	}
 }
 

@@ -28,6 +28,7 @@ const (
 	RoleResourceTypeMemory
 	RoleResourceTypeModelProvider
 	RoleResourceTypeMCP
+	RoleResourceTypeInvitation
 )
 
 const (

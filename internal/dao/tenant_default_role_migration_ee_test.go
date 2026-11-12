@@ -113,16 +113,13 @@ func TestMigrateTenantDefaultRolesEE(t *testing.T) {
 		if err := db.Where("id = ?", tenantID).Take(&tenant).Error; err != nil {
 			t.Fatalf("load Tenant %s: %v", tenantID, err)
 		}
-		if !tenant.InviteEnabled {
-			t.Fatalf("legacy Tenant %s invitations are disabled after migration, want enabled", tenantID)
-		}
-		if tenant.RoleID == nil {
+		if tenant.DefaultRoleID == nil {
 			t.Fatalf("Tenant %s has no default role", tenantID)
 		}
-		defaultRoleIDs[tenantID] = *tenant.RoleID
+		defaultRoleIDs[tenantID] = *tenant.DefaultRoleID
 
 		var role entity.Role
-		if err := db.Where("id = ? AND tenant_id = ?", *tenant.RoleID, tenantID).Take(&role).Error; err != nil {
+		if err := db.Where("id = ? AND tenant_id = ?", *tenant.DefaultRoleID, tenantID).Take(&role).Error; err != nil {
 			t.Fatalf("load Tenant %s default member role: %v", tenantID, err)
 		}
 		if role.RoleName != defaultTenantMemberRoleName {
@@ -224,8 +221,8 @@ func TestMigrateTenantDefaultRolesEE(t *testing.T) {
 	if err := db.Where("id = ?", "tenant-1").Take(&tenant).Error; err != nil {
 		t.Fatalf("reload Tenant after repeated migration: %v", err)
 	}
-	if tenant.RoleID == nil || *tenant.RoleID != defaultRoleIDs["tenant-1"] {
-		t.Fatalf("repeated migration default role_id = %v, want %d", tenant.RoleID, defaultRoleIDs["tenant-1"])
+	if tenant.DefaultRoleID == nil || *tenant.DefaultRoleID != defaultRoleIDs["tenant-1"] {
+		t.Fatalf("repeated migration default_role_id = %v, want %d", tenant.DefaultRoleID, defaultRoleIDs["tenant-1"])
 	}
 	var membership entity.UserTenant
 	if err := db.Where("id = ?", "normal-1").Take(&membership).Error; err != nil {
@@ -235,9 +232,6 @@ func TestMigrateTenantDefaultRolesEE(t *testing.T) {
 		t.Fatalf("repeated migration membership role = %q, want %d", membership.Role, defaultRoleIDs["tenant-1"])
 	}
 
-	if err := db.Model(&entity.Tenant{}).Where("id = ?", "tenant-1").Update("invite_enabled", false).Error; err != nil {
-		t.Fatalf("disable invitations after initial migration: %v", err)
-	}
 	customAction := int32(3)
 	if err := db.Model(&entity.RoleResource{}).
 		Where("role_id = ? AND resource_type = ?", defaultRoleIDs["tenant-2"], 1).
@@ -253,9 +247,6 @@ func TestMigrateTenantDefaultRolesEE(t *testing.T) {
 	if err := db.Where("id = ?", "tenant-1").Take(&tenant).Error; err != nil {
 		t.Fatalf("reload Tenant after version bump: %v", err)
 	}
-	if tenant.InviteEnabled {
-		t.Fatal("later permission migration re-enabled invitations after an administrator disabled them")
-	}
 	var preservedPermission entity.RoleResource
 	if err := db.Where("role_id = ? AND resource_type = ?", defaultRoleIDs["tenant-2"], 1).
 		Take(&preservedPermission).Error; err != nil {
@@ -268,7 +259,7 @@ func TestMigrateTenantDefaultRolesEE(t *testing.T) {
 
 func TestTenantDAOCreateInitializesDefaultRoleEE(t *testing.T) {
 	db := openGroupMigrationDB(t)
-	if err := db.AutoMigrate(&entity.Tenant{}, &entity.Role{}, &entity.RoleResource{}); err != nil {
+	if err := db.AutoMigrate(&entity.Tenant{}, &entity.Role{}, &entity.RoleResource{}, &entity.SystemSettings{}); err != nil {
 		t.Fatalf("auto-migrate Tenant role tables: %v", err)
 	}
 
@@ -279,12 +270,12 @@ func TestTenantDAOCreateInitializesDefaultRoleEE(t *testing.T) {
 	if err := NewTenantDAO().Create(t.Context(), db, tenant); err != nil {
 		t.Fatalf("create Tenant: %v", err)
 	}
-	if tenant.RoleID == nil {
+	if tenant.DefaultRoleID == nil {
 		t.Fatal("new Tenant has no default role ID")
 	}
 
 	var role entity.Role
-	if err := db.Where("id = ? AND tenant_id = ?", *tenant.RoleID, tenant.ID).Take(&role).Error; err != nil {
+	if err := db.Where("id = ? AND tenant_id = ?", *tenant.DefaultRoleID, tenant.ID).Take(&role).Error; err != nil {
 		t.Fatalf("load new Tenant default role: %v", err)
 	}
 	if role.RoleName != defaultTenantMemberRoleName {

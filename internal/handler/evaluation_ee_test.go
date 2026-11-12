@@ -24,7 +24,7 @@ func TestEvaluationRESTCollectionLifecycleAndIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = db.AutoMigrate(&entity.EvaluationCollection{}, &entity.EvaluationCase{}, &entity.EvaluationRun{}, &entity.EvaluationResult{}, &entity.User{}, &entity.UserTenant{}, &entity.Role{}, &entity.RoleResource{}); err != nil {
+	if err = db.AutoMigrate(&entity.EvaluationCollection{}, &entity.EvaluationCase{}, &entity.EvaluationRun{}, &entity.EvaluationResult{}, &entity.User{}, &entity.Tenant{}, &entity.UserTenant{}, &entity.Role{}, &entity.RoleResource{}); err != nil {
 		t.Fatal(err)
 	}
 	old := dao.DB
@@ -33,6 +33,9 @@ func TestEvaluationRESTCollectionLifecycleAndIsolation(t *testing.T) {
 	status := "1"
 	for _, tenant := range []string{"first", "second"} {
 		if err = db.Create(&entity.User{ID: tenant, Email: tenant + "@test.invalid", Nickname: tenant}).Error; err != nil {
+			t.Fatal(err)
+		}
+		if err = db.Create(&entity.Tenant{ID: tenant, ParserIDs: "", Status: &status}).Error; err != nil {
 			t.Fatal(err)
 		}
 		if err = db.Create(&entity.UserTenant{ID: tenant, UserID: tenant, TenantID: tenant, Role: "owner", Status: &status}).Error; err != nil {

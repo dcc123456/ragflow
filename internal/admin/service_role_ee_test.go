@@ -427,7 +427,7 @@ func TestSystemRoleCRUDAndPermissionChanges(t *testing.T) {
 }
 
 func TestDropSystemRoleChecksAssignments(t *testing.T) {
-	db := testutil.SetupTestDB(t, &entity.Role{}, &entity.RoleResource{}, &entity.RoleDefaultModel{}, &entity.Tenant{}, &entity.User{})
+	db := testutil.SetupTestDB(t, &entity.Role{}, &entity.RoleResource{}, &entity.RoleDefaultModel{}, &entity.Tenant{}, &entity.SystemSettings{})
 	t.Cleanup(testutil.ReplaceDBForTest(t, db))
 
 	role := entity.Role{RoleName: "tenant_default"}
@@ -458,17 +458,6 @@ func TestDropSystemRoleChecksAssignments(t *testing.T) {
 	if err := db.Model(&entity.Tenant{}).Where("id = ?", "tenant-1").Update("role_id", nil).Error; err != nil {
 		t.Fatalf("clear tenant default role assignment: %v", err)
 	}
-	if err := db.Create(&entity.User{ID: "user-1", Nickname: "Member", Email: "member@example.com", RoleID: &assignedRoleID}).Error; err != nil {
-		t.Fatalf("create user role assignment: %v", err)
-	}
-	if _, err := NewService().DropRole(t.Context(), role.RoleName); err == nil {
-		t.Fatal("DropRole() deleted a system role assigned to a user")
-	} else {
-		assertRoleErrorCode(t, err, common.CodeConflict)
-	}
-	if err := db.Model(&entity.User{}).Where("id = ?", "user-1").Update("role_id", nil).Error; err != nil {
-		t.Fatalf("clear user role assignment: %v", err)
-	}
 	if _, err := NewService().DropRole(t.Context(), role.RoleName); err != nil {
 		t.Fatalf("DropRole() error = %v", err)
 	}
@@ -489,65 +478,66 @@ func TestDropSystemRoleChecksAssignments(t *testing.T) {
 	}
 }
 
-func TestUpdateUserRoleRecordsAudit(t *testing.T) {
-	db := testutil.SetupTestDB(t, &entity.User{}, &entity.Role{}, &entity.PermissionChangeLog{})
+func TestUpdateTenantRoleRecordsAudit(t *testing.T) {
+	db := testutil.SetupTestDB(t, &entity.Tenant{}, &entity.Role{}, &entity.PermissionChangeLog{})
 	t.Cleanup(testutil.ReplaceDBForTest(t, db))
 
-	user := entity.User{ID: "user-1", Nickname: "Member", Email: "member@example.com"}
-	if err := db.Create(&user).Error; err != nil {
-		t.Fatalf("create user: %v", err)
+	tenant := entity.Tenant{ID: "tenant-1", ParserIDs: "{}"}
+	if err := db.Create(&tenant).Error; err != nil {
+		t.Fatalf("create tenant: %v", err)
 	}
 	roles := []entity.Role{{RoleName: "viewer"}, {RoleName: "editor"}}
 	if err := db.Create(&roles).Error; err != nil {
 		t.Fatalf("create system roles: %v", err)
 	}
 	tenantID := "tenant-1"
-	if err := db.Create(&entity.Role{RoleName: "tenant_reader", TenantID: &tenantID}).Error; err != nil {
+	tenantRole := entity.Role{RoleName: "tenant_reader", TenantID: &tenantID}
+	if err := db.Create(&tenantRole).Error; err != nil {
 		t.Fatalf("create tenant role: %v", err)
 	}
 
 	service := NewService()
-	result, err := service.UpdateUserRole(t.Context(), "system-admin", user.Email, "viewer")
+	result, err := service.UpdateTenantRole(t.Context(), tenant.ID, &roles[0].ID, "system-admin")
 	if err != nil {
-		t.Fatalf("UpdateUserRole() initial assignment error = %v", err)
+		t.Fatalf("UpdateTenantRole() initial assignment error = %v", err)
 	}
 	if result["role_id"] != roles[0].ID || result["role_name"] != "viewer" {
-		t.Fatalf("UpdateUserRole() result = %#v, want viewer role", result)
+		t.Fatalf("UpdateTenantRole() result = %#v, want viewer role", result)
 	}
-	if _, err = service.UpdateUserRole(t.Context(), "system-admin", user.Email, "viewer"); err != nil {
-		t.Fatalf("UpdateUserRole() unchanged role error = %v", err)
+	if _, err = service.UpdateTenantRole(t.Context(), tenant.ID, &roles[0].ID, "system-admin"); err != nil {
+		t.Fatalf("UpdateTenantRole() unchanged role error = %v", err)
 	}
-	if _, err = service.UpdateUserRole(t.Context(), "system-admin", user.Email, "editor"); err != nil {
-		t.Fatalf("UpdateUserRole() reassignment error = %v", err)
+	if _, err = service.UpdateTenantRole(t.Context(), tenant.ID, &roles[1].ID, "system-admin"); err != nil {
+		t.Fatalf("UpdateTenantRole() reassignment error = %v", err)
 	}
-	if _, err = service.UpdateUserRole(t.Context(), "system-admin", user.Email, "tenant_reader"); err == nil {
-		t.Fatal("UpdateUserRole() accepted a tenant-specific role")
+	if _, err = service.UpdateTenantRole(t.Context(), tenant.ID, &tenantRole.ID, "system-admin"); err == nil {
+		t.Fatal("UpdateTenantRole() accepted a tenant-specific role")
 	} else {
 		assertRoleErrorCode(t, err, common.CodeNotFound)
 	}
 
-	var updatedUser entity.User
-	if err = db.Where("id = ?", user.ID).Take(&updatedUser).Error; err != nil {
-		t.Fatalf("reload user: %v", err)
+	var updatedTenant entity.Tenant
+	if err = db.Where("id = ?", tenant.ID).Take(&updatedTenant).Error; err != nil {
+		t.Fatalf("reload tenant: %v", err)
 	}
-	if updatedUser.RoleID == nil || *updatedUser.RoleID != roles[1].ID {
-		t.Fatalf("user role_id = %v, want %d", updatedUser.RoleID, roles[1].ID)
+	if updatedTenant.RoleID == nil || *updatedTenant.RoleID != roles[1].ID {
+		t.Fatalf("tenant role_id = %v, want %d", updatedTenant.RoleID, roles[1].ID)
 	}
 
 	var changeLogs []entity.PermissionChangeLog
-	if err = db.Where("event_type = ?", "user.role.updated").Find(&changeLogs).Error; err != nil {
-		t.Fatalf("load user role audit logs: %v", err)
+	if err = db.Where("event_type = ?", "tenant.role.updated").Find(&changeLogs).Error; err != nil {
+		t.Fatalf("load tenant role audit logs: %v", err)
 	}
 	if len(changeLogs) != 2 {
-		t.Fatalf("got %d user role audit logs, want 2 actual changes", len(changeLogs))
+		t.Fatalf("got %d tenant role audit logs, want 2 actual changes", len(changeLogs))
 	}
 	var initialAssignment, reassignment *entity.PermissionChangeLog
 	for i := range changeLogs {
 		changeLog := &changeLogs[i]
-		if changeLog.TargetType != "user" || changeLog.TargetID != user.ID || changeLog.ResourceType != "role" ||
+		if changeLog.TargetType != "tenant" || changeLog.TargetID != tenant.ID || changeLog.ResourceType != "tenant_role" ||
 			changeLog.ScopeType != "system" || changeLog.ActorUserID == nil || *changeLog.ActorUserID != "system-admin" ||
 			changeLog.BeforeData == nil || changeLog.AfterData == nil {
-			t.Fatalf("user role audit log = %#v, missing target, actor, scope, or snapshots", changeLog)
+			t.Fatalf("tenant role audit log = %#v, missing target, actor, scope, or snapshots", changeLog)
 		}
 		if strings.Contains(*changeLog.AfterData, `"role_name":"viewer"`) {
 			initialAssignment = changeLog

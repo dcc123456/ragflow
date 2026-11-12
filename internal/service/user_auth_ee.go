@@ -31,6 +31,9 @@ import (
 	"ragflow/internal/utility"
 )
 
+// ErrNoActiveLoginTenant means the user has no joined tenant available for login.
+var ErrNoActiveLoginTenant = common.NewCodedError(common.CodeForbidden, "No active tenant is available for login")
+
 func resolveUserAuthTenant(ctx context.Context, user *entity.User, tenantID string) (string, error) {
 	if user == nil {
 		return "", fmt.Errorf("user is required")
@@ -43,6 +46,28 @@ func resolveUserAuthTenant(ctx context.Context, user *entity.User, tenantID stri
 	}
 	if _, err := dao.NewUserTenantDAO().FilterByUserIDAndTenantID(ctx, dao.DB, user.ID, tenantID); err != nil {
 		return "", fmt.Errorf("user is not an active member of tenant %q", tenantID)
+	}
+	if _, err := dao.NewTenantDAO().GetByID(ctx, dao.DB, tenantID); err != nil {
+		return "", fmt.Errorf("tenant %q is inactive or unavailable: %w", tenantID, err)
+	}
+	return tenantID, nil
+}
+
+// ResolveLoginTenantID chooses an active tenant context for a newly issued
+// user token. The user's personal tenant stays first when it is active.
+func ResolveLoginTenantID(ctx context.Context, user *entity.User) (string, error) {
+	if user == nil {
+		return "", fmt.Errorf("user is required")
+	}
+	if user.IsSuperuser != nil && *user.IsSuperuser {
+		return "", nil
+	}
+	tenantID, err := dao.NewUserTenantDAO().FindActiveTenantIDForLogin(ctx, dao.DB, user.ID)
+	if err != nil {
+		return "", fmt.Errorf("find active tenant for login: %w", err)
+	}
+	if tenantID == "" {
+		return "", ErrNoActiveLoginTenant
 	}
 	return tenantID, nil
 }
@@ -135,6 +160,9 @@ func (s *UserService) ForgotResetPassword(ctx context.Context, req *ForgotResetP
 	user, err := s.userDAO.GetByEmail(ctx, dao.DB, req.Email)
 	if err != nil {
 		return nil, common.CodeDataError, fmt.Errorf("invalid email")
+	}
+	if code, err := validateLoginTenant(ctx, user); err != nil {
+		return nil, code, err
 	}
 
 	hashed, err := common.GenerateWerkzeugPasswordHash(plain)

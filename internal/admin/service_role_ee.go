@@ -44,6 +44,7 @@ var roleResourceTypes = map[string]int64{
 	"memory":         entity.RoleResourceTypeMemory,
 	"model_provider": entity.RoleResourceTypeModelProvider,
 	"mcp":            entity.RoleResourceTypeMCP,
+	"invitation":     entity.RoleResourceTypeInvitation,
 }
 
 var roleResourceNamesByType = map[int64]string{
@@ -56,6 +57,7 @@ var roleResourceNamesByType = map[int64]string{
 	entity.RoleResourceTypeMemory:        "memory",
 	entity.RoleResourceTypeModelProvider: "model_provider",
 	entity.RoleResourceTypeMCP:           "mcp",
+	entity.RoleResourceTypeInvitation:    "invitation",
 }
 
 var roleResourceNames = []string{
@@ -68,6 +70,7 @@ var roleResourceNames = []string{
 	"memory",
 	"model_provider",
 	"mcp",
+	"invitation",
 }
 
 var roleActionMasks = map[string]int32{
@@ -99,6 +102,25 @@ func (s *Service) ListRoles(ctx context.Context) ([]map[string]interface{}, erro
 		result = append(result, roleResponse(&role))
 	}
 	return result, nil
+}
+
+// GetDefaultTenantSystemRole returns the system role assigned to new tenants.
+func (s *Service) GetDefaultTenantSystemRole(ctx context.Context) (*entity.Role, error) {
+	return dao.GetDefaultTenantSystemRole(ctx, dao.DB)
+}
+
+// SetDefaultTenantSystemRole changes the default system role assigned to new tenants.
+func (s *Service) SetDefaultTenantSystemRole(ctx context.Context, roleID *int32) (*entity.Role, error) {
+	if roleID == nil || *roleID <= 0 {
+		return nil, common.NewCodedError(common.CodeBadRequest, "A default system role is required")
+	}
+	if err := dao.SetDefaultTenantSystemRole(ctx, dao.DB, roleID); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, common.NewCodedError(common.CodeNotFound, "System role not found")
+		}
+		return nil, err
+	}
+	return dao.GetDefaultTenantSystemRole(ctx, dao.DB)
 }
 
 // CreateRole creates a system-level role.
@@ -170,7 +192,7 @@ func (s *Service) UpdateRole(ctx context.Context, roleName, description string) 
 	return roleResponse(role), nil
 }
 
-// DropRole removes a system role that is not assigned to any user or Tenant default.
+// DropRole removes a system role, moving Tenants that use it to the configured default role.
 func (s *Service) DropRole(ctx context.Context, roleName string) (map[string]interface{}, error) {
 	var deletedRole *entity.Role
 	err := dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -178,22 +200,35 @@ func (s *Service) DropRole(ctx context.Context, roleName string) (map[string]int
 		if err != nil {
 			return err
 		}
-
-		var tenantCount int64
-		if err := tx.Model(&entity.Tenant{}).Where("role_id = ?", role.ID).Count(&tenantCount).Error; err != nil {
-			return fmt.Errorf("failed to check tenant default role assignments: %w", err)
+		defaultRole, err := dao.GetDefaultTenantSystemRole(ctx, tx)
+		if err != nil {
+			return err
 		}
-		if tenantCount > 0 {
-			return common.NewCodedError(common.CodeConflict, "Role is assigned as a Tenant default and cannot be deleted")
-		}
-		var userCount int64
-		if err := tx.Model(&entity.User{}).Where("role_id = ?", role.ID).Count(&userCount).Error; err != nil {
-			return fmt.Errorf("failed to check user role assignments: %w", err)
-		}
-		if userCount > 0 {
-			return common.NewCodedError(common.CodeConflict, "Role is assigned to a user and cannot be deleted")
+		if defaultRole != nil && defaultRole.ID == role.ID {
+			return common.NewCodedError(common.CodeConflict, "Role is the default for new tenants and cannot be deleted")
 		}
 
+		var memberRoleCount int64
+		if err := tx.Model(&entity.Tenant{}).Where("default_role_id = ?", role.ID).Count(&memberRoleCount).Error; err != nil {
+			return fmt.Errorf("failed to check Tenant member role assignments: %w", err)
+		}
+		if memberRoleCount > 0 {
+			return common.NewCodedError(common.CodeConflict, "Role is assigned as a Tenant member role and cannot be deleted")
+		}
+
+		var tenantSystemRoleCount int64
+		if err := tx.Model(&entity.Tenant{}).Where("role_id = ?", role.ID).Count(&tenantSystemRoleCount).Error; err != nil {
+			return fmt.Errorf("failed to check Tenant system role assignments: %w", err)
+		}
+		if tenantSystemRoleCount > 0 {
+			if defaultRole == nil {
+				return common.NewCodedError(common.CodeConflict, "Default Tenant role is not configured; the assigned role cannot be deleted")
+			}
+			if err := tx.Model(&entity.Tenant{}).Where("role_id = ?", role.ID).
+				Update("role_id", defaultRole.ID).Error; err != nil {
+				return fmt.Errorf("failed to move Tenants to the default system role: %w", err)
+			}
+		}
 		if err := tx.Where("role_id = ?", role.ID).Delete(&entity.RoleResource{}).Error; err != nil {
 			return fmt.Errorf("failed to delete system role permissions: %w", err)
 		}
@@ -386,52 +421,6 @@ func recordRolePermissionChange(tx *gorm.DB, actorUserID string, role *entity.Ro
 	return nil
 }
 
-func recordUserRoleChange(tx *gorm.DB, actorUserID string, user *entity.User, previousRole *entity.Role, role *entity.Role) error {
-	beforeData := map[string]interface{}{
-		"user_id": user.ID,
-		"email":   user.Email,
-		"role_id": user.RoleID,
-	}
-	if previousRole != nil {
-		beforeData["role_name"] = previousRole.RoleName
-	}
-	afterData := map[string]interface{}{
-		"user_id":   user.ID,
-		"email":     user.Email,
-		"role_id":   role.ID,
-		"role_name": role.RoleName,
-	}
-	encodedBefore, err := json.Marshal(beforeData)
-	if err != nil {
-		return fmt.Errorf("encode previous user role: %w", err)
-	}
-	encodedAfter, err := json.Marshal(afterData)
-	if err != nil {
-		return fmt.Errorf("encode updated user role: %w", err)
-	}
-	actorID := actorUserID
-	status := string(entity.StatusValid)
-	roleID := fmt.Sprint(role.ID)
-	log := &entity.PermissionChangeLog{
-		ID:           common.GenerateUUID(),
-		TargetType:   "user",
-		TargetID:     user.ID,
-		ResourceType: "role",
-		ResourceID:   roleID,
-		ActionType:   "update",
-		EventType:    "user.role.updated",
-		ActorUserID:  &actorID,
-		ScopeType:    "system",
-		BeforeData:   stringPointer(string(encodedBefore)),
-		AfterData:    stringPointer(string(encodedAfter)),
-		Status:       &status,
-	}
-	if err := tx.Create(log).Error; err != nil {
-		return fmt.Errorf("record system user role change: %w", err)
-	}
-	return nil
-}
-
 // ListResources lists feature resource types supported by role permissions.
 func (s *Service) ListResources(ctx context.Context) (map[string]interface{}, error) {
 	return map[string]interface{}{"resource_types": roleResourceNames}, nil
@@ -484,7 +473,7 @@ func roleActionMask(resource string, actions []string) (int32, error) {
 	for _, action := range actions {
 		action = strings.ToLower(strings.TrimSpace(action))
 		bit, ok := roleActionMasks[action]
-		if !ok || (resource == "model_provider" && action != "enable") {
+		if !ok || ((resource == "model_provider" || resource == "invitation") && action != "enable") {
 			return 0, common.NewCodedError(common.CodeBadRequest, fmt.Sprintf("Action %q is not supported for resource %q", action, resource))
 		}
 		mask |= bit

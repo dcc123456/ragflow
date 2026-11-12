@@ -1,5 +1,4 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useQuery } from '@tanstack/react-query';
 import { useCallback, useId, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
@@ -25,7 +24,6 @@ interface CreateUserFormData {
   email: string;
   password: string;
   confirmPassword: string;
-  role?: string;
 }
 
 interface CreateUserFormProps {
@@ -170,7 +168,6 @@ function useCreateUserForm(props?: {
         confirmPassword: z
           .string()
           .min(1, { message: t('admin.confirmPasswordRequired') }),
-        role: z.string().optional(),
       })
       .refine((data) => data.password === data.confirmPassword, {
         message: t('admin.confirmPasswordDoNotMatch'),

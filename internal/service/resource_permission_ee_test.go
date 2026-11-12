@@ -106,8 +106,8 @@ func TestResourceSharingRequiresSystemRoleShareAction(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatalf("create system role feature ceiling: %v", err)
 	}
-	if err := db.Model(&entity.User{}).Where("id = ?", "owner").Update("role_id", role.ID).Error; err != nil {
-		t.Fatalf("assign limited system role: %v", err)
+	if err := db.Model(&entity.Tenant{}).Where("id = ?", "tenant-permission").Update("role_id", role.ID).Error; err != nil {
+		t.Fatalf("assign limited system role to Tenant: %v", err)
 	}
 	grant := entity.ResourcePermissionRead
 	err := NewTenantService().UpdateResourcePermissions(resourcePermissionTestContext(t), "owner", "tenant-permission", ResourcePermissionUpdateRequest{
@@ -133,8 +133,8 @@ func TestResourcePermissionListingIgnoresFeatureRoleLimits(t *testing.T) {
 	if err := db.Create(&role).Error; err != nil {
 		t.Fatalf("create system role: %v", err)
 	}
-	if err := db.Model(&entity.User{}).Where("id = ?", "owner").Update("role_id", role.ID).Error; err != nil {
-		t.Fatalf("assign restrictive system role: %v", err)
+	if err := db.Model(&entity.Tenant{}).Where("id = ?", "tenant-permission").Update("role_id", role.ID).Error; err != nil {
+		t.Fatalf("assign restrictive system role to Tenant: %v", err)
 	}
 	grantStatus := string(entity.StatusValid)
 	resourceID := "dataset-role-independent-list"

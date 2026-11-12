@@ -117,8 +117,8 @@ type TenantRolePermissionsResult struct {
 
 // TenantDefaultRoleResult describes the role assigned to newly joined members.
 type TenantDefaultRoleResult struct {
-	RoleID *int32          `json:"role_id"`
-	Role   *TenantRoleItem `json:"role,omitempty"`
+	DefaultRoleID *int32          `json:"default_role_id"`
+	Role          *TenantRoleItem `json:"role,omitempty"`
 }
 
 // TenantManagementGrant is a management permission assigned to a Tenant member or group.
@@ -164,12 +164,12 @@ func (s *TenantService) ListTenantRoles(ctx context.Context, userID, tenantID, k
 		return nil, fmt.Errorf("list Tenant roles: %w", err)
 	}
 	var tenant entity.Tenant
-	if err := db.Select("id", "role_id").Where("id = ?", tenantID).Take(&tenant).Error; err != nil {
+	if err := db.Select("id", "default_role_id").Where("id = ?", tenantID).Take(&tenant).Error; err != nil {
 		return nil, fmt.Errorf("load Tenant default role: %w", err)
 	}
 	result := &TenantRoleListResult{Roles: make([]*TenantRoleItem, 0, len(roles)), Total: total, Page: page, PageSize: pageSize}
 	for i := range roles {
-		result.Roles = append(result.Roles, tenantRoleItem(&roles[i], tenant.RoleID))
+		result.Roles = append(result.Roles, tenantRoleItem(&roles[i], tenant.DefaultRoleID))
 	}
 	return result, nil
 }
@@ -216,10 +216,10 @@ func (s *TenantService) GetTenantRole(ctx context.Context, userID, tenantID stri
 		return nil, err
 	}
 	var tenant entity.Tenant
-	if err := db.Select("id", "role_id").Where("id = ?", tenantID).Take(&tenant).Error; err != nil {
+	if err := db.Select("id", "default_role_id").Where("id = ?", tenantID).Take(&tenant).Error; err != nil {
 		return nil, fmt.Errorf("load Tenant default role: %w", err)
 	}
-	return tenantRoleItem(role, tenant.RoleID), nil
+	return tenantRoleItem(role, tenant.DefaultRoleID), nil
 }
 
 // UpdateTenantRole updates a Tenant role's name and description.
@@ -267,10 +267,10 @@ func (s *TenantService) UpdateTenantRole(ctx context.Context, userID, tenantID s
 		return nil, err
 	}
 	var tenant entity.Tenant
-	if err := dao.DB.WithContext(ctx).Select("id", "role_id").Where("id = ?", tenantID).Take(&tenant).Error; err != nil {
+	if err := dao.DB.WithContext(ctx).Select("id", "default_role_id").Where("id = ?", tenantID).Take(&tenant).Error; err != nil {
 		return nil, fmt.Errorf("load Tenant default role: %w", err)
 	}
-	return tenantRoleItem(&updated, tenant.RoleID), nil
+	return tenantRoleItem(&updated, tenant.DefaultRoleID), nil
 }
 
 // DeleteTenantRole deletes an unused role and its permission rows.
@@ -280,14 +280,14 @@ func (s *TenantService) DeleteTenantRole(ctx context.Context, userID, tenantID s
 			return err
 		}
 		var tenant entity.Tenant
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id", "role_id").Where("id = ?", tenantID).Take(&tenant).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id", "default_role_id").Where("id = ?", tenantID).Take(&tenant).Error; err != nil {
 			return fmt.Errorf("lock Tenant before deleting role: %w", err)
 		}
 		role, err := findTenantRole(tx, tenantID, roleID, true)
 		if err != nil {
 			return err
 		}
-		if tenant.RoleID != nil && *tenant.RoleID == roleID {
+		if tenant.DefaultRoleID != nil && *tenant.DefaultRoleID == roleID {
 			return common.NewCodedError(common.CodeConflict, "Role is the Tenant default and cannot be deleted")
 		}
 		roleValue := strconv.FormatInt(int64(roleID), 10)
@@ -338,10 +338,10 @@ func (s *TenantService) GetTenantRolePermissions(ctx context.Context, userID, te
 		return nil, err
 	}
 	var tenant entity.Tenant
-	if err := db.Select("id", "role_id").Where("id = ?", tenantID).Take(&tenant).Error; err != nil {
+	if err := db.Select("id", "default_role_id").Where("id = ?", tenantID).Take(&tenant).Error; err != nil {
 		return nil, fmt.Errorf("load Tenant default role: %w", err)
 	}
-	return &TenantRolePermissionsResult{Role: tenantRoleItem(role, tenant.RoleID), Permissions: matrix}, nil
+	return &TenantRolePermissionsResult{Role: tenantRoleItem(role, tenant.DefaultRoleID), Permissions: matrix}, nil
 }
 
 // SetTenantRolePermissions atomically replaces a role's feature permission matrix.
@@ -401,10 +401,10 @@ func (s *TenantService) SetTenantRolePermissions(ctx context.Context, userID, te
 		return nil, err
 	}
 	var tenant entity.Tenant
-	if err := dao.DB.WithContext(ctx).Select("id", "role_id").Where("id = ?", tenantID).Take(&tenant).Error; err != nil {
+	if err := dao.DB.WithContext(ctx).Select("id", "default_role_id").Where("id = ?", tenantID).Take(&tenant).Error; err != nil {
 		return nil, fmt.Errorf("load Tenant default role: %w", err)
 	}
-	return &TenantRolePermissionsResult{Role: tenantRoleItem(&role, tenant.RoleID), Permissions: normalized}, nil
+	return &TenantRolePermissionsResult{Role: tenantRoleItem(&role, tenant.DefaultRoleID), Permissions: normalized}, nil
 }
 
 // GetTenantDefaultRole returns the role assigned to new Tenant members.
@@ -414,16 +414,16 @@ func (s *TenantService) GetTenantDefaultRole(ctx context.Context, userID, tenant
 		return nil, err
 	}
 	var tenant entity.Tenant
-	if err := db.Select("id", "role_id").Where("id = ?", tenantID).Take(&tenant).Error; err != nil {
+	if err := db.Select("id", "default_role_id").Where("id = ?", tenantID).Take(&tenant).Error; err != nil {
 		return nil, fmt.Errorf("load Tenant default role: %w", err)
 	}
-	result := &TenantDefaultRoleResult{RoleID: tenant.RoleID}
-	if tenant.RoleID != nil {
-		role, err := findTenantRole(db, tenantID, *tenant.RoleID, false)
+	result := &TenantDefaultRoleResult{DefaultRoleID: tenant.DefaultRoleID}
+	if tenant.DefaultRoleID != nil {
+		role, err := findTenantRole(db, tenantID, *tenant.DefaultRoleID, false)
 		if err != nil {
 			return nil, common.NewCodedError(common.CodeConflict, "Tenant default role is invalid")
 		}
-		result.Role = tenantRoleItem(role, tenant.RoleID)
+		result.Role = tenantRoleItem(role, tenant.DefaultRoleID)
 	}
 	return result, nil
 }
@@ -436,7 +436,7 @@ func (s *TenantService) SetTenantDefaultRole(ctx context.Context, userID, tenant
 			return err
 		}
 		var tenant entity.Tenant
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id", "role_id").Where("id = ?", tenantID).Take(&tenant).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id", "default_role_id").Where("id = ?", tenantID).Take(&tenant).Error; err != nil {
 			return fmt.Errorf("load Tenant: %w", err)
 		}
 		if roleID != nil {
@@ -446,17 +446,17 @@ func (s *TenantService) SetTenantDefaultRole(ctx context.Context, userID, tenant
 			}
 			result.Role = tenantRoleItem(role, roleID)
 		}
-		beforeID := tenant.RoleID
+		beforeID := tenant.DefaultRoleID
 		if !equalInt32Pointers(beforeID, roleID) {
-			if err := tx.Model(&entity.Tenant{}).Where("id = ?", tenantID).Update("role_id", roleID).Error; err != nil {
+			if err := tx.Model(&entity.Tenant{}).Where("id = ?", tenantID).Update("default_role_id", roleID).Error; err != nil {
 				return fmt.Errorf("update Tenant default role: %w", err)
 			}
 			if err := recordTenantPermissionChange(ctx, tx, permission.TenantIDFromContext(ctx), "tenant.default_role.updated", "tenant", tenantID, "tenant", tenantID, "update", rolePointerValue(beforeID), rolePointerValue(roleID),
-				map[string]interface{}{"role_id": beforeID}, map[string]interface{}{"role_id": roleID}); err != nil {
+				map[string]interface{}{"default_role_id": beforeID}, map[string]interface{}{"default_role_id": roleID}); err != nil {
 				return err
 			}
 		}
-		result.RoleID = roleID
+		result.DefaultRoleID = roleID
 		return nil
 	})
 	if err != nil {
@@ -800,6 +800,18 @@ func tenantMemberPermissionEE(ctx context.Context, db *gorm.DB, _ string, requir
 		return nil, mask, true, common.NewCodedError(common.CodeForbidden, "Tenant permission denied")
 	}
 	return membership, mask, true, nil
+}
+
+func (s *TenantService) listTenantMembersEE(ctx context.Context, tenantID string) ([]*dao.TenantMemberItem, common.ErrorCode, bool, error) {
+	db := dao.DB.WithContext(ctx)
+	if _, _, err := tenantMemberPermission(ctx, db, tenantID, 0); err != nil {
+		return nil, tenantRoleErrorCode(err), true, err
+	}
+	rows, err := s.userTenantDAO.GetMembersByTenantIDIncludingOwner(ctx, db, tenantID)
+	if err != nil {
+		return nil, common.CodeServerError, true, err
+	}
+	return rows, common.CodeSuccess, true, nil
 }
 
 func tenantPermissionMask(ctx context.Context, db *gorm.DB, membership *entity.UserTenant) (int32, error) {

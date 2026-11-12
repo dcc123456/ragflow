@@ -52,6 +52,12 @@ export default {
   getVersion: '/v1/canvas/getversion',
   resetCanvas: '/v1/canvas/reset',
   runCanvas: '/v1/canvas/completion',
+  adminListTenants: `${restAPIv1}/admin/tenants`,
+  adminDefaultTenantRole: `${restAPIv1}/admin/settings/default-tenant-role`,
+  adminUpdateTenantRole: (tenantId: string) =>
+    `${restAPIv1}/admin/tenants/${tenantId}/role`,
+  adminUpdateTenantStatus: (tenantId: string) =>
+    `${restAPIv1}/admin/tenants/${tenantId}/status`,
   adminListRolesWithPermission: '/api/v1/admin/roles/permission',
   adminGetRolePermissions: (roleName: string) =>
     `${restAPIv1}/admin/roles/${roleName}/permission`,

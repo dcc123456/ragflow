@@ -144,6 +144,18 @@ func TestLDAPLoginSignsInExistingUser(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatalf("seed user: %v", err)
 	}
+	if err := db.Create(&entity.Tenant{ID: "user-1", Status: &status}).Error; err != nil {
+		t.Fatalf("seed tenant: %v", err)
+	}
+	if err := db.Create(&entity.UserTenant{
+		ID:       "membership-1",
+		UserID:   "user-1",
+		TenantID: "user-1",
+		Role:     "owner",
+		Status:   &status,
+	}).Error; err != nil {
+		t.Fatalf("seed tenant membership: %v", err)
+	}
 	calls := stubLDAPAuthenticate(t, &ldap.Identity{
 		DN:       "cn=John Doe,ou=people,dc=corp,dc=example",
 		Email:    "john.doe@corp.example",

@@ -307,7 +307,7 @@ func TestAcceptTenantInvitationAssignsDefaultRoleAndAudits(t *testing.T) {
 	if err := db.Create(&role).Error; err != nil {
 		t.Fatalf("seed Tenant default role: %v", err)
 	}
-	if err := db.Model(&entity.Tenant{}).Where("id = ?", "tenant-1").Update("role_id", role.ID).Error; err != nil {
+	if err := db.Model(&entity.Tenant{}).Where("id = ?", "tenant-1").Update("default_role_id", role.ID).Error; err != nil {
 		t.Fatalf("set Tenant default role: %v", err)
 	}
 	invited := entity.TenantMembershipStatusInvited

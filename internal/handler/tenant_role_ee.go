@@ -181,17 +181,17 @@ func (h *TenantHandler) SetTenantDefaultRole(c *gin.Context) {
 		return
 	}
 	var request struct {
-		RoleID json.RawMessage `json:"role_id"`
+		DefaultRoleID json.RawMessage `json:"default_role_id"`
 	}
-	if err := c.ShouldBindJSON(&request); err != nil || len(request.RoleID) == 0 {
-		common.RespondError(c, common.CodeBadRequest, "role_id is required; use null to clear the default")
+	if err := c.ShouldBindJSON(&request); err != nil || len(request.DefaultRoleID) == 0 {
+		common.RespondError(c, common.CodeBadRequest, "default_role_id is required; use null to clear the default")
 		return
 	}
 	var roleID *int32
-	if string(request.RoleID) != "null" {
-		parsed, err := strconv.ParseInt(strings.TrimSpace(string(request.RoleID)), 10, 32)
+	if string(request.DefaultRoleID) != "null" {
+		parsed, err := strconv.ParseInt(strings.TrimSpace(string(request.DefaultRoleID)), 10, 32)
 		if err != nil || parsed <= 0 {
-			common.RespondError(c, common.CodeBadRequest, "role_id must be a positive integer or null")
+			common.RespondError(c, common.CodeBadRequest, "default_role_id must be a positive integer or null")
 			return
 		}
 		value := int32(parsed)

@@ -8,7 +8,11 @@ import {
   updateRoleDescription,
 } from '@/services/admin-service';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CreateRoleFormData } from '@/pages/admin/forms/role-form';
+import type { CreateRoleFormData } from '@/ee/pages/admin/forms/role-form';
+import type {
+  PermissionType,
+  RoleResourceName,
+} from '@/ee/pages/admin/roles/role-permissions';
 
 export function useRoleList() {
   const {
@@ -38,7 +42,7 @@ export function useRoleResourceTypes() {
     queryKey: ['admin/resourceTypes'],
     queryFn: async () =>
       (await listResources()).data.data.resource_types.map(
-        (x) => x.toLowerCase() as AdminService.RoleResourceName,
+        (x) => x.toLowerCase() as RoleResourceName,
       ),
     retry: false,
     initialData: [],
@@ -97,7 +101,7 @@ export function useMutateRole(roleName: string) {
   const updateRolePermissionMutation = useMutation({
     mutationFn: (data: {
       resourceName: string;
-      permissionType: AdminService.PermissionType;
+      permissionType: PermissionType;
       value: boolean;
     }) => {
       const permissionDiffData = {

@@ -14,6 +14,7 @@ export enum PrivateRoutes {
   AdminSSOProviders = '/admin/sso',
   AdminModelProviders = '/admin/model-providers',
   Team = '/team',
+  AdminTenants = '/admin/tenants',
 }
 
 export type PrivateRoute = {
@@ -129,6 +130,10 @@ export const privateRoutes: PrivateRoute[] = [
               {
                 path: PrivateRoutes.AdminModelProviders,
                 Component: () => import('@/ee/pages/admin/model-providers'),
+              },
+              {
+                path: PrivateRoutes.AdminTenants,
+                Component: () => import('@/ee/pages/admin/tenants'),
               },
             ],
           },

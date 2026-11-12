@@ -28,6 +28,7 @@ import (
 	"ragflow/internal/entity"
 	"ragflow/internal/handler"
 	"ragflow/internal/ingestion/testutil"
+	"ragflow/internal/permission/testsupport"
 	"ragflow/internal/server"
 	"ragflow/internal/service"
 	"ragflow/internal/utility"
@@ -246,6 +247,9 @@ func TestPasswordResetSMTPSettingsFlow(t *testing.T) {
 	}
 	if err := db.Create(&entity.User{ID: "reset-user", Email: email, Nickname: "Test User", Password: &hashed}).Error; err != nil {
 		t.Fatal(err)
+	}
+	if err := testsupport.PrepareEnterprisePermissionFixture(db, "reset-tenant", "reset-user"); err != nil {
+		t.Fatalf("prepare reset user tenant: %v", err)
 	}
 	set("email_verification.enabled", "false")
 	set("mail.default_sender", "reset@example.com")

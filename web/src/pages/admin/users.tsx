@@ -52,12 +52,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -87,11 +81,9 @@ import {
   createUser,
   deleteUser,
   grantSuperuser,
-  listRoles,
   listUsers,
   revokeSuperuser,
   updateUserPassword,
-  updateUserRole,
   updateUserStatus,
 } from '@/services/admin-service';
 
@@ -99,7 +91,6 @@ import {
   createColumnFilterFn,
   createFuzzySearchFn,
   EMPTY_DATA,
-  IS_ENTERPRISE,
   parseBooleanish,
   USE_LDAP,
 } from './utils';
@@ -259,32 +250,16 @@ function AdminUserManagement() {
     retry: false,
   });
 
-  // Update user role mutation
-  const updateUserRoleMutation = useMutation({
-    mutationFn: ({ email, role }: { email: string; role: string }) =>
-      updateUserRole(email, role),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin/listUsers'] });
-    },
-    retry: false,
-  });
-
   // Create user mutation
   const createUserMutation = useMutation({
     mutationFn: async ({
       email,
       password,
-      role,
     }: {
       email: string;
       password: string;
-      role?: string;
     }) => {
       await createUser(email, rsaPsw(password) as string);
-
-      if (IS_ENTERPRISE && role) {
-        await updateUserRoleMutation.mutateAsync({ email, role });
-      }
     },
     onSuccess: () => {
       // message.success(t('admin.userCreatedSuccessfully'));
@@ -582,8 +557,6 @@ function AdminUserManagement() {
     ],
     [
       t,
-      roleList,
-      updateUserRoleMutation,
       userInfo?.email,
       updateUserStatusMutation,
       setSuperuserMutation,

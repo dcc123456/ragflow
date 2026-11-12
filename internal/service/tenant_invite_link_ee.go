@@ -122,13 +122,17 @@ func (s *TenantService) GetTenantInviteLinkInfoEE(ctx context.Context, token str
 		return nil, err
 	}
 	var tenant entity.Tenant
-	if err := dao.DB.WithContext(ctx).Select("id", "name", "invite_enabled").Where("id = ?", payload.TenantID).Take(&tenant).Error; err != nil {
+	if err := dao.DB.WithContext(ctx).Select("id", "name", "role_id").Where("id = ?", payload.TenantID).Take(&tenant).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, common.NewCodedError(common.CodeNotFound, "Tenant invitation link is invalid or expired")
 		}
 		return nil, fmt.Errorf("load Tenant invitation target: %w", err)
 	}
-	if !tenant.InviteEnabled {
+	enabled, err := tenantInvitationsEnabled(dao.DB.WithContext(ctx), &tenant)
+	if err != nil {
+		return nil, fmt.Errorf("load Tenant invitation permission: %w", err)
+	}
+	if !enabled {
 		return nil, common.NewCodedError(common.CodeNotFound, "Tenant invitation link is invalid or expired")
 	}
 	var inviter entity.User
@@ -159,14 +163,18 @@ func (s *TenantService) AcceptTenantInviteLinkEE(ctx context.Context, userID, to
 	err = dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var tenant entity.Tenant
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			Select("id", "invite_enabled", "role_id").Where("id = ?", payload.TenantID).Take(&tenant).Error; err != nil {
+			Select("id", "role_id", "default_role_id").Where("id = ?", payload.TenantID).Take(&tenant).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return common.NewCodedError(common.CodeNotFound, "Tenant invitation link is invalid or expired")
 			}
 			return fmt.Errorf("load Tenant for invitation acceptance: %w", err)
 		}
-		if !tenant.InviteEnabled {
-			return common.NewCodedError(common.CodeForbidden, "Tenant invitations are disabled")
+		enabled, err := tenantInvitationsEnabled(tx, &tenant)
+		if err != nil {
+			return fmt.Errorf("load Tenant invitation permission: %w", err)
+		}
+		if !enabled {
+			return common.NewCodedError(common.CodeForbidden, "Tenant system role does not enable invitations")
 		}
 		role, _, err := resolveTenantInviteRoleEE(tx, payload.TenantID)
 		if err != nil {

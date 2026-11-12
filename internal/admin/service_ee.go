@@ -39,7 +39,6 @@ import (
 
 	"go.uber.org/zap"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 // Global scheduled task for cleanup
@@ -712,71 +711,6 @@ func (s *Service) ShowUserIndex(ctx context.Context, email string) (map[string]i
 	return result, nil
 }
 
-// UpdateUserRole assigns a system role to a user and records the change.
-func (s *Service) UpdateUserRole(ctx context.Context, actorUserID, email, roleName string) (map[string]interface{}, error) {
-	actorUserID = strings.TrimSpace(actorUserID)
-	if actorUserID == "" {
-		return nil, common.NewCodedError(common.CodeUnauthorized, "Admin user is required")
-	}
-	email = strings.TrimSpace(email)
-	if email == "" {
-		return nil, common.NewCodedError(common.CodeBadRequest, "User email is required")
-	}
-	roleName = strings.TrimSpace(roleName)
-	if roleName == "" {
-		return nil, common.NewCodedError(common.CodeBadRequest, "Role name is required")
-	}
-
-	var result map[string]interface{}
-	err := dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var user entity.User
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("email = ?", email).Take(&user).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return common.ErrUserNotFound
-			}
-			return fmt.Errorf("failed to find user by email: %w", err)
-		}
-
-		role, err := findSystemRole(tx, roleName, true)
-		if err != nil {
-			return err
-		}
-		if user.RoleID == nil || *user.RoleID != role.ID {
-			var previousRole *entity.Role
-			if user.RoleID != nil {
-				var oldRole entity.Role
-				err := tx.Where("id = ?", *user.RoleID).Take(&oldRole).Error
-				if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-					return fmt.Errorf("failed to load previous user role: %w", err)
-				}
-				if err == nil {
-					previousRole = &oldRole
-				}
-			}
-
-			if err := tx.Model(&entity.User{}).Where("id = ?", user.ID).Update("role_id", role.ID).Error; err != nil {
-				return fmt.Errorf("failed to update user role: %w", err)
-			}
-			if err := recordUserRoleChange(tx, actorUserID, &user, previousRole, role); err != nil {
-				return err
-			}
-		}
-
-		result = map[string]interface{}{
-			"user_id":   user.ID,
-			"email":     user.Email,
-			"nickname":  user.Nickname,
-			"role_id":   role.ID,
-			"role_name": role.RoleName,
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	return result, nil
-}
-
 // ShowUserPermission show user permissions for enterprise edition
 func (s *Service) ShowUserPermission(ctx context.Context, email string) (map[string]interface{}, error) {
 	// Query user by email
@@ -1096,7 +1030,7 @@ func (s *Service) ShowUsersActivity(ctx context.Context, days, windows *int) (ma
 	return result, nil
 }
 
-func (s *Service) ListUsersEE(ctx context.Context, pageIndex, pageSize int, name string, status, role, sort, orderBy, plan string, top, days int, quota *int) ([]map[string]interface{}, int64, error) {
+func (s *Service) ListUsersEE(ctx context.Context, pageIndex, pageSize int, name string, status, sort, orderBy, plan string, top, days int, quota *int) ([]map[string]interface{}, int64, error) {
 	if orderBy != "" && strings.EqualFold(orderBy, "storage") {
 		topVal := 10
 		if top > 0 {

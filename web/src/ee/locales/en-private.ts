@@ -219,6 +219,9 @@ export default {
     admin: {
       resourceType: {
         model_provider: 'Model provider',
+        group: 'Group',
+        mcp: 'MCP',
+        invitation: 'Invitations',
       },
       permissionType: {
         accessControl: 'Access control',
@@ -411,6 +414,24 @@ export default {
       starter: 'Starter',
       pro: 'Pro',
       modelProviders: 'Model providers',
+      tenants: 'Tenants',
+      defaultTenantRole: 'Default tenant role',
+      setAsDefaultTenantRole: 'Set as default',
+      defaultTenantRoleUpdated: 'Default tenant role updated.',
+      defaultTenantRoleLoadFailed: 'Could not load the default tenant role.',
+      defaultTenantRoleUpdateFailed:
+        'Could not update the default tenant role.',
+      tenantName: 'Tenant',
+      tenantOwner: 'Owner',
+      tenantMemberCount: 'Members',
+      tenantRole: 'Tenant role',
+      tenantRoleUpdated: 'Tenant role updated.',
+      tenantRoleUpdateFailed: 'Could not update the tenant role.',
+      tenantStatusUpdated: 'Tenant status updated.',
+      tenantStatusUpdateFailed: 'Could not update the tenant status.',
+      searchTenants: 'Search tenants',
+      tenantsLoadFailed: 'Could not load tenants.',
+
       view: 'View',
       selectTimeRange: 'Select time range',
       export: 'Export',

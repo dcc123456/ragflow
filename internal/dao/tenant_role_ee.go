@@ -55,6 +55,9 @@ func initializeTenantDefaultRoleEE(ctx context.Context, db *gorm.DB, tenant *ent
 	if !db.WithContext(ctx).Migrator().HasTable(&entity.RoleResource{}) {
 		return fmt.Errorf("cannot initialize default Tenant role: role_resource table is missing")
 	}
+	if err := ensureDefaultTenantSystemRoleEE(ctx, db); err != nil {
+		return fmt.Errorf("initialize default Tenant system role: %w", err)
+	}
 
 	role, created, err := findOrCreateDefaultTenantMemberRole(db.WithContext(ctx), tenant.ID)
 	if err != nil {
@@ -65,7 +68,15 @@ func initializeTenantDefaultRoleEE(ctx context.Context, db *gorm.DB, tenant *ent
 			return fmt.Errorf("initialize default Tenant member role permissions: %w", err)
 		}
 	}
-	tenant.RoleID = &role.ID
+	tenant.DefaultRoleID = &role.ID
+	systemRole, err := GetDefaultTenantSystemRole(ctx, db)
+	if err != nil {
+		return fmt.Errorf("load default Tenant system role: %w", err)
+	}
+	if systemRole == nil {
+		return fmt.Errorf("a default system role must be configured before creating a Tenant")
+	}
+	tenant.RoleID = &systemRole.ID
 	return nil
 }
 
