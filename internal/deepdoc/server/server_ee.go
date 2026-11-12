@@ -441,6 +441,23 @@ func validateModelDir(modelDir string) error {
 	return nil
 }
 
+// newEngine builds the inference HTTP engine: the project-standard per-request
+// access log, panic recovery, and the EE DeepDoc routes. It reuses
+// common.GinLogger — the same middleware the admin/api/router services use — so
+// every request lands in the shared log with the rest of the application.
+// GinLogger is registered BEFORE Recovery so a panicking handler is still logged
+// as a 5xx: Recovery's recover() unwinds past any middleware placed after it,
+// skipping its post-Next logging. This mirrors gin.Default() (Logger before
+// Recovery).
+func newEngine(h *deepDocHandler) *gin.Engine {
+	e := gin.New()
+	e.RemoveExtraSlash = true
+	e.Use(common.GinLogger())
+	e.Use(gin.Recovery())
+	h.registerRoutes(e)
+	return e
+}
+
 // Run boots the EE DeepDoc HTTP server. It initializes the statically-linked
 // ONNX Runtime, then serves /predict/dla, /predict/tsr, /predict/ocr
 // (operator-switched det/rec, mirroring the Python EE docker), /predict/ocr_det,
@@ -455,10 +472,7 @@ func Run(ctx context.Context, port int) error {
 	}
 	h := newDeepDocHandler(modelDir, nil, nil, nil, nil)
 
-	e := gin.New()
-	e.RemoveExtraSlash = true
-	e.Use(gin.Recovery())
-	h.registerRoutes(e)
+	e := newEngine(h)
 
 	addr := fmt.Sprintf(":%d", port)
 	srv := &http.Server{Addr: addr, Handler: e}
