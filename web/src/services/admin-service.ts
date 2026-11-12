@@ -296,7 +296,6 @@ export const revokeRolePermissions = (
     return actions.length > 0 ? [{ resource, actions }] : [];
   });
 
-<<<<<<< HEAD
   return Promise.all(
     updates.map(({ resource, actions }) =>
       request.delete<ResponseData<never>>(
@@ -314,8 +313,6 @@ export const updateUserRole = (username: string, role: string) =>
     role_name: role,
   });
 
-=======
->>>>>>> dev-20261112
 export const getUserPermissions = (username: string) =>
   request.get<ResponseData<AdminService.UserDetailWithPermission>>(
     API.adminGetUserPermissions(username),
