@@ -35,11 +35,28 @@ func NewTenantModelGroupDAO() *TenantModelGroupDAO {
 	return &TenantModelGroupDAO{}
 }
 
+// GetByID resolves one group by primary key. It returns (nil, nil) when no
+// row matches.
+func (dao *TenantModelGroupDAO) GetByID(ctx context.Context, db *gorm.DB, id string) (*entity.TenantModelGroup, error) {
+	if len(id) == 0 {
+		return nil, nil
+	}
+	var group entity.TenantModelGroup
+	err := db.WithContext(ctx).Where("id = ?", id).Take(&group).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &group, nil
+}
+
 func (dao *TenantModelGroupDAO) Create(ctx context.Context, db *gorm.DB, group *entity.TenantModelGroup) error {
 	db = db.WithContext(ctx)
 	create := func(tx *gorm.DB) error {
 		var existingGroup entity.TenantModelGroup
-		err := tx.Where("group_name = ?", group.GroupName).First(&existingGroup).Error
+		err := tx.Where("tenant_id = ? AND group_name = ?", group.TenantID, group.GroupName).First(&existingGroup).Error
 		if err == nil {
 			return fmt.Errorf("group %s already exists", group.GroupName)
 		}
@@ -57,21 +74,34 @@ func (dao *TenantModelGroupDAO) Create(ctx context.Context, db *gorm.DB, group *
 	return db.Transaction(create)
 }
 
-func (dao *TenantModelGroupDAO) ListByUserID(ctx context.Context, db *gorm.DB, userID string) ([]*entity.TenantModelGroup, error) {
+// ListByTenantIDAndUserID returns the model groups owned by userID inside
+// tenantID, newest first.
+func (dao *TenantModelGroupDAO) ListByTenantIDAndUserID(ctx context.Context, db *gorm.DB, tenantID, userID string) ([]*entity.TenantModelGroup, error) {
 	instances := make([]*entity.TenantModelGroup, 0)
-	if len(userID) == 0 {
+	if len(tenantID) == 0 || len(userID) == 0 {
 		return instances, nil
 	}
-	err := db.WithContext(ctx).Where("user_id = ?", userID).Find(&instances).Error
+	// Order newest first with id as tiebreaker so the list is stable across
+	// calls: create_time is millisecond precision and can collide.
+	err := db.WithContext(ctx).
+		Where("tenant_id = ? AND user_id = ?", tenantID, userID).
+		Order("create_time DESC, id DESC").
+		Find(&instances).Error
 	if err != nil {
 		return nil, err
 	}
 	return instances, nil
 }
 
-func (dao *TenantModelGroupDAO) GetByGroupName(ctx context.Context, db *gorm.DB, userID, groupName string) (*entity.TenantModelGroup, error) {
+// GetByGroupName resolves a group by its tenant-scoped name, the same key
+// Create enforces uniqueness on. A group name therefore uniquely identifies a
+// group inside a tenant; user_id is ownership metadata, not part of the key.
+func (dao *TenantModelGroupDAO) GetByGroupName(ctx context.Context, db *gorm.DB, tenantID, groupName string) (*entity.TenantModelGroup, error) {
+	if len(tenantID) == 0 || len(groupName) == 0 {
+		return nil, nil
+	}
 	var group entity.TenantModelGroup
-	tx := db.WithContext(ctx).Where("user_id = ? AND group_name = ?", userID, groupName).Find(&group)
+	tx := db.WithContext(ctx).Where("tenant_id = ? AND group_name = ?", tenantID, groupName).Find(&group)
 	if tx.Error != nil {
 		return nil, tx.Error
 	}
@@ -124,14 +154,6 @@ func (dao *TenantModelGroupMapDAO) AddModelToGroupTxn(ctx context.Context, db *g
 	return db.WithContext(ctx).Transaction(txn)
 }
 
-func (dao *TenantModelGroupMapDAO) DeleteByIDs(ctx context.Context, db *gorm.DB, ids []string) (int64, error) {
-	if len(ids) == 0 {
-		return 0, nil
-	}
-	result := db.WithContext(ctx).Unscoped().Where("id IN ?", ids).Delete(&entity.TenantModelGroupMap{})
-	return result.RowsAffected, result.Error
-}
-
 func (dao *TenantModelGroupMapDAO) DeleteByModelIDs(ctx context.Context, db *gorm.DB, groupID string, modelIds []string) (int64, error) {
 	if len(modelIds) == 0 {
 		return 0, nil
@@ -155,4 +177,20 @@ func (dao *TenantModelGroupMapDAO) ListByGroupID(ctx context.Context, db *gorm.D
 		return nil, err
 	}
 	return instances, nil
+}
+
+// MarkModelInactive flips the status of one membership row to inactive so the
+// failover picker skips this model in this group only. tenant_model.status and
+// the same model's rows in other groups are untouched. A zero RowsAffected is
+// not an error: the row may already be inactive or deleted concurrently.
+func (dao *TenantModelGroupMapDAO) MarkModelInactive(ctx context.Context, db *gorm.DB, groupID, modelID string) error {
+	if len(groupID) == 0 {
+		return errors.New("group id is required")
+	}
+	if len(modelID) == 0 {
+		return errors.New("model id is required")
+	}
+	return db.WithContext(ctx).Model(&entity.TenantModelGroupMap{}).
+		Where("group_id = ? AND model_id = ?", groupID, modelID).
+		Update("status", "inactive").Error
 }
