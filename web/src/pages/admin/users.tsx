@@ -38,6 +38,12 @@ import { TableEmpty } from '@/components/table-skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
   Card,
   CardContent,
   CardFooter,
@@ -81,6 +87,7 @@ import {
   createUser,
   deleteUser,
   grantSuperuser,
+  listRoles,
   listUsers,
   revokeSuperuser,
   updateUserPassword,
@@ -91,6 +98,7 @@ import {
   createColumnFilterFn,
   createFuzzySearchFn,
   EMPTY_DATA,
+  IS_ENTERPRISE,
   parseBooleanish,
   USE_LDAP,
 } from './utils';

@@ -56,7 +56,8 @@ import {
   useRoleList,
   useRoleResourceTypes,
 } from '@/ee/pages/admin/hooks/useRole';
-import { RESOURCE_PERMISSIONS } from '../utils';
+import { PERMISSION_TYPES } from '../utils';
+import rolePermissions from '@/ee/pages/admin/roles/role-permissions';
 
 const editFormSchema = z.object({
   description: z.string().optional(),
@@ -152,38 +153,41 @@ function RoleCard({ role }: { role: AdminService.ListRoleItemWithPermission }) {
             </TabsList>
 
             {resourceTypes?.map((resourceName) => {
-              const permission = role.permissions[resourceName];
+              const permission = (
+                role.permissions as Record<string, AdminService.PermissionData>
+              )[resourceName];
 
               if (resourceName === 'model_provider') {
                 return null;
               }
+              const permissionTypes =
+                rolePermissions.getRolePermissionTypes?.(resourceName) ??
+                PERMISSION_TYPES;
 
               return (
                 <TabsContent key={resourceName} value={resourceName}>
                   <Card className="border-0 bg-bg-card !shadow-none">
                     <CardContent className="py-0 h-16 flex gap-8">
-                      {RESOURCE_PERMISSIONS[resourceName]?.map(
-                        (permissionType) => (
-                          <Label
-                            key={permissionType}
-                            className="flex items-center gap-2"
-                          >
-                            {t(`admin.${permissionType}`)}
+                      {permissionTypes.map((permissionType) => (
+                        <Label
+                          key={permissionType}
+                          className="flex items-center gap-2"
+                        >
+                          {t(`admin.${permissionType}`)}
 
-                            <Switch
-                              disabled={isUpdatingPermission}
-                              checked={!!permission?.[permissionType]}
-                              onCheckedChange={(value) =>
-                                updatePermission({
-                                  resourceName,
-                                  permissionType,
-                                  value,
-                                })
-                              }
-                            />
-                          </Label>
-                        ),
-                      )}
+                          <Switch
+                            disabled={isUpdatingPermission}
+                            checked={!!permission?.[permissionType]}
+                            onCheckedChange={(value) =>
+                              updatePermission({
+                                resourceName,
+                                permissionType,
+                                value,
+                              })
+                            }
+                          />
+                        </Label>
+                      ))}
                     </CardContent>
                   </Card>
                 </TabsContent>

@@ -20,16 +20,13 @@ import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 import { useRoleResourceTypes } from '@/ee/pages/admin/hooks/useRole';
-import { RESOURCE_PERMISSIONS, formMergeDefaultValues } from '../utils';
+import { formMergeDefaultValues, PERMISSION_TYPES } from '../utils';
 import rolePermissions from '@/ee/pages/admin/roles/role-permissions';
 
 export interface CreateRoleFormData {
   name: string;
   description: string;
-  permissions: Record<
-    AdminService.RoleResourceName,
-    AdminService.PermissionData
-  >;
+  permissions: Record<string, AdminService.PermissionData>;
 }
 
 interface CreateRoleFormProps {
@@ -116,9 +113,9 @@ export const CreateRoleForm = ({
               if (resourceType === 'model_provider') {
                 return null;
               }
-              // const permissionTypes =
-              //   rolePermissions.getRolePermissionTypes?.(resourceType) ??
-              //   PERMISSION_TYPES;
+              const permissionTypes =
+                rolePermissions.getRolePermissionTypes?.(resourceType) ??
+                PERMISSION_TYPES;
 
               return (
                 <TabsContent
@@ -129,30 +126,26 @@ export const CreateRoleForm = ({
                   <Card className="border-0 bg-bg-card !shadow-none">
                     <CardContent className="p-6">
                       <div className="grid grid-cols-4 gap-4">
-                        {RESOURCE_PERMISSIONS[resourceType]?.map(
-                          (permissionType) => (
-                            <FormField
-                              key={permissionType}
-                              name={`permissions.${resourceType}.${permissionType}`}
-                              render={({ field }) => (
-                                <FormItem className="space-y-0 inline-flex items-center gap-2">
-                                  <FormLabel>
-                                    {t(
-                                      `admin.permissionType.${permissionType}`,
-                                    )}
-                                  </FormLabel>
-                                  <FormControl>
-                                    <Switch
-                                      {...field}
-                                      checked={!!field.value}
-                                      onCheckedChange={field.onChange}
-                                    />
-                                  </FormControl>
-                                </FormItem>
-                              )}
-                            />
-                          ),
-                        )}
+                        {permissionTypes.map((permissionType) => (
+                          <FormField
+                            key={permissionType}
+                            name={`permissions.${resourceType}.${permissionType}`}
+                            render={({ field }) => (
+                              <FormItem className="space-y-0 inline-flex items-center gap-2">
+                                <FormLabel>
+                                  {t(`admin.permissionType.${permissionType}`)}
+                                </FormLabel>
+                                <FormControl>
+                                  <Switch
+                                    {...field}
+                                    checked={!!field.value}
+                                    onCheckedChange={field.onChange}
+                                  />
+                                </FormControl>
+                              </FormItem>
+                            )}
+                          />
+                        ))}
                       </div>
                     </CardContent>
                   </Card>
