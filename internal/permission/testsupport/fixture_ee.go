@@ -38,7 +38,7 @@ func PrepareEnterprisePermissionFixture(db *gorm.DB, tenantID string, memberIDs 
 	}
 
 	models := []any{
-		&entity.User{}, &entity.UserTenant{}, &entity.Role{}, &entity.RoleResource{},
+		&entity.User{}, &entity.Tenant{}, &entity.UserTenant{}, &entity.Role{}, &entity.RoleResource{},
 		&entity.GroupInfo{}, &entity.GroupMember{}, &entity.Permission{}, &entity.PermissionChangeLog{},
 		&entity.TenantModelProvider{}, &entity.TenantModelInstance{},
 	}
@@ -58,6 +58,9 @@ func PrepareEnterprisePermissionFixture(db *gorm.DB, tenantID string, memberIDs 
 	if err != nil {
 		return err
 	}
+	if err := ensureTenant(db, tenantID, roleID); err != nil {
+		return err
+	}
 	for _, memberID := range memberIDs {
 		if memberID == "" {
 			continue
@@ -73,6 +76,30 @@ func PrepareEnterprisePermissionFixture(db *gorm.DB, tenantID string, memberIDs 
 		return err
 	}
 	return grantLegacyTeamResources(db, tenantID)
+}
+
+func ensureTenant(db *gorm.DB, tenantID string, defaultRoleID int32) error {
+	var tenant entity.Tenant
+	err := db.Where("id = ?", tenantID).Take(&tenant).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		status := string(entity.StatusValid)
+		if err := db.Create(&entity.Tenant{
+			ID: tenantID, ParserIDs: "", DefaultRoleID: &defaultRoleID, Status: &status,
+		}).Error; err != nil {
+			return fmt.Errorf("create test Tenant %q: %w", tenantID, err)
+		}
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("load test Tenant %q: %w", tenantID, err)
+	}
+	if tenant.DefaultRoleID == nil {
+		if err := db.Model(&entity.Tenant{}).Where("id = ?", tenantID).
+			Update("default_role_id", defaultRoleID).Error; err != nil {
+			return fmt.Errorf("set test Tenant %q default role: %w", tenantID, err)
+		}
+	}
+	return nil
 }
 
 // ensureTenantOwner fills in an owner missing from community-era test fixtures.

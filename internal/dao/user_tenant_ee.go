@@ -35,6 +35,60 @@ func (dao *UserTenantDAO) CountUserTenantByTenantIDs(ctx context.Context, db *go
 	return total, err
 }
 
+// FindActiveTenantIDForLogin prefers the user's personal tenant, then the
+// earliest joined tenant that is still active.
+func (dao *UserTenantDAO) FindActiveTenantIDForLogin(ctx context.Context, db *gorm.DB, userID string) (string, error) {
+	type tenantChoice struct {
+		TenantID string `gorm:"column:tenant_id"`
+	}
+	query := func() *gorm.DB {
+		return db.WithContext(ctx).Table("user_tenant").
+			Select("user_tenant.tenant_id").
+			Joins("JOIN tenant ON tenant.id = user_tenant.tenant_id").
+			Where("user_tenant.user_id = ? AND user_tenant.status = ? AND tenant.status = ?", userID, entity.TenantMembershipStatusJoined, string(entity.StatusValid))
+	}
+
+	var choice tenantChoice
+	err := query().Where("user_tenant.tenant_id = ?", userID).Take(&choice).Error
+	if err == nil {
+		return choice.TenantID, nil
+	}
+	if !IsNotFoundErr(err) {
+		return "", err
+	}
+
+	err = query().Where("user_tenant.tenant_id <> ?", userID).
+		Order("user_tenant.create_time ASC").
+		Order("user_tenant.id ASC").
+		Take(&choice).Error
+	if IsNotFoundErr(err) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return choice.TenantID, nil
+}
+
+// GetMembersByTenantIDIncludingOwner returns active, invited, and requested
+// tenant members, including the owner.
+func (dao *UserTenantDAO) GetMembersByTenantIDIncludingOwner(ctx context.Context, db *gorm.DB, tenantID string) ([]*TenantMemberItem, error) {
+	var results []*TenantMemberItem
+	err := db.WithContext(ctx).Table("user_tenant").
+		Select("user_tenant.id, user_tenant.user_id, user_tenant.role, user_tenant.status, "+
+			"user.nickname, user.email, user.avatar, user.is_authenticated, "+
+			"user.status AS is_active, user.is_anonymous, user.is_superuser, "+
+			"DATE_FORMAT(user.update_date, '%Y-%m-%dT%H:%i:%s') AS update_date").
+		Joins("JOIN user ON user_tenant.user_id = user.id").
+		Where("user_tenant.tenant_id = ? AND user_tenant.status IN ?", tenantID, []string{
+			entity.TenantMembershipStatusJoined,
+			entity.TenantMembershipStatusInvited,
+			entity.TenantMembershipStatusRequested,
+		}).
+		Scan(&results).Error
+	return results, err
+}
+
 type UTOrphanRow struct {
 	UTNoUser         int64 `gorm:"column:ut_no_user"`
 	UTNoTenantRecord int64 `gorm:"column:ut_no_tenant_record"`

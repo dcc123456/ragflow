@@ -19,6 +19,7 @@
 package dao
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -84,15 +85,15 @@ func TestMigratePermissionsRunsEnterpriseDataWhenSharedMarkerIsCurrent(t *testin
 	if err := db.Where("id = ?", tenant.ID).Take(&migratedTenant).Error; err != nil {
 		t.Fatalf("reload Tenant: %v", err)
 	}
-	if migratedTenant.RoleID == nil {
+	if migratedTenant.DefaultRoleID == nil {
 		t.Fatal("Tenant default role was not initialized when the shared marker was current")
 	}
 	var membership entity.UserTenant
 	if err := db.Where("id = ?", "member-link").Take(&membership).Error; err != nil {
 		t.Fatalf("reload Tenant member: %v", err)
 	}
-	if membership.Role != fmt.Sprint(*migratedTenant.RoleID) {
-		t.Fatalf("member role = %q, want default role ID %d", membership.Role, *migratedTenant.RoleID)
+	if membership.Role != fmt.Sprint(*migratedTenant.DefaultRoleID) {
+		t.Fatalf("member role = %q, want default role ID %d", membership.Role, *migratedTenant.DefaultRoleID)
 	}
 	version, err := getDatabaseMigrationVersion(t.Context(), db, permissionMigrationEEMarker)
 	if err != nil {
@@ -111,16 +112,40 @@ func TestMigratePermissionsRunsEnterpriseDataWhenSharedMarkerIsCurrent(t *testin
 	}
 }
 
-func TestMigratePermissionDataEERepairsUserRoleIDNullabilityAtCurrentVersion(t *testing.T) {
+func TestMigratePermissionDataEEMovesSystemRoleToTenantAtCurrentVersion(t *testing.T) {
 	db := openGroupMigrationDB(t)
-	if err := db.AutoMigrate(&entity.SystemSettings{}); err != nil {
-		t.Fatalf("create system settings table: %v", err)
+	if err := db.AutoMigrate(&entity.SystemSettings{}, &entity.User{}, &entity.Tenant{}, &entity.UserTenant{}, &entity.Role{}, &entity.RoleResource{}); err != nil {
+		t.Fatalf("create role migration tables: %v", err)
 	}
-	if err := db.Exec(`CREATE TABLE user (id varchar(32) PRIMARY KEY, role_id integer NOT NULL)`).Error; err != nil {
-		t.Fatalf("create legacy user table: %v", err)
+	if err := db.Migrator().DropColumn(&entity.Tenant{}, "DefaultRoleID"); err != nil {
+		t.Fatalf("remove tenant.default_role_id to simulate legacy schema: %v", err)
 	}
-	if err := db.Exec("INSERT INTO user (id, role_id) VALUES (?, ?)", "user-1", 12).Error; err != nil {
-		t.Fatalf("create legacy user: %v", err)
+	if err := db.Exec("ALTER TABLE user ADD COLUMN role_id integer").Error; err != nil {
+		t.Fatalf("add legacy user.role_id: %v", err)
+	}
+	tenantID := "tenant-1"
+	status := string(entity.StatusValid)
+	systemRole := entity.Role{ID: 12, RoleName: "viewer"}
+	memberRole := entity.Role{ID: 13, RoleName: "member", TenantID: &tenantID}
+	if err := db.Create(&[]entity.Role{systemRole, memberRole}).Error; err != nil {
+		t.Fatalf("create system and member roles: %v", err)
+	}
+	if err := db.Table("tenant").Create(map[string]any{
+		"id": tenantID, "parser_ids": "", "role_id": memberRole.ID, "status": status,
+	}).Error; err != nil {
+		t.Fatalf("create legacy Tenant: %v", err)
+	}
+	if err := db.Create(&entity.User{ID: "user-1", Nickname: "Owner", Email: "owner@example.com"}).Error; err != nil {
+		t.Fatalf("create owner: %v", err)
+	}
+	if err := db.Create(&entity.UserTenant{ID: "membership-1", UserID: "user-1", TenantID: tenantID, Role: "owner", Status: &status}).Error; err != nil {
+		t.Fatalf("create owner membership: %v", err)
+	}
+	if err := db.Exec("UPDATE user SET role_id = ? WHERE id = ?", systemRole.ID, "user-1").Error; err != nil {
+		t.Fatalf("assign legacy user system role: %v", err)
+	}
+	if err := db.Create(&entity.SystemSettings{Name: "user.default_system_role_id", Source: "admin", DataType: "string", Value: "12"}).Error; err != nil {
+		t.Fatalf("create legacy default user role setting: %v", err)
 	}
 	if err := setDatabaseMigrationVersionForMarker(t.Context(), db, permissionMigrationEEMarker, permissionMigrationEETarget); err != nil {
 		t.Fatalf("set current enterprise permission migration version: %v", err)
@@ -131,34 +156,26 @@ func TestMigratePermissionDataEERepairsUserRoleIDNullabilityAtCurrentVersion(t *
 			t.Fatalf("migrate enterprise permission data: %v", err)
 		}
 	}
-
-	columns, err := db.Migrator().ColumnTypes(&entity.User{})
-	if err != nil {
-		t.Fatalf("inspect user columns: %v", err)
+	if !db.Migrator().HasColumn(&entity.User{}, "role_id") {
+		t.Fatal("user.role_id was dropped during migration")
 	}
-	for _, column := range columns {
-		if column.Name() != "role_id" {
-			continue
-		}
-		if nullable, known := column.Nullable(); !known || !nullable {
-			t.Fatalf("user.role_id nullable = %v, known = %v; want nullable", nullable, known)
-		}
-		var user struct {
-			ID     string `gorm:"column:id"`
-			RoleID int32  `gorm:"column:role_id"`
-		}
-		if err := db.Table("user").Select("id", "role_id").Where("id = ?", "user-1").Take(&user).Error; err != nil {
-			t.Fatalf("read migrated user: %v", err)
-		}
-		if user.RoleID != 12 {
-			t.Fatalf("user.role_id = %d after migration, want existing value 12", user.RoleID)
-		}
-		if err := db.Exec("UPDATE user SET role_id = NULL WHERE id = ?", user.ID).Error; err != nil {
-			t.Fatalf("set user.role_id to NULL after migration: %v", err)
-		}
-		return
+	var tenant entity.Tenant
+	if err := db.Where("id = ?", tenantID).Take(&tenant).Error; err != nil {
+		t.Fatalf("reload migrated Tenant: %v", err)
 	}
-	t.Fatal("user.role_id column is missing")
+	if tenant.RoleID == nil || *tenant.RoleID != systemRole.ID {
+		t.Fatalf("tenant.role_id = %v, want system role %d", tenant.RoleID, systemRole.ID)
+	}
+	if tenant.DefaultRoleID == nil || *tenant.DefaultRoleID != memberRole.ID {
+		t.Fatalf("tenant.default_role_id = %v, want member role %d", tenant.DefaultRoleID, memberRole.ID)
+	}
+	var setting entity.SystemSettings
+	if err := db.Where("name = ?", "tenant.default_system_role_id").Take(&setting).Error; err != nil || setting.Value != "12" {
+		t.Fatalf("migrated default Tenant role setting = %+v, err %v", setting, err)
+	}
+	if err := db.Where("name = ?", "user.default_system_role_id").Take(&setting).Error; !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Fatalf("legacy default user role setting remains, err %v", err)
+	}
 }
 
 func TestMigrateDefaultTenantRoleMCPFeatureEEIsIdempotent(t *testing.T) {
@@ -187,7 +204,7 @@ func TestMigrateDefaultTenantRoleMCPFeatureEEIsIdempotent(t *testing.T) {
 		roles = append(roles, role)
 		tenant := entity.Tenant{
 			ID: fixture.tenantID, ParserIDs: "",
-			RoleID: &role.ID,
+			DefaultRoleID: &role.ID,
 		}
 		if err := db.Create(&tenant).Error; err != nil {
 			t.Fatalf("create tenant %s: %v", fixture.tenantID, err)
@@ -294,96 +311,6 @@ func TestAutoMigrateCreatesRoleTables(t *testing.T) {
 	}
 	if !db.Migrator().HasColumn(&entity.Role{}, "TenantID") || !db.Migrator().HasTable(&entity.RoleResource{}) {
 		t.Fatal("role tables were not created")
-	}
-}
-
-func newTenantRoleMigrationDB(t *testing.T, userRoleID *int32) (*gorm.DB, int32) {
-	t.Helper()
-	db := openGroupMigrationDB(t)
-	if err := db.AutoMigrate(&entity.User{}, &entity.Tenant{}, &entity.UserTenant{}, &entity.Role{}); err != nil {
-		t.Fatalf("auto-migrate tenant role migration tables: %v", err)
-	}
-	role := entity.Role{RoleName: "tenant_default"}
-	if err := db.Create(&role).Error; err != nil {
-		t.Fatalf("create system role: %v", err)
-	}
-	status := "1"
-	if err := db.Create(&entity.User{
-		ID: "owner-1", Nickname: "Owner", Email: "owner@example.com",
-		IsAuthenticated: "1", IsActive: "1", IsAnonymous: "0", Status: &status,
-		RoleID: userRoleID,
-	}).Error; err != nil {
-		t.Fatalf("create owner: %v", err)
-	}
-	if err := db.Create(&entity.Tenant{
-		ID: "tenant-1", ParserIDs: "", Status: &status,
-	}).Error; err != nil {
-		t.Fatalf("create tenant: %v", err)
-	}
-	if err := db.Create(&entity.UserTenant{
-		ID: "membership-1", LLMID: "", EmbdID: "", ASRID: "", Img2TxtID: "", RerankID: "", UserID: "owner-1", TenantID: "tenant-1", Role: "owner", Status: &status,
-	}).Error; err != nil {
-		t.Fatalf("create tenant owner membership: %v", err)
-	}
-	if err := db.Exec("UPDATE tenant SET role_id = ? WHERE id = ?", role.ID, "tenant-1").Error; err != nil {
-		t.Fatalf("set legacy tenant role: %v", err)
-	}
-	return db, role.ID
-}
-
-func TestMigrateLegacyTenantRolesToUsersEE(t *testing.T) {
-	db, roleID := newTenantRoleMigrationDB(t, nil)
-	if err := db.Migrator().DropIndex(&entity.User{}, "idx_user_role_id"); err != nil {
-		t.Fatalf("drop user.role_id index to simulate old schema: %v", err)
-	}
-	if err := db.Exec("ALTER TABLE user DROP COLUMN role_id").Error; err != nil {
-		t.Fatalf("remove user.role_id to simulate old schema: %v", err)
-	}
-	if err := migrateLegacyTenantRolesToUsersEE(t.Context(), db); err != nil {
-		t.Fatalf("migrate tenant roles to users: %v", err)
-	}
-	var user entity.User
-	if err := db.Select("id", "role_id").Where("id = ?", "owner-1").Take(&user).Error; err != nil {
-		t.Fatalf("load migrated owner: %v", err)
-	}
-	if user.RoleID == nil || *user.RoleID != roleID {
-		t.Fatalf("owner role_id = %v, want %d", user.RoleID, roleID)
-	}
-	if !db.Migrator().HasColumn(&entity.Tenant{}, "RoleID") {
-		t.Fatal("tenant.role_id column was removed by data migration")
-	}
-	if !db.Migrator().HasIndex(&entity.User{}, "idx_user_role_id") {
-		t.Fatal("user.role_id index is missing after migration")
-	}
-	if err := migrateLegacyTenantRolesToUsersEE(t.Context(), db); err != nil {
-		t.Fatalf("repeat tenant role migration: %v", err)
-	}
-	var tenant entity.Tenant
-	if err := db.Select("id", "role_id").Where("id = ?", "tenant-1").Take(&tenant).Error; err != nil {
-		t.Fatalf("load tenant default role after repeat: %v", err)
-	}
-	if tenant.RoleID != nil {
-		t.Fatalf("tenant default role_id = %v after legacy migration, want nil", tenant.RoleID)
-	}
-}
-
-func TestMigrateLegacyTenantRolesToUsersEERejectsConflictingUserRole(t *testing.T) {
-	preexistingRoleID := int32(99)
-	db, legacyRoleID := newTenantRoleMigrationDB(t, &preexistingRoleID)
-	if err := migrateLegacyTenantRolesToUsersEE(t.Context(), db); err == nil || !strings.Contains(err.Error(), "conflicts with owner") {
-		t.Fatalf("migration error = %v, want conflicting owner role", err)
-	}
-	if !db.Migrator().HasColumn(&entity.Tenant{}, "RoleID") {
-		t.Fatal("tenant.role_id column is missing")
-	}
-	var legacy struct {
-		RoleID int32 `gorm:"column:role_id"`
-	}
-	if err := db.Table("tenant").Select("role_id").Where("id = ?", "tenant-1").Take(&legacy).Error; err != nil {
-		t.Fatalf("load retained tenant role: %v", err)
-	}
-	if legacy.RoleID != legacyRoleID {
-		t.Fatalf("tenant role_id = %d after failed migration, want %d", legacy.RoleID, legacyRoleID)
 	}
 }
 

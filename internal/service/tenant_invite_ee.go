@@ -20,6 +20,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 
@@ -32,13 +33,13 @@ import (
 
 func resolveTenantInviteRoleEE(tx *gorm.DB, tenantID string) (tenantInviteRole, bool, error) {
 	var tenant entity.Tenant
-	if err := tx.Select("id", "role_id").Where("id = ?", tenantID).Take(&tenant).Error; err != nil {
+	if err := tx.Select("id", "default_role_id").Where("id = ?", tenantID).Take(&tenant).Error; err != nil {
 		return tenantInviteRole{}, true, fmt.Errorf("load Tenant default role: %w", err)
 	}
-	if tenant.RoleID == nil {
+	if tenant.DefaultRoleID == nil {
 		return tenantInviteRole{}, true, common.NewCodedError(common.CodeConflict, "Tenant default role must be configured before accepting invitations")
 	}
-	role, err := findTenantRole(tx, tenantID, *tenant.RoleID, false)
+	role, err := findTenantRole(tx, tenantID, *tenant.DefaultRoleID, false)
 	if err != nil {
 		return tenantInviteRole{}, true, common.NewCodedError(common.CodeConflict, "Tenant default role is invalid")
 	}
@@ -58,14 +59,39 @@ func (s *TenantService) checkTenantInviteEnabledEE(ctx context.Context, tenantID
 		}
 		return common.CodeServerError, true, fmt.Errorf("failed to load tenant: %w", err)
 	}
-	if !tenant.InviteEnabled {
-		return common.CodeForbidden, true, fmt.Errorf("tenant invitations are disabled")
+	enabled, err := tenantInvitationsEnabled(dao.DB.WithContext(ctx), tenant)
+	if err != nil {
+		return common.CodeServerError, true, fmt.Errorf("load tenant invitation permission: %w", err)
 	}
-	if tenant.RoleID == nil {
+	if !enabled {
+		return common.CodeForbidden, true, fmt.Errorf("the Tenant system role does not enable invitations")
+	}
+	if tenant.DefaultRoleID == nil {
 		return common.CodeConflict, true, fmt.Errorf("tenant default role must be configured before inviting members")
 	}
-	if _, err := findTenantRole(dao.DB.WithContext(ctx), tenantID, *tenant.RoleID, false); err != nil {
+	if _, err := findTenantRole(dao.DB.WithContext(ctx), tenantID, *tenant.DefaultRoleID, false); err != nil {
 		return common.CodeConflict, true, fmt.Errorf("tenant default role is invalid")
 	}
 	return common.CodeSuccess, true, nil
+}
+
+func tenantInvitationsEnabled(db *gorm.DB, tenant *entity.Tenant) (bool, error) {
+	if tenant.RoleID == nil {
+		return false, nil
+	}
+	var role entity.Role
+	if err := db.Where("id = ? AND tenant_id IS NULL", *tenant.RoleID).Take(&role).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	var permission entity.RoleResource
+	if err := db.Where("role_id = ? AND resource_type = ?", role.ID, entity.RoleResourceTypeInvitation).Take(&permission).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	return permission.Action&entity.RoleActionEnable != 0, nil
 }

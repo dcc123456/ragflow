@@ -38,9 +38,9 @@ type enterprisePolicy struct {
 }
 
 type enterpriseMembership struct {
-	Membership *Membership
-	RoleID     *int32
-	RoleValue  string
+	Membership   *Membership
+	SystemRoleID *int32
+	RoleValue    string
 }
 
 func newPolicyEE(source Source) (policy, bool) {
@@ -661,14 +661,14 @@ func (p *enterprisePolicy) loadMembership(ctx context.Context) (*enterpriseMembe
 		}
 		return nil, fmt.Errorf("permission: load current Tenant role: %w", err)
 	}
-	var user entity.User
-	if err := p.db.WithContext(ctx).Select("id", "role_id").Where("id = ?", UserIDFromContext(ctx)).Take(&user).Error; err != nil {
+	var tenant entity.Tenant
+	if err := p.db.WithContext(ctx).Select("id", "role_id").Where("id = ?", TenantIDFromContext(ctx)).Take(&tenant).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrUnauthenticated
+			return nil, ErrMembershipNotFound
 		}
-		return nil, fmt.Errorf("permission: load user's system role: %w", err)
+		return nil, fmt.Errorf("permission: load Tenant system role: %w", err)
 	}
-	return &enterpriseMembership{Membership: membership, RoleID: user.RoleID, RoleValue: relation.Role}, nil
+	return &enterpriseMembership{Membership: membership, SystemRoleID: tenant.RoleID, RoleValue: relation.Role}, nil
 }
 
 func (p *enterprisePolicy) loadResource(ctx context.Context, ref ResourceRef) (*Resource, error) {
@@ -705,8 +705,8 @@ func (p *enterprisePolicy) effectiveFeatureMask(ctx context.Context, userID stri
 		return 0, ErrInvalidPermission
 	}
 	mask := int32(entity.RoleActionAll)
-	if membership.RoleID != nil {
-		globalMask, err := p.roleResourceMask(ctx, *membership.RoleID, nil, resourceType)
+	if membership.SystemRoleID != nil {
+		globalMask, err := p.roleResourceMask(ctx, *membership.SystemRoleID, nil, resourceType)
 		if err != nil {
 			return 0, err
 		}

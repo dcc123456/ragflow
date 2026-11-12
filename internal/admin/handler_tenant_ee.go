@@ -78,14 +78,6 @@ func (h *Handler) ListTenants(c *gin.Context) {
 		Keyword: strings.TrimSpace(c.Query("keyword")),
 		Status:  strings.TrimSpace(c.Query("status")),
 	}
-	if raw := strings.TrimSpace(c.Query("invite_enabled")); raw != "" {
-		enabled, err := strconv.ParseBool(raw)
-		if err != nil {
-			common.RespondError(c, common.CodeBadRequest, "invite_enabled must be true or false")
-			return
-		}
-		filter.InviteEnabled = &enabled
-	}
 	result, err := h.service.ListTenants(c.Request.Context(), filter, page, pageSize)
 	if err != nil {
 		writeRoleError(c, err)
@@ -94,27 +86,26 @@ func (h *Handler) ListTenants(c *gin.Context) {
 	common.RespondSuccess(c, result, "")
 }
 
-type updateTenantInviteSettingRequest struct {
-	InviteEnabled *bool `json:"invite_enabled"`
+type updateTenantRoleRequest struct {
+	RoleID *int32 `json:"role_id"`
 }
 
-// UpdateTenantInviteSetting changes whether tenant members can invite users.
-func (h *Handler) UpdateTenantInviteSetting(c *gin.Context) {
+func (h *Handler) UpdateTenantRole(c *gin.Context) {
 	tenantID := strings.TrimSpace(c.Param("tenant_id"))
 	if tenantID == "" {
 		common.RespondError(c, common.CodeBadRequest, "tenant_id is required")
 		return
 	}
-	var request updateTenantInviteSettingRequest
-	if err := c.ShouldBindJSON(&request); err != nil || request.InviteEnabled == nil {
-		common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, nil, "invite_enabled is required")
+	var request updateTenantRoleRequest
+	if err := c.ShouldBindJSON(&request); err != nil || request.RoleID == nil || *request.RoleID <= 0 {
+		common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, nil, "a positive system role ID is required")
 		return
 	}
 	actorID, ok := requireAdminActorID(c)
 	if !ok {
 		return
 	}
-	result, err := h.service.UpdateTenantInviteSetting(c.Request.Context(), tenantID, *request.InviteEnabled, actorID)
+	result, err := h.service.UpdateTenantRole(c.Request.Context(), tenantID, request.RoleID, actorID)
 	if err != nil {
 		writeRoleError(c, err)
 		return
@@ -122,32 +113,26 @@ func (h *Handler) UpdateTenantInviteSetting(c *gin.Context) {
 	common.RespondSuccess(c, result, "")
 }
 
-// ShowDefaultTenantInviteEnabled returns the default invitation setting for new tenants.
-func (h *Handler) ShowDefaultTenantInviteEnabled(c *gin.Context) {
-	enabled, err := h.service.GetDefaultTenantInviteEnabled(c.Request.Context())
-	if err != nil {
-		writeRoleError(c, err)
-		return
-	}
-	common.RespondSuccess(c, gin.H{"invite_enabled": enabled}, "")
+type updateTenantStatusRequest struct {
+	Status string `json:"status"`
 }
 
-type updateDefaultTenantInviteEnabledRequest struct {
-	InviteEnabled *bool `json:"invite_enabled"`
-}
-
-// UpdateDefaultTenantInviteEnabled changes the invitation default for new tenants.
-func (h *Handler) UpdateDefaultTenantInviteEnabled(c *gin.Context) {
-	var request updateDefaultTenantInviteEnabledRequest
-	if err := c.ShouldBindJSON(&request); err != nil || request.InviteEnabled == nil {
-		common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, nil, "invite_enabled is required")
+func (h *Handler) UpdateTenantStatus(c *gin.Context) {
+	tenantID := strings.TrimSpace(c.Param("tenant_id"))
+	if tenantID == "" {
+		common.RespondError(c, common.CodeBadRequest, "tenant_id is required")
 		return
 	}
-	actorUserID, ok := requireAdminActorID(c)
+	var request updateTenantStatusRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		common.RespondError(c, common.CodeBadRequest, "status must be 0 or 1")
+		return
+	}
+	actorID, ok := requireAdminActorID(c)
 	if !ok {
 		return
 	}
-	result, err := h.service.UpdateDefaultTenantInviteEnabled(c.Request.Context(), *request.InviteEnabled, actorUserID)
+	result, err := h.service.UpdateTenantStatus(c.Request.Context(), tenantID, request.Status, actorID)
 	if err != nil {
 		writeRoleError(c, err)
 		return

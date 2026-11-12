@@ -122,6 +122,9 @@ func (s *UserService) ldapSignIn(ctx context.Context, channel string, identity *
 		if existing.IsActive == "0" {
 			return nil, common.CodeForbidden, ErrOAuthUserInactive
 		}
+		if code, err := validateLoginTenant(ctx, existing); err != nil {
+			return nil, code, err
+		}
 		token := common.GenerateToken()
 		existing.AccessToken = &token
 		now := time.Now().Truncate(time.Second)

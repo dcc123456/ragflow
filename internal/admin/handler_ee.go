@@ -1038,42 +1038,6 @@ func (h *Handler) ShowUserIndex(c *gin.Context) {
 	common.RespondSuccess(c, userIndex, "")
 }
 
-// UpdateUserRoleHTTPRequest update user role request
-type UpdateUserRoleHTTPRequest struct {
-	RoleName string `json:"role_name" binding:"required"`
-}
-
-// UpdateUserRole handle update user role
-func (h *Handler) UpdateUserRole(c *gin.Context) {
-	username, err := getUserName(c)
-	if err != nil {
-		return
-	}
-
-	var req UpdateUserRoleHTTPRequest
-	if err = c.ShouldBindJSON(&req); err != nil {
-		common.RespondError(c, common.CodeBadRequest, "Role name is required")
-		return
-	}
-	actorUserID, ok := requireAdminActorID(c)
-	if !ok {
-		return
-	}
-	ctx := c.Request.Context()
-
-	result, err := h.service.UpdateUserRole(ctx, actorUserID, username, req.RoleName)
-	if err != nil {
-		if errors.Is(err, common.ErrUserNotFound) {
-			common.RespondError(c, common.CodeNotFound, "User not found")
-			return
-		}
-		writeRoleError(c, err)
-		return
-	}
-
-	common.RespondSuccess(c, result, "")
-}
-
 // ShowUserPermission handle show user permission
 func (h *Handler) ShowUserPermission(c *gin.Context) {
 	username, err := getUserName(c)

@@ -26,7 +26,7 @@ import (
 )
 
 func tenantDAOTestExtraModels() []interface{} {
-	return []interface{}{&entity.Role{}, &entity.RoleResource{}}
+	return []interface{}{&entity.Role{}, &entity.RoleResource{}, &entity.SystemSettings{}}
 }
 
 func TestTenantDAOCreateFailsWhenRoleTableIsMissingEE(t *testing.T) {

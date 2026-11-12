@@ -30,7 +30,7 @@ import (
 
 func TestTenantFileListingHidesUnsharedEntriesBeforePagination(t *testing.T) {
 	db := testutil.SetupTestDB(t,
-		&entity.User{}, &entity.UserTenant{}, &entity.Role{}, &entity.RoleResource{},
+		&entity.User{}, &entity.Tenant{}, &entity.UserTenant{}, &entity.Role{}, &entity.RoleResource{},
 		&entity.GroupInfo{}, &entity.GroupMember{}, &entity.Permission{},
 		&entity.File{}, &entity.File2Document{}, &entity.Document{}, &entity.Knowledgebase{},
 	)
@@ -41,6 +41,9 @@ func TestTenantFileListingHidesUnsharedEntriesBeforePagination(t *testing.T) {
 		if err := db.Create(&entity.User{ID: userID, Email: userID + "@example.test", Nickname: userID}).Error; err != nil {
 			t.Fatal(err)
 		}
+	}
+	if err := db.Create(&entity.Tenant{ID: tenantID, ParserIDs: ""}).Error; err != nil {
+		t.Fatal(err)
 	}
 	if err := db.Create(&entity.Role{ID: 17, RoleName: "member", TenantID: &tenantID}).Error; err != nil {
 		t.Fatal(err)

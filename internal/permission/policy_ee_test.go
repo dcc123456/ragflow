@@ -35,7 +35,7 @@ func TestCheckFeatureUsesTenantRoleAndSystemRoleCeiling(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&entity.User{}, &entity.UserTenant{}, &entity.Role{}, &entity.RoleResource{}); err != nil {
+	if err := db.AutoMigrate(&entity.User{}, &entity.Tenant{}, &entity.UserTenant{}, &entity.Role{}, &entity.RoleResource{}); err != nil {
 		t.Fatalf("migrate permission tables: %v", err)
 	}
 
@@ -48,7 +48,10 @@ func TestCheckFeatureUsesTenantRoleAndSystemRoleCeiling(t *testing.T) {
 	if err := db.Create(&entity.Role{ID: 17, RoleName: "member", TenantID: &tenantID}).Error; err != nil {
 		t.Fatalf("create Tenant role: %v", err)
 	}
-	if err := db.Create(&entity.User{ID: "user-1", Email: "user@example.com", Nickname: "User", RoleID: &systemRoleID}).Error; err != nil {
+	if err := db.Create(&entity.Tenant{ID: tenantID, ParserIDs: "", RoleID: &systemRoleID, Status: &status}).Error; err != nil {
+		t.Fatalf("create Tenant: %v", err)
+	}
+	if err := db.Create(&entity.User{ID: "user-1", Email: "user@example.com", Nickname: "User"}).Error; err != nil {
 		t.Fatalf("create user: %v", err)
 	}
 	if err := db.Create(&entity.UserTenant{
@@ -84,11 +87,14 @@ func TestResolveMCPServerAccessesMatchesSingleResourceResolution(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&entity.User{}, &entity.UserTenant{}, &entity.MCPServer{}, &entity.Role{}, &entity.RoleResource{}, &entity.GroupInfo{}, &entity.GroupMember{}, &entity.Permission{}); err != nil {
+	if err := db.AutoMigrate(&entity.User{}, &entity.Tenant{}, &entity.UserTenant{}, &entity.MCPServer{}, &entity.Role{}, &entity.RoleResource{}, &entity.GroupInfo{}, &entity.GroupMember{}, &entity.Permission{}); err != nil {
 		t.Fatalf("migrate permission tables: %v", err)
 	}
 	status := string(entity.StatusValid)
 	tenantID := "tenant-1"
+	if err := db.Create(&entity.Tenant{ID: tenantID, ParserIDs: "", Status: &status}).Error; err != nil {
+		t.Fatalf("create Tenant: %v", err)
+	}
 	if err := db.Create(&entity.User{ID: "owner", Email: "owner@example.test", Nickname: "Owner"}).Error; err != nil {
 		t.Fatalf("create owner: %v", err)
 	}

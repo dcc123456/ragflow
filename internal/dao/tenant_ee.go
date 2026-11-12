@@ -30,9 +30,8 @@ import (
 
 // AdminTenantFilter narrows the system administrator's tenant list.
 type AdminTenantFilter struct {
-	Keyword       string
-	Status        string
-	InviteEnabled *bool
+	Keyword string
+	Status  string
 }
 
 // AdminTenantItem is the tenant data exposed by the Admin API.
@@ -42,8 +41,9 @@ type AdminTenantItem struct {
 	OwnerUserID   *string `gorm:"column:owner_user_id" json:"owner_user_id,omitempty"`
 	OwnerEmail    *string `gorm:"column:owner_email" json:"owner_email,omitempty"`
 	OwnerNickname *string `gorm:"column:owner_nickname" json:"owner_nickname,omitempty"`
-	InviteEnabled bool    `gorm:"column:invite_enabled" json:"invite_enabled"`
+	MemberCount   int64   `gorm:"column:member_count" json:"member_count"`
 	RoleID        *int32  `gorm:"column:role_id" json:"role_id,omitempty"`
+	RoleName      *string `gorm:"column:role_name" json:"role_name,omitempty"`
 	Status        *string `gorm:"column:status" json:"status,omitempty"`
 	CreateTime    *int64  `gorm:"column:create_time" json:"create_time,omitempty"`
 }
@@ -59,12 +59,10 @@ func (dao *TenantDAO) CountAllTenants(ctx context.Context, db *gorm.DB) (int64, 
 func (dao *TenantDAO) ListAllTenants(ctx context.Context, db *gorm.DB, filter AdminTenantFilter, offset, limit int) ([]*AdminTenantItem, int64, error) {
 	query := db.WithContext(ctx).Model(&entity.Tenant{}).
 		Joins("LEFT JOIN user_tenant AS owner_membership ON owner_membership.tenant_id = tenant.id AND owner_membership.role = ? AND owner_membership.status = ?", "owner", "1").
-		Joins("LEFT JOIN user AS tenant_owner ON tenant_owner.id = owner_membership.user_id")
+		Joins("LEFT JOIN user AS tenant_owner ON tenant_owner.id = owner_membership.user_id").
+		Joins("LEFT JOIN role AS tenant_role ON tenant_role.id = tenant.role_id AND tenant_role.tenant_id IS NULL")
 	if filter.Status != "" {
 		query = query.Where("tenant.status = ?", filter.Status)
-	}
-	if filter.InviteEnabled != nil {
-		query = query.Where("tenant.invite_enabled = ?", *filter.InviteEnabled)
 	}
 	if keyword := strings.TrimSpace(filter.Keyword); keyword != "" {
 		like := "%" + keyword + "%"
@@ -76,7 +74,7 @@ func (dao *TenantDAO) ListAllTenants(ctx context.Context, db *gorm.DB, filter Ad
 		return nil, 0, fmt.Errorf("count tenants: %w", err)
 	}
 	items := make([]*AdminTenantItem, 0)
-	err := query.Select("tenant.id AS tenant_id, tenant.name, owner_membership.user_id AS owner_user_id, tenant_owner.email AS owner_email, tenant_owner.nickname AS owner_nickname, tenant.invite_enabled, tenant.role_id, tenant.status, tenant.create_time").
+	err := query.Select("tenant.id AS tenant_id, tenant.name, owner_membership.user_id AS owner_user_id, tenant_owner.email AS owner_email, tenant_owner.nickname AS owner_nickname, tenant.role_id, tenant_role.role_name AS role_name, tenant.status, tenant.create_time, (SELECT COUNT(*) FROM user_tenant AS joined_member WHERE joined_member.tenant_id = tenant.id AND joined_member.status = ?) AS member_count", entity.TenantMembershipStatusJoined).
 		Order("tenant.create_time DESC").Order("tenant.id ASC").Offset(offset).Limit(limit).Scan(&items).Error
 	if err != nil {
 		return nil, 0, fmt.Errorf("list tenants: %w", err)

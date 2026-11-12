@@ -41,8 +41,5 @@ func permissionDataModelsEE() []interface{} {
 }
 
 func initializeSystemSettingsEE(ctx context.Context, db *gorm.DB) error {
-	if err := ensureDefaultTenantInviteEnabled(ctx, db); err != nil {
-		return err
-	}
 	return ensureWhitelistSetting(ctx, db)
 }

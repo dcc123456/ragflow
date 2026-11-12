@@ -37,7 +37,20 @@ func evaluationRunnerFixture(t *testing.T) (*EvaluationRunner, *entity.Evaluatio
 	}
 	sqlDB.SetMaxOpenConns(1)
 	t.Cleanup(func() { sqlDB.Close() })
-	if err = db.AutoMigrate(&entity.EvaluationCollection{}, &entity.EvaluationRun{}, &entity.EvaluationCase{}, &entity.EvaluationResult{}); err != nil {
+	if err = db.AutoMigrate(
+		&entity.EvaluationCollection{}, &entity.EvaluationRun{}, &entity.EvaluationCase{}, &entity.EvaluationResult{},
+		&entity.Chat{}, &entity.User{}, &entity.Tenant{}, &entity.UserTenant{}, &entity.Role{}, &entity.RoleResource{}, &entity.Permission{},
+	); err != nil {
+		t.Fatal(err)
+	}
+	valid := string(entity.StatusValid)
+	if err = db.Create(&entity.Tenant{ID: "tenant", ParserIDs: ""}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err = db.Create(&entity.User{ID: "owner", Email: "owner@test.invalid", Nickname: "owner"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err = db.Create(&entity.UserTenant{ID: "owner-membership", UserID: "owner", TenantID: "tenant", Role: "owner", Status: &valid}).Error; err != nil {
 		t.Fatal(err)
 	}
 	c := entity.EvaluationCase{ID: "case", CollectionID: "collection", Variable: entity.JSONMap{"question": "question", "reference_answer": "reference"}}

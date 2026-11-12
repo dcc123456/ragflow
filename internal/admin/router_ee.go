@@ -39,10 +39,11 @@ func RegisterEERouter(protected *gin.RouterGroup, r *Router) {
 
 	// Tenant administration and global permission audit
 	protected.GET("/tenants", r.handler.ListTenants)
-	protected.PATCH("/tenants/:tenant_id", r.handler.UpdateTenantInviteSetting)
+	protected.PUT("/tenants/:tenant_id/role", r.handler.UpdateTenantRole)
+	protected.PUT("/tenants/:tenant_id/status", r.handler.UpdateTenantStatus)
 	protected.GET("/permission-logs", r.handler.ListPermissionLogs)
-	protected.GET("/settings/default-invite-enabled", r.handler.ShowDefaultTenantInviteEnabled)
-	protected.PUT("/settings/default-invite-enabled", r.handler.UpdateDefaultTenantInviteEnabled)
+	protected.GET("/settings/default-tenant-role", r.handler.ShowDefaultTenantSystemRole)
+	protected.PUT("/settings/default-tenant-role", r.handler.UpdateDefaultTenantSystemRole)
 
 	// Role management
 	protected.GET("/roles", r.handler.ListRoles)
@@ -110,7 +111,6 @@ func RegisterEERouter(protected *gin.RouterGroup, r *Router) {
 	protected.GET("/users/:username/storage", r.handler.ShowUserStorage)
 	protected.GET("/users/:username/quota", r.handler.ShowUserQuota)
 	protected.GET("/users/:username/index", r.handler.ShowUserIndex)
-	protected.PUT("/users/:username/role", r.handler.UpdateUserRole)
 	protected.GET("/users/:username/permission", r.handler.ShowUserPermission)
 	protected.GET("/users/:username/datasets", r.handler.ListUserDatasets)
 	protected.GET("/users/:username/agents", r.handler.ListUserAgents)

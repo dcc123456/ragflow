@@ -48,6 +48,10 @@ func (h *TenantHandler) SwitchTenant(c *gin.Context) {
 		common.Respond(c, http.StatusForbidden, common.CodeForbidden, nil, "User is not an active member of this tenant")
 		return
 	}
+	if _, err := dao.NewTenantDAO().GetByID(c.Request.Context(), dao.DB, tenantID); err != nil {
+		common.Respond(c, http.StatusForbidden, common.CodeForbidden, nil, "This tenant is inactive or unavailable")
+		return
+	}
 
 	secretKey, err := server.GetSecretKey(c.Request.Context(), kvrocks.Get())
 	if err != nil {
