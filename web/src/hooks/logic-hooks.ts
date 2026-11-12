@@ -216,6 +216,7 @@ export const useGetPagination = (options?: { pageSize?: number }) => {
   const onPageChange: Pagination['onChange'] = useCallback(
     (pageNumber: number, pageSize?: number) => {
       setPagination((pre) => ({
+        ...pre,
         page: pageNumber,
         pageSize: pageSize ?? pre.pageSize,
       }));
@@ -225,12 +226,9 @@ export const useGetPagination = (options?: { pageSize?: number }) => {
 
   const changePagination = useCallback(
     (pagination: { page: number; pageSize?: number; total?: number }) => {
-      if (pagination.pageSize !== pagination.pageSize) {
-        pagination.page = 1; // Reset to first page if pageSize changes
-      }
       setPagination((prev) => ({ ...prev, ...pagination }));
     },
-    [setPagination],
+    [],
   );
 
   const currentPagination: Pagination = useMemo(() => {

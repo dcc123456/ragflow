@@ -113,6 +113,7 @@ export type ISetDefaultModelRequestBody =
       model_type: string;
       tenant_id?: string;
       model_id: string;
+      tenant_id?: string;
     }
   | {
       model_type: string;
