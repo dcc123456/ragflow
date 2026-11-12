@@ -1,0 +1,33 @@
+name: Check enterprise implementations
+description: Scan all enterprise seams, generate panic fallbacks and fail until real implementations are supplied
+runs:
+  using: composite
+  steps:
+    - name: Generate and report enterprise fallbacks
+      shell: bash
+      env:
+        CGO_ENABLED: '1'
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        if [ -n "${RUNNER_WORKSPACE_PREFIX:-}" ]; then
+          export GOMODCACHE="${RUNNER_WORKSPACE_PREFIX}/gomodcache"
+          export GOCACHE="${RUNNER_WORKSPACE_PREFIX}/gobuild"
+        fi
+        report=$(mktemp)
+        finish() {
+          {
+            echo '### Full scan log'
+            echo
+            echo 'Missing declarations receive temporary panic implementations for inspection.'
+            echo 'Only blocking hook gaps fail preflight. Warnings do not fail the check.'
+            echo 'Resolve the blocking declarations on this PR branch and rerun CI.'
+            echo
+            echo '```text'
+            sed -E '/^::(error|warning) /d; s/\x1B\[[0-9;]*m//g' "$report"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          rm -f "$report"
+        }
+        trap finish EXIT
+        go run ./tools/eestub 2>&1 | tee "$report"
