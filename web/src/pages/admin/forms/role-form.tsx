@@ -21,6 +21,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 import { useRoleResourceTypes } from '@/ee/pages/admin/hooks/useRole';
 import { RESOURCE_PERMISSIONS, formMergeDefaultValues } from '../utils';
+import rolePermissions from '@/ee/pages/admin/roles/role-permissions';
 
 export interface CreateRoleFormData {
   name: string;
@@ -115,6 +116,9 @@ export const CreateRoleForm = ({
               if (resourceType === 'model_provider') {
                 return null;
               }
+              // const permissionTypes =
+              //   rolePermissions.getRolePermissionTypes?.(resourceType) ??
+              //   PERMISSION_TYPES;
 
               return (
                 <TabsContent
