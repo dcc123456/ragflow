@@ -23,3 +23,12 @@ package utility
 // GetFileType/FilenameType route CAD uploads to the CAD parser without the
 // community switch changing.
 const FileTypeCAD FileType = "cad"
+
+func init() {
+	RegisterExtensionFileType("wps", FileTypeDOC)
+	RegisterExtensionFileType("wpt", FileTypeDOC)
+	RegisterExtensionFileType("et", FileTypeXLS)
+	RegisterExtensionFileType("ett", FileTypeXLS)
+	RegisterExtensionFileType("dps", FileTypePPT)
+	RegisterExtensionFileType("dpt", FileTypePPT)
+}
