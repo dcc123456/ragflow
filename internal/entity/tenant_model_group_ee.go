@@ -21,6 +21,7 @@ package entity
 type TenantModelGroup struct {
 	ID        string `gorm:"column:id;primaryKey;size:32" json:"id"`
 	UserID    string `gorm:"column:user_id;size:32;index:idx_tenant_model_group_user_id,priority:1;not null" json:"user_id"`
+	TenantID  string `gorm:"column:tenant_id;size:32;not null;index" json:"tenant_id"`
 	GroupName string `gorm:"column:group_name;size:128;index:idx_tenant_model_group_group_name,priority:2;not null" json:"group_name"`
 	Status    string `gorm:"column:status;size:32;default:'active'" json:"status"`
 	Extra     string `gorm:"column:extra;size:512;default:'{}'" json:"extra"`
@@ -32,7 +33,10 @@ func (TenantModelGroup) TableName() string {
 	return "tenant_model_group"
 }
 
-// TenantModelGroupMap tenant model group map table
+// TenantModelGroupMap tenant model group map table.
+// Status is the group-local availability of the model: the failover picker
+// flips it to inactive inside this group only, leaving tenant_model.status
+// (the global switch) and other groups untouched.
 type TenantModelGroupMap struct {
 	ID       string `gorm:"column:id;primaryKey;size:32" json:"id"`
 	GroupID  string `gorm:"column:group_id;size:32;index:idx_tenant_model_group_map_id,unique,priority:1;not null" json:"group_id"`

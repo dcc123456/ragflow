@@ -31,19 +31,27 @@ import (
 )
 
 func (m *ModelProviderService) CreateModelGroup(ctx context.Context, userID, groupName string) error {
+	tenantID, err := requireCurrentTenantID(ctx)
+	if err != nil {
+		return err
+	}
 	var tenantModelGroup = &entity.TenantModelGroup{
 		ID:        common.GenerateUUID(),
 		UserID:    userID,
+		TenantID:  tenantID,
 		GroupName: groupName,
 		Status:    "active",
 		Extra:     "{}",
 	}
-	//tenantModelGroup.UpdateCreateDateAndTime()
 	return m.modelGroupDAO.Create(ctx, dao.DB, tenantModelGroup)
 }
 
-func (m *ModelProviderService) DeleteModelGroup(ctx context.Context, userID, groupName string) error {
-	group, err := m.modelGroupDAO.GetByGroupName(ctx, dao.DB, userID, groupName)
+func (m *ModelProviderService) DeleteModelGroup(ctx context.Context, groupName string) error {
+	tenantID, err := requireCurrentTenantID(ctx)
+	if err != nil {
+		return err
+	}
+	group, err := m.modelGroupDAO.GetByGroupName(ctx, dao.DB, tenantID, groupName)
 	if err != nil {
 		return err
 	}
@@ -74,8 +82,12 @@ type ShowModelGroupResponse struct {
 	GroupID   string `json:"group_id"`
 }
 
-func (m *ModelProviderService) ShowModelGroup(ctx context.Context, userID, groupName string) ([]*ShowModelGroupResponse, error) {
-	group, err := m.modelGroupDAO.GetByGroupName(ctx, dao.DB, userID, groupName)
+func (m *ModelProviderService) ShowModelGroup(ctx context.Context, groupName string) ([]*ShowModelGroupResponse, error) {
+	tenantID, err := requireCurrentTenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	group, err := m.modelGroupDAO.GetByGroupName(ctx, dao.DB, tenantID, groupName)
 	if err != nil {
 		return nil, err
 	}
@@ -137,12 +149,19 @@ func (m *ModelProviderService) ShowModelGroup(ctx context.Context, userID, group
 
 type ListModelGroupResponse struct {
 	ID        string `json:"id"`
+	TenantID  string `json:"tenant_id"`
 	GroupName string `json:"group_name"`
 	Status    string `json:"status"`
 }
 
+// ListModelGroup returns the metadata of every model group the caller owns in
+// the current tenant.
 func (m *ModelProviderService) ListModelGroup(ctx context.Context, userID string) ([]*ListModelGroupResponse, error) {
-	groups, err := m.modelGroupDAO.ListByUserID(ctx, dao.DB, userID)
+	tenantID, err := requireCurrentTenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	groups, err := m.modelGroupDAO.ListByTenantIDAndUserID(ctx, dao.DB, tenantID, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -152,6 +171,7 @@ func (m *ModelProviderService) ListModelGroup(ctx context.Context, userID string
 	for _, group := range groups {
 		groupResponse := &ListModelGroupResponse{
 			ID:        group.ID,
+			TenantID:  group.TenantID,
 			GroupName: group.GroupName,
 			Status:    group.Status,
 		}
@@ -166,11 +186,15 @@ func (m *ModelProviderService) AddModelToGroupByName(ctx context.Context, userID
 	if err != nil {
 		return err
 	}
-	return m.AddModelToGroupByID(ctx, userID, tenantModel.ID, groupName)
+	return m.AddModelToGroupByID(ctx, tenantModel.ID, groupName)
 }
 
-func (m *ModelProviderService) AddModelToGroupByID(ctx context.Context, userID, modelID, groupName string) error {
-	group, err := m.modelGroupDAO.GetByGroupName(ctx, dao.DB, userID, groupName)
+func (m *ModelProviderService) AddModelToGroupByID(ctx context.Context, modelID, groupName string) error {
+	tenantID, err := requireCurrentTenantID(ctx)
+	if err != nil {
+		return err
+	}
+	group, err := m.modelGroupDAO.GetByGroupName(ctx, dao.DB, tenantID, groupName)
 	if err != nil {
 		return err
 	}
@@ -183,6 +207,7 @@ func (m *ModelProviderService) AddModelToGroupByID(ctx context.Context, userID, 
 		GroupID:  group.ID,
 		ModelID:  modelID,
 		Position: -1,
+		Status:   "active",
 	})
 	if err != nil {
 		return err
@@ -195,24 +220,23 @@ func (m *ModelProviderService) RemoveModelFromGroupByName(ctx context.Context, u
 	if err != nil {
 		return err
 	}
-	group, err := m.modelGroupDAO.GetByGroupName(ctx, dao.DB, userID, groupName)
+	tenantID, err := requireCurrentTenantID(ctx)
+	if err != nil {
+		return err
+	}
+	group, err := m.modelGroupDAO.GetByGroupName(ctx, dao.DB, tenantID, groupName)
 	if err != nil {
 		return err
 	}
 	if group == nil {
 		return fmt.Errorf("model group not found")
 	}
-	_, err = m.modelGroupMapDAO.DeleteByModelIDs(ctx, dao.DB, group.ID, []string{tenantModel.ID})
+	affected, err := m.modelGroupMapDAO.DeleteByModelIDs(ctx, dao.DB, group.ID, []string{tenantModel.ID})
 	if err != nil {
 		return err
 	}
-	return nil
-}
-
-func (m *ModelProviderService) RemoveModelFromGroupByID(ctx context.Context, groupModelID string) error {
-	_, err := m.modelGroupMapDAO.DeleteByIDs(ctx, dao.DB, []string{groupModelID})
-	if err != nil {
-		return err
+	if affected == 0 {
+		return fmt.Errorf("model %s is not in group %s", modelName, groupName)
 	}
 	return nil
 }
