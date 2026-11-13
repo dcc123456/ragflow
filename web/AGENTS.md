@@ -133,13 +133,13 @@ Do not reintroduce backend-variant primitives or detection helpers (e.g. a `useI
 
 ### Enterprise Overlays
 
-The two repositories share one frontend source tree. Enterprise-only content lives in `src/ee/` at the same path it customizes, and the OSS tree ships that file empty so the shared imports resolve in both trees:
+The frontend mirrors the backend's `stub.go` / `*_ee.go` naming. `src/ee-stub/` holds the no-op customization points for shared modules; the enterprise repository carries real implementations at the same relative paths under `src/ee/`. Shared code always imports the logical `@/ee/...` specifier, and the OSS directory-level aliases resolve it to `src/ee-stub/`.
 
-- Enterprise locale strings go to `src/ee/locales/<lang>-private.ts`; enterprise-only API endpoints go to `src/ee/utils/api-private.ts`.
-- The shared file only imports the overlay and merges it — `merge(base, private)` in `src/locales/config.ts`, `merge(apiEndpoints, apiPrivate)` in `src/utils/api.ts`. Never inline enterprise strings or endpoints into `src/locales/*.ts` or `src/utils/api.ts`.
-- The edition is chosen by the file's content, never at runtime: no `import.meta.env` switch that selects enterprise code and no `isEnterprise` branch in shared modules.
-- These overlay paths already exist in both trees, so editing one is a part 1 change (same as `stub.go`): keep the path, put the real implementation here, leave the OSS copy an empty object. A new overlay file needs its empty counterpart upstream in the same change.
-- `web/tailwind.config.js` must keep `'./src/ee/**/*.{ts,tsx}'` in `content`: Tailwind only generates classes found in globbed files, so any file moved into `src/ee/` silently loses its utilities (notably arbitrary values such as `min-h-[680px]`) and its layout collapses.
+- `src/ee-stub/locales/<lang>-private.ts` and `src/ee-stub/utils/api-private.ts` stay empty objects here; their enterprise counterparts under `src/ee/` carry private locale strings and API endpoints.
+- The shared file only imports the overlay and merges it — `merge(base, private)` in `src/locales/config.ts`, `merge(apiEndpoints, apiPrivate)` in `src/utils/api.ts`. Never inline enterprise strings or endpoints into `src/locales/*.ts` or `src/utils/api.ts`, and never delete the overlay import.
+- The edition is chosen by directory aliases and file content, never at runtime: no `import.meta.env` switch that selects enterprise code and no `isEnterprise` branch in shared modules.
+- Keep the `@/ee` mappings in `vite.config.ts`, `tsconfig.json`, `jest.config.ts`, and `.storybook/main.ts` ahead of the generic `@` / `@/*` mapping. Do not add per-file aliases or rewrite shared imports to `@/ee-stub`.
+- Adding a new overlay means adding the empty file under `src/ee-stub/` here and the implementation at the same relative path under `src/ee/` downstream in the same change.
 
 ### CSS and Layout Debugging
 

@@ -85,10 +85,8 @@ export default defineConfig(({ mode }) => {
     ],
     resolve: {
       alias: {
-        // Shared code imports the enterprise implementation as `@/ee/...`.
-        // Review layout: the overlay sits at `src/ee` (the same path as open
-        // source) so the two trees diff side by side. It moves back to
-        // `src/enterprise` once review is done.
+        // Mirror the backend's stub.go / *_ee.go split: OSS resolves the
+        // logical seam to no-op stubs, while EE uses real src/ee files.
         '@/ee': path.resolve(__dirname, './src/ee'),
         '@': path.resolve(__dirname, './src'),
         '@parent': path.resolve(__dirname, '../'),
