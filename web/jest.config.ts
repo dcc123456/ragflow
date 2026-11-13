@@ -19,7 +19,7 @@ const config: Config = {
     // The app shell itself: createBrowserRouter runs at module scope and
     // needs the fetch Request global, which jsdom does not provide.
     '^@/routes$': '<rootDir>/__mocks__/routes.js',
-    // Review layout: overlays live at `src/ee` (see vite.config.ts).
+    // Keep the OSS no-op mapping ahead of the generic `@/` mapping.
     '^@/ee/(.*)$': '<rootDir>/src/ee/$1',
     '^@/(.*)$': '<rootDir>/src/$1',
     '^human-id$': '<rootDir>/__mocks__/human-id.js',
