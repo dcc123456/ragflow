@@ -1,5 +1,4 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useQuery } from '@tanstack/react-query';
 import { useCallback, useId, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
@@ -15,17 +14,10 @@ import {
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 
-import { listRoles } from '@/ee/services/admin-service';
-
-import { SelectWithSearch } from '@/components/originui/select-with-search';
-import EnterpriseFeature from '@/pages/admin/components/enterprise-feature';
-import { IS_ENTERPRISE } from '@/ee/pages/admin/utils';
-
 interface CreateUserFormData {
   email: string;
   password: string;
   confirmPassword: string;
-  role?: string;
 }
 
 interface CreateUserFormProps {
@@ -40,13 +32,6 @@ export const CreateUserForm = ({
   onSubmit = () => {},
 }: CreateUserFormProps) => {
   const { t } = useTranslation();
-
-  const { data: roleList } = useQuery({
-    queryKey: ['admin/listRoles'],
-    queryFn: async () => (await listRoles()).data.data,
-    enabled: IS_ENTERPRISE,
-    retry: false,
-  });
 
   return (
     <Form {...form}>
@@ -122,34 +107,6 @@ export const CreateUserForm = ({
             </FormItem>
           )}
         />
-
-        <EnterpriseFeature>
-          {/* Role field */}
-          {() => (
-            <FormField
-              control={form.control}
-              name="role"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-sm font-medium">
-                    {t('admin.role')}
-                  </FormLabel>
-                  <FormControl>
-                    <SelectWithSearch
-                      {...field}
-                      options={
-                        roleList?.map((role) => ({
-                          label: role.role_name,
-                          value: role.role_name,
-                        })) ?? []
-                      }
-                    />
-                  </FormControl>
-                </FormItem>
-              )}
-            />
-          )}
-        </EnterpriseFeature>
       </form>
     </Form>
   );
@@ -170,7 +127,6 @@ function useCreateUserForm(props?: {
         confirmPassword: z
           .string()
           .min(1, { message: t('admin.confirmPasswordRequired') }),
-        role: z.string().optional(),
       })
       .refine((data) => data.password === data.confirmPassword, {
         message: t('admin.confirmPasswordDoNotMatch'),

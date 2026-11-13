@@ -44,7 +44,6 @@ declare namespace AdminServiceEe {
     is_active: '0' | '1';
     is_superuser: boolean;
     nickname: string;
-    role?: string;
     ldap_server?: string;
     last_login_time?: string;
     plan?: string;

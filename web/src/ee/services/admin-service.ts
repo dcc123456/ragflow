@@ -187,11 +187,19 @@ export const listUsers = (params?: {
     },
   );
 
-export const createUser = (email: string, password: string) =>
-  request.post<ResponseData<boolean>>(API.adminCreateUser, {
-    username: email,
-    password,
-  });
+export const createUser = async (email: string, password: string) => {
+  const response = await request.post<ResponseData<Record<string, unknown>>>(
+    API.adminCreateUser,
+    {
+      username: email,
+      password,
+    },
+  );
+  if (response.data.code !== 0) {
+    throw new Error(response.data.message);
+  }
+  return response;
+};
 
 export const grantSuperuser = (email: string) =>
   request.put<ResponseData<void>>(api.adminSetSuperuser(email));
@@ -215,13 +223,27 @@ export const listUserAgents = (email: string) =>
   );
 
 export const updateUserStatus = (email: string, status: 'on' | 'off') =>
-  request.put(API.adminUpdateUserStatus(email), { activate_status: status });
+  request.put<ResponseData<null>>(API.adminUpdateUserStatus(email), {
+    activate_status: status,
+  });
 
 export const updateUserPassword = (email: string, password: string) =>
   request.put(API.adminUpdateUserPassword(email), { new_password: password });
 
-export const deleteUser = (email: string) =>
-  request.delete(API.adminDeleteUser(email));
+export const deleteUser = async (email: string) => {
+  const deactivationResponse = await updateUserStatus(email, 'off');
+  if (deactivationResponse.data.code !== 0) {
+    throw new Error(deactivationResponse.data.message);
+  }
+
+  const response = await request.delete<ResponseData<null>>(
+    API.adminDeleteUser(email),
+  );
+  if (response.data.code !== 0) {
+    throw new Error(response.data.message);
+  }
+  return response;
+};
 
 export const listServices = async () => {
   const { data } = await request.get<ResponseData<GoServiceStatus[]>>(
@@ -310,11 +332,6 @@ export const revokeRolePermissions = (
     ),
   );
 };
-
-export const updateUserRole = (username: string, role: string) =>
-  request.put<ResponseData<never>>(API.adminUpdateUserRole(username), {
-    role_name: role,
-  });
 
 export const getUserPermissions = (username: string) =>
   request.get<ResponseData<AdminServiceEe.UserDetailWithPermission>>(

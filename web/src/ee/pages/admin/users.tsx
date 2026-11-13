@@ -51,12 +51,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -90,7 +84,6 @@ import {
   listUsers,
   revokeSuperuser,
   updateUserPassword,
-  updateUserRole,
   updateUserStatus,
 } from '@/ee/services/admin-service';
 
@@ -250,33 +243,10 @@ function AdminUserManagement() {
     retry: false,
   });
 
-  // Update user role mutation
-  const updateUserRoleMutation = useMutation({
-    mutationFn: ({ email, role }: { email: string; role: string }) =>
-      updateUserRole(email, role),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin/listUsers'] });
-    },
-    retry: false,
-  });
-
   // Create user mutation
   const createUserMutation = useMutation({
-    mutationFn: async ({
-      email,
-      password,
-      role,
-    }: {
-      email: string;
-      password: string;
-      role?: string;
-    }) => {
-      await createUser(email, rsaPsw(password) as string);
-
-      if (IS_ENTERPRISE && role) {
-        await updateUserRoleMutation.mutateAsync({ email, role });
-      }
-    },
+    mutationFn: ({ email, password }: { email: string; password: string }) =>
+      createUser(email, rsaPsw(password) as string),
     onSuccess: () => {
       // message.success(t('admin.userCreatedSuccessfully'));
       queryClient.invalidateQueries({ queryKey: ['admin/listUsers'] });
@@ -344,46 +314,6 @@ function AdminUserManagement() {
             columnHelper.accessor('ldap_server', {
               header: t('admin.ldapServer'),
               meta: { colWidth: '*' },
-            }),
-          ]
-        : []),
-
-      ...(IS_ENTERPRISE
-        ? [
-            columnHelper.accessor('role', {
-              header: t('admin.role'),
-              meta: { colClassName: 'w-24' },
-              cell: ({ row, cell }) => (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" className="min-w-16">
-                      {cell.getValue()}
-                    </Button>
-                  </DropdownMenuTrigger>
-
-                  <DropdownMenuContent>
-                    {roleList?.map(({ id, role_name }) => (
-                      <DropdownMenuItem
-                        key={id}
-                        onClick={() => {
-                          updateUserRoleMutation.mutate({
-                            email: row.original.email,
-                            role: role_name,
-                          });
-                        }}
-                      >
-                        {role_name}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              ),
-              filterFn: createColumnFilterFn(
-                (row, id, filterValue) => row.getValue(id) === filterValue,
-                {
-                  autoRemove: (v) => !v,
-                },
-              ),
             }),
           ]
         : []),
@@ -553,17 +483,19 @@ function AdminUserManagement() {
                   >
                     <LucideUserLock />
                   </Button>
-                  <Button
-                    variant="danger"
-                    size="icon"
-                    className="border-0"
-                    onClick={() => {
-                      setUserToMakeAction(row.original);
-                      setDeleteModalOpen(true);
-                    }}
-                  >
-                    <LucideTrash2 />
-                  </Button>
+                  {!row.original.is_superuser && (
+                    <Button
+                      variant="danger"
+                      size="icon"
+                      className="border-0"
+                      onClick={() => {
+                        setUserToMakeAction(row.original);
+                        setDeleteModalOpen(true);
+                      }}
+                    >
+                      <LucideTrash2 />
+                    </Button>
+                  )}
                 </>
               )}
             </div>
@@ -573,8 +505,6 @@ function AdminUserManagement() {
     ],
     [
       t,
-      roleList,
-      updateUserRoleMutation,
       userInfo?.email,
       updateUserStatusMutation,
       setSuperuserMutation,
