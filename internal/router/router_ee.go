@@ -170,6 +170,11 @@ func RegisterEEProtectedRouter(authorized *gin.RouterGroup, r *Router) {
 	tenant.POST("/members/:user_id/approve", r.tenantHandler.ApproveTenantMember)
 	tenant.GET("/me/permissions", r.tenantHandler.GetTenantMyPermissions)
 	tenant.GET("/permission-logs", r.tenantHandler.ListTenantPermissionLogs)
+
+	// Tenant-scoped ingestion-task promotion to the high-priority lane.
+	// The dataset param enforces tenant scope through the permission engine.
+	datasets := authorized.Group("/api/v1/datasets/:dataset_id", ToggleDataset())
+	datasets.POST("/ingestion/tasks/:task_id/promote", r.documentHandler.PromoteIngestionTask)
 }
 
 func ToggleWorkflow() gin.HandlerFunc {

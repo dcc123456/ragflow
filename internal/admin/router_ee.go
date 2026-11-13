@@ -136,6 +136,7 @@ func RegisterEERouter(protected *gin.RouterGroup, r *Router) {
 	protected.PUT("/ingestion/tasks", r.handler.StopIngestionTasks)
 	protected.GET("/ingestion/tasks", r.handler.ListIngestionTasks)
 	protected.GET("/ingestion/tasks/summary", r.handler.ShowIngestionTasksSummary)
+	protected.POST("/ingestion/tasks/:task_id/promote", r.handler.PromoteIngestionTask)
 	protected.GET("/ingestion/logs/:log_id", r.handler.GetIngestionLog)
 	protected.GET("/ingestion/logs/:log_id/messages", r.handler.GetIngestionMessages)
 	protected.GET("/data/summary", r.handler.ShowDataSummary)
