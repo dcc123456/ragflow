@@ -58,7 +58,7 @@ export function getTenantModelId(
   return '';
 }
 
-/** Build "modelName@instanceName@providerName" */
+/** Build "modelName@instanceName@providerName" (plus "#tenantId" when known) */
 export function buildModelValue(model: {
   model_name: string;
   model_instance: string;
@@ -126,6 +126,9 @@ export function buildValidModelIds(
  *
  * Right-anchored split mirrors `api/db/joint_services/tenant_model_service.py`
  * `split_model_name` and the Go `parseModelName` (PR #16468 family).
+ *
+ * A trailing "#tenantId" suffix, when present, is returned separately as
+ * `tenant_id` so `model_provider` always holds the bare factory name.
  */
 export function parseModelValue(val: string) {
   if (!val) return null;
@@ -134,19 +137,25 @@ export function parseModelValue(val: string) {
   const hashIndex = val.indexOf('#');
   const secondLastAt = val.lastIndexOf('@', lastAt - 1);
   const tenantId = hashIndex === -1 ? undefined : val.substring(hashIndex + 1);
+  const providerPart = val.substring(lastAt + 1);
+  const providerHash = providerPart.indexOf('#');
+  const modelProvider =
+    providerHash === -1
+      ? providerPart
+      : providerPart.substring(0, providerHash);
   if (secondLastAt === -1) {
     // 2-part form: "modelName@providerName" — instance defaults to "default".
     return {
       model_name: val.substring(0, lastAt),
       model_instance: 'default',
-      model_provider: val.substring(lastAt + 1),
+      model_provider: modelProvider,
       tenant_id: tenantId,
     };
   }
   return {
     model_name: val.substring(0, secondLastAt),
     model_instance: val.substring(secondLastAt + 1, lastAt),
-    model_provider: val.substring(lastAt + 1),
+    model_provider: modelProvider,
     tenant_id: tenantId,
   };
 }

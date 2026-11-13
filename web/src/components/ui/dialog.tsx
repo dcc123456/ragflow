@@ -32,8 +32,10 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
-    closeDisabled?: boolean;
+    /** Render the corner close button. Defaults to true. */
     closable?: boolean;
+    /** Disable the corner close button (e.g. while a mutation is running). */
+    closeDisabled?: boolean;
   }
 >(
   (
@@ -41,8 +43,8 @@ const DialogContent = React.forwardRef<
       className,
       children,
       onPointerDownOutside,
+      closable = true,
       closeDisabled,
-      closable,
       ...props
     },
     ref,
@@ -65,7 +67,6 @@ const DialogContent = React.forwardRef<
             }
             onPointerDownOutside?.(e);
           }}
-          aria-describedby={undefined}
           className={cn(
             'outline-none outline-0 fixed left-[50%] top-[50%] rounded-lg z-50 grid w-full max-w-xl translate-x-[-50%] translate-y-[-50%]',
             // TODO: to keep scrollbar perfectly aligned to header bottom and/or footer top,
@@ -82,16 +83,15 @@ const DialogContent = React.forwardRef<
           {...props}
         >
           {children}
-
           {closable && (
             <DialogPrimitive.Close
               disabled={closeDisabled}
               className="
-          absolute right-4 top-4 p-2 rounded-sm opacity-70 outline-none text-text-secondary transition-colors
-          hover:bg-border-button hover:text-text-primary
-          focus-visible:bg-border-button focus-visible:text-text-primary
-          disabled:pointer-events-none data-[state=open]:bg-bg-accent data-[state=open]:text-muted-foreground
-        "
+        absolute right-4 top-4 p-2 rounded-sm opacity-70 outline-none text-text-secondary transition-colors
+        hover:bg-border-button hover:text-text-primary
+        focus-visible:bg-border-button focus-visible:text-text-primary
+        disabled:pointer-events-none data-[state=open]:bg-bg-accent data-[state=open]:text-muted-foreground
+      "
             >
               <X className="h-4 w-4" />
               <span className="sr-only">Close</span>

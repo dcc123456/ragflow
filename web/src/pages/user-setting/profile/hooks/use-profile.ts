@@ -84,6 +84,7 @@ export const useProfile = () => {
       email: userInfo.email,
       loginChannel: userInfo.login_channel,
       currPasswd: userInfo.password,
+      loginChannel: userInfo.login_channel,
     };
     setProfile(profile);
   }, [userInfo, setProfile]);

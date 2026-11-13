@@ -2,11 +2,13 @@ import { z } from 'zod';
 
 import { AvatarUpload } from '@/components/avatar-upload';
 import { RAGFlowFormItem } from '@/components/ragflow-form';
-import { Form } from '@/components/ui/form';
+import { Form, FormControl, FormItem, FormLabel } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Textarea } from '@/components/ui/textarea';
 import { useTranslate } from '@/hooks/common-hooks';
 import { useFetchAgent } from '@/hooks/use-agent-request';
+import { showPermissionField } from '@/ee/constants/feature-flags';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
@@ -15,7 +17,7 @@ const formSchema = z.object({
   title: z.string().min(1, {}),
   avatar: z.string().optional().nullable(),
   description: z.string().optional().nullable(),
-  // permission: z.string(),
+  permission: z.string().optional(),
 });
 
 export type SettingFormSchemaType = z.infer<typeof formSchema>;
@@ -34,7 +36,7 @@ export function SettingForm({ submit }: SettingFormProps) {
     resolver: zodResolver(formSchema),
     defaultValues: {
       title: '',
-      // permission: 'me',
+      ...(showPermissionField ? { permission: 'me' } : {}),
     },
   });
 
@@ -43,7 +45,7 @@ export function SettingForm({ submit }: SettingFormProps) {
       title: data?.title,
       description: data?.description,
       avatar: data.avatar,
-      // permission: data?.permission,
+      ...(showPermissionField ? { permission: data?.permission } : {}),
     });
   }, [data, form]);
 
@@ -63,6 +65,46 @@ export function SettingForm({ submit }: SettingFormProps) {
         <RAGFlowFormItem name="description" label={t('description')}>
           <Textarea rows={4} />
         </RAGFlowFormItem>
+
+        {showPermissionField && (
+          <RAGFlowFormItem
+            name="permission"
+            label={t('permissions')}
+            tooltip={t('permissionsTip')}
+          >
+            {(field) => (
+              <RadioGroup
+                onValueChange={field.onChange}
+                value={field.value}
+                className="flex"
+              >
+                <FormItem className="flex items-center gap-3">
+                  <FormControl>
+                    <RadioGroupItem value="me" id="me" />
+                  </FormControl>
+                  <FormLabel
+                    className="font-normal !m-0 cursor-pointer"
+                    htmlFor="me"
+                  >
+                    {t('me')}
+                  </FormLabel>
+                </FormItem>
+
+                <FormItem className="flex items-center gap-3">
+                  <FormControl>
+                    <RadioGroupItem value="team" id="team" />
+                  </FormControl>
+                  <FormLabel
+                    className="font-normal !m-0 cursor-pointer"
+                    htmlFor="team"
+                  >
+                    {t('team')}
+                  </FormLabel>
+                </FormItem>
+              </RadioGroup>
+            )}
+          </RAGFlowFormItem>
+        )}
       </form>
     </Form>
   );

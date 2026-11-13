@@ -256,12 +256,13 @@ function MessageItem({
                           showLoudspeaker={showLoudspeaker}
                           showLog={showLog}
                           attachment={item.attachment}
+                          isShare={isShare}
                         ></AssistantGroupButton>
                       )}
                       {!isShare && (
                         <AssistantGroupButton
                           messageId={item.id}
-                          content={item.content}
+                          content={messageContent}
                           prompt={item.prompt}
                           showLikeButton={showLikeButton}
                           audioBinary={item.audio_binary}
@@ -273,7 +274,7 @@ function MessageItem({
                     </>
                   ) : (
                     <UserGroupButton
-                      content={item.content}
+                      content={messageContent}
                       messageId={item.id}
                       removeMessageById={removeMessageById}
                       regenerateMessage={
