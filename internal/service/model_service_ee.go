@@ -72,14 +72,16 @@ func (m *ModelProviderService) DeleteModelGroup(ctx context.Context, groupName s
 }
 
 type ShowModelGroupResponse struct {
-	ID        string `json:"id"`
-	ModelID   string `json:"model_id"`
-	Position  int64  `json:"position"`
-	Provider  string `json:"provider"`
-	Instance  string `json:"instance"`
-	Model     string `json:"model"`
-	GroupName string `json:"group_name"`
-	GroupID   string `json:"group_id"`
+	ID        string   `json:"id"`
+	ModelID   string   `json:"model_id"`
+	Position  int64    `json:"position"`
+	Provider  string   `json:"provider"`
+	Instance  string   `json:"instance"`
+	Model     string   `json:"model"`
+	ModelType []string `json:"model_type"`
+	Status    string   `json:"status"`
+	GroupName string   `json:"group_name"`
+	GroupID   string   `json:"group_id"`
 }
 
 func (m *ModelProviderService) ShowModelGroup(ctx context.Context, groupName string) ([]*ShowModelGroupResponse, error) {
@@ -107,6 +109,7 @@ func (m *ModelProviderService) ShowModelGroup(ctx context.Context, groupName str
 			ID:        modelGroupMap.ID,
 			ModelID:   modelGroupMap.ModelID,
 			Position:  modelGroupMap.Position,
+			Status:    modelGroupMap.Status,
 			GroupID:   modelGroupMap.GroupID,
 			GroupName: group.GroupName,
 		}
@@ -119,6 +122,7 @@ func (m *ModelProviderService) ShowModelGroup(ctx context.Context, groupName str
 			return nil, fmt.Errorf("model not found")
 		}
 		showModelGroupResponse.Model = tenantModel.ModelName
+		showModelGroupResponse.ModelType = entity.ModelType(tenantModel.ModelType).HumanReadable()
 
 		var tenantModelInstance *entity.TenantModelInstance
 		tenantModelInstance, err = m.modelInstanceDAO.GetByID(ctx, dao.DB, tenantModel.InstanceID)
@@ -207,7 +211,7 @@ func (m *ModelProviderService) AddModelToGroupByID(ctx context.Context, modelID,
 		GroupID:  group.ID,
 		ModelID:  modelID,
 		Position: -1,
-		Status:   "active",
+		Status:   entity.ModelGroupMapStatusActive,
 	})
 	if err != nil {
 		return err
@@ -236,6 +240,36 @@ func (m *ModelProviderService) RemoveModelFromGroupByName(ctx context.Context, u
 		return err
 	}
 	if affected == 0 {
+		return fmt.Errorf("model %s is not in group %s", modelName, groupName)
+	}
+	return nil
+}
+
+// SetModelStatusInGroup switches one group member's group-local availability
+// between active and inactive. Only the membership row's status changes:
+// position ordering and tenant_model.status are left alone, so the model keeps
+// its slot in the group and stays usable outside it.
+func (m *ModelProviderService) SetModelStatusInGroupByName(ctx context.Context, userID, providerName, instanceName, modelName, groupName, status string) error {
+	tenantModel, err := m.GetModelEntityByName(ctx, userID, providerName, instanceName, modelName)
+	if err != nil {
+		return err
+	}
+	tenantID, err := requireCurrentTenantID(ctx)
+	if err != nil {
+		return err
+	}
+	group, err := m.modelGroupDAO.GetByGroupName(ctx, dao.DB, tenantID, groupName)
+	if err != nil {
+		return err
+	}
+	if group == nil {
+		return fmt.Errorf("model group not found")
+	}
+	found, err := m.modelGroupMapDAO.SetModelStatus(ctx, dao.DB, group.ID, tenantModel.ID, status)
+	if err != nil {
+		return err
+	}
+	if !found {
 		return fmt.Errorf("model %s is not in group %s", modelName, groupName)
 	}
 	return nil

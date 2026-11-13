@@ -19,7 +19,10 @@
 package handler
 
 import (
+	"strings"
+
 	"ragflow/internal/common"
+	"ragflow/internal/entity"
 
 	"github.com/gin-gonic/gin"
 )
@@ -152,6 +155,46 @@ func (h *ProviderHandler) RemoveModelFromGroup(c *gin.Context) {
 		return
 	}
 	err = h.modelProviderService.RemoveModelFromGroupByName(ctx, userID, providerName, instanceName, modelName, groupName)
+	if err != nil {
+		common.RespondError(c, common.CodeDataError, err.Error())
+		return
+	}
+
+	common.RespondSuccess(c, nil, "success")
+}
+
+type SetGroupModelStatusRequest struct {
+	CompositeModelName string `json:"composite_model_name" binding:"required"`
+	Status             string `json:"status" binding:"required"`
+}
+
+// SetGroupModelStatus switches one group member's availability inside the
+// group between active and inactive. It only flips the membership row's
+// status: the group keeps its ordering and the model stays usable outside the
+// group.
+func (h *ProviderHandler) SetGroupModelStatus(c *gin.Context) {
+	var req SetGroupModelStatusRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.RespondError(c, common.CodeBadRequest, "Composite model name and status are required")
+		return
+	}
+
+	status := strings.ToLower(strings.TrimSpace(req.Status))
+	if status != entity.ModelGroupMapStatusActive && status != entity.ModelGroupMapStatusInactive {
+		common.RespondError(c, common.CodeBadRequest, "Status must be active or inactive")
+		return
+	}
+
+	ctx := c.Request.Context()
+	userID := c.GetString("user_id")
+	groupName := c.Param("group_name")
+
+	modelName, instanceName, providerName, err := common.ParseCompositeModelName(req.CompositeModelName)
+	if err != nil {
+		common.RespondError(c, common.CodeBadRequest, err.Error())
+		return
+	}
+	err = h.modelProviderService.SetModelStatusInGroupByName(ctx, userID, providerName, instanceName, modelName, groupName, status)
 	if err != nil {
 		common.RespondError(c, common.CodeDataError, err.Error())
 		return

@@ -179,18 +179,32 @@ func (dao *TenantModelGroupMapDAO) ListByGroupID(ctx context.Context, db *gorm.D
 	return instances, nil
 }
 
-// MarkModelInactive flips the status of one membership row to inactive so the
-// failover picker skips this model in this group only. tenant_model.status and
-// the same model's rows in other groups are untouched. A zero RowsAffected is
-// not an error: the row may already be inactive or deleted concurrently.
-func (dao *TenantModelGroupMapDAO) MarkModelInactive(ctx context.Context, db *gorm.DB, groupID, modelID string) error {
+// SetModelStatus overwrites the group-local status of one membership row and
+// reports whether the model is a member of the group at all. Only the status
+// column changes: position ordering and tenant_model.status stay untouched, so
+// a flip never reorders the group and never affects other groups.
+func (dao *TenantModelGroupMapDAO) SetModelStatus(ctx context.Context, db *gorm.DB, groupID, modelID, status string) (bool, error) {
 	if len(groupID) == 0 {
-		return errors.New("group id is required")
+		return false, errors.New("group id is required")
 	}
 	if len(modelID) == 0 {
-		return errors.New("model id is required")
+		return false, errors.New("model id is required")
 	}
-	return db.WithContext(ctx).Model(&entity.TenantModelGroupMap{}).
+	var membership entity.TenantModelGroupMap
+	err := db.WithContext(ctx).Select("id", "status").
 		Where("group_id = ? AND model_id = ?", groupID, modelID).
-		Update("status", "inactive").Error
+		Take(&membership).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if membership.Status == status {
+		return true, nil
+	}
+	err = db.WithContext(ctx).Model(&entity.TenantModelGroupMap{}).
+		Where("group_id = ? AND model_id = ?", groupID, modelID).
+		Update("status", status).Error
+	return true, err
 }

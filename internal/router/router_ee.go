@@ -129,6 +129,12 @@ func RegisterEEProtectedRouter(authorized *gin.RouterGroup, r *Router) {
 	evaluations.DELETE("/runs/:run_id/results/:case_id/metrics/:metric", evaluation.ClearResult)
 	evaluations.GET("/runs/:run_id/export", evaluation.ExportRun)
 
+	// Model group membership status is enterprise-only, so its route is
+	// registered here instead of next to the other group routes in router.go,
+	// which the community tree also compiles.
+	models := authorized.Group("/api/v1/models", ToggleModel())
+	models.PATCH("/groups/:group_name/model", r.providerHandler.SetGroupModelStatus)
+
 	authorized.POST("/api/v1/tenants/:tenant_id/switch", r.tenantHandler.SwitchTenant)
 	authorized.POST("/api/v1/tenants/:tenant_id/invitation-links", r.tenantHandler.CreateTenantInviteLink)
 	authorized.GET("/api/v1/tenant-invitations/:token/status", r.tenantHandler.GetTenantInviteLinkMembership)

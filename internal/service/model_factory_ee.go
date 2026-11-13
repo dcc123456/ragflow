@@ -84,7 +84,7 @@ func (s *ModelFactory) MarkGroupMemberInactive(ctx context.Context, modelType en
 		// Nothing active of the requested type remains; nothing to flip.
 		return true, nil
 	}
-	if err := dao.NewTenantModelGroupMapDAO().MarkModelInactive(ctx, dao.DB, group.ID, model.ID); err != nil {
+	if _, err := dao.NewTenantModelGroupMapDAO().SetModelStatus(ctx, dao.DB, group.ID, model.ID, entity.ModelGroupMapStatusInactive); err != nil {
 		return true, fmt.Errorf("%w: marking model %s inactive in group %q failed: %w", errModelConfigUnavailable, model.ID, group.GroupName, err)
 	}
 	return true, nil

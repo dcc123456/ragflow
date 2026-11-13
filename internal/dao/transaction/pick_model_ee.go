@@ -27,10 +27,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// ErrNoAvailableModel is returned when every model in the group has been
-// tried and none returned a valid response.
-var ErrNoAvailableModel = errors.New("no available model in the model group")
-
 // PickModelFromGroup returns the tenant_model with the smallest position
 // among the group's members whose membership row is active in this group,
 // whose model is globally active, and whose type bitmask contains modelType.
@@ -54,7 +50,7 @@ func PickModelFromGroup(ctx context.Context, db *gorm.DB, groupID string, modelT
 	// handful of rows, so this read is cheap and sorts a tiny set.
 	members := make([]*entity.TenantModelGroupMap, 0)
 	err := db.WithContext(ctx).
-		Where("group_id = ? AND status = ?", groupID, "active").
+		Where("group_id = ? AND status = ?", groupID, entity.ModelGroupMapStatusActive).
 		Order("position ASC, id ASC").
 		Find(&members).Error
 	if err != nil {

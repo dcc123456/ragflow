@@ -33,6 +33,14 @@ func (TenantModelGroup) TableName() string {
 	return "tenant_model_group"
 }
 
+// Group-local availability of a group member. It is independent of
+// tenant_model.status: flipping a member inactive only hides it inside one
+// group, leaving the model usable elsewhere.
+const (
+	ModelGroupMapStatusActive   = "active"
+	ModelGroupMapStatusInactive = "inactive"
+)
+
 // TenantModelGroupMap tenant model group map table.
 // Status is the group-local availability of the model: the failover picker
 // flips it to inactive inside this group only, leaving tenant_model.status
