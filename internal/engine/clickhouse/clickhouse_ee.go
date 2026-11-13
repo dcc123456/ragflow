@@ -20,6 +20,7 @@ package clickhouse
 
 import (
 	"context"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"ragflow/internal/common"
@@ -311,8 +312,10 @@ func (d *Driver) flushOperationLog(batch []*common.OperationLog) {
             operation,
             api_path,
             http_method,
+            resource_type,
+            resource_id,
             request_params,
-            resources,
+            extra_metadata,
             error_code,
             message,
             duration_ms
@@ -325,6 +328,16 @@ func (d *Driver) flushOperationLog(batch []*common.OperationLog) {
 	}
 
 	for _, record := range batch {
+		resources, marshalErr := json.Marshal(record.Resources)
+		if marshalErr != nil {
+			common.Error("Encode audit resources failed", marshalErr)
+			continue
+		}
+		message := ""
+		if record.Error != nil {
+			message = record.Error.Error()
+		}
+		resourceType, resourceID := auditResource(record.Resources)
 		err = batchInsert.Append(
 			record.EventTime,
 			record.UserID,
@@ -332,10 +345,12 @@ func (d *Driver) flushOperationLog(batch []*common.OperationLog) {
 			record.Operation,
 			record.APIPath,
 			record.HTTPMethod,
+			resourceType,
+			resourceID,
 			record.RequestParams,
-			record.Resources,
+			string(resources),
 			record.Code,
-			record.Error.Error(),
+			message,
 			record.DurationMS,
 		)
 		if err != nil {
@@ -349,6 +364,15 @@ func (d *Driver) flushOperationLog(batch []*common.OperationLog) {
 	}
 
 	common.Info("Batch insert success", zap.Int("records", len(batch)))
+}
+
+func auditResource(resources map[string]any) (string, string) {
+	for _, resourceType := range []string{"chunk", "document", "session", "version", "agent", "search", "memory", "dataset"} {
+		if id, ok := resources[resourceType+"_id"].(string); ok && id != "" {
+			return resourceType, id
+		}
+	}
+	return "", ""
 }
 
 func (d *Driver) InitDB() error {
@@ -371,6 +395,9 @@ func (d *Driver) InitDB() error {
 		err := d.conn.Exec(d.ctx, stmt)
 		if err != nil {
 			common.Error("Execute statement failed", err)
+			if strings.Contains(stmt, "CREATE TABLE IF NOT EXISTS operation_audit_log") {
+				return fmt.Errorf("initialize audit table: %w", err)
+			}
 		}
 	}
 
@@ -718,11 +745,15 @@ GROUP BY
         event_date Date DEFAULT toDate(event_time) CODEC(ZSTD(1)),
 
         user_id LowCardinality(String) CODEC(ZSTD(1)),
+        user_name String,
         ip_address String CODEC(ZSTD(1)),
 
         operation LowCardinality(String) CODEC(ZSTD(1)),
 	    api_path LowCardinality(String) CODEC(ZSTD(1)),
         http_method LowCardinality(String) CODEC(ZSTD(1)),
+        resource_type String,
+        resource_id String,
+        resource_name String,
 
         request_params String,
         error_code UInt16 CODEC(ZSTD(1)),

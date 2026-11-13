@@ -65,6 +65,9 @@ func StartServer(ctx context.Context, cancel context.CancelFunc, serverName stri
 		common.Error("Fail to connect to clickhouse", err)
 		return err
 	}
+	if err = wireAuditLogSink(config); err != nil {
+		return err
+	}
 
 	// Install the ingestion lifecycle sink selected by [ingestion_log].type.
 	// The dispatcher owns all type handling; unhandled types are a no-op. This
