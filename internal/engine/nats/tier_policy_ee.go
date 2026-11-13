@@ -20,10 +20,27 @@ package nats
 
 import "ragflow/internal/common"
 
-var tierOrder = []common.Tier{common.TierDefault}
+// tierOrder is the strict drain priority. PullMessage always tries high first,
+// then medium, then the legacy default lane; a full default lane can never block
+// a high publish.
+var tierOrder = []common.Tier{common.TierHigh, common.TierMedium, common.TierDefault}
 
+// tierStreams are the three physically isolated enterprise lanes. Each lane
+// owns a single tier subject; the streams do not overlap, so a full default
+// lane can never reject a high-priority publish. The default lane reuses the
+// bare community/OSS subject "tasks.RAGFLOW" (TaskSubject): the open-source
+// edition publishes here for its single queue, so an OSS split needs no rename
+// and OSS and EE can share one NATS server. Every publisher resolves a tenant
+// tier and publishes to the matching TaskSubjectHigh/Medium/Default via
+// SubjectForTier.
 var tierStreams = map[common.Tier]tierStreamSpec{
+	common.TierHigh:    {"RAGFLOW_TASKS_HIGH", []string{common.TaskSubjectHigh}, "RAGFLOW_CONSUMER_HIGH"},
+	common.TierMedium:  {"RAGFLOW_TASKS_MEDIUM", []string{common.TaskSubjectMedium}, "RAGFLOW_CONSUMER_MEDIUM"},
 	common.TierDefault: {"RAGFLOW_TASKS", []string{common.TaskSubject}, "RAGFLOW_CONSUMER"},
 }
 
-func defaultTier() common.Tier { return common.TierDefault }
+// defaultTier is the lane surfaced through the legacy single-consumer "primary"
+// handle (n.stream / n.consumer) that pre-tiering reads used. The enterprise
+// build designates the medium lane as primary; the community build
+// (tier_policy_community.go) uses the single default lane.
+func defaultTier() common.Tier { return common.TierMedium }

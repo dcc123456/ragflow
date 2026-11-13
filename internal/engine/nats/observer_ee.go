@@ -22,11 +22,19 @@ func (n *NatsEngine) QueueMetrics(ctx context.Context) ([]QueueMetrics, error) {
 		return nil, errors.New("NATS jetstream is not initialized")
 	}
 	var result []QueueMetrics
-	for _, queue := range []struct{ stream, consumer string }{
-		{"RAGFLOW_TASKS", "RAGFLOW_CONSUMER"},
-		{knowledgeCompileStreamName, "KNOWLEDGE_COMPILE_CONSUMER"},
-		{syncerStreamName, syncerConsumerName},
-	} {
+	// The ingestion task queue is now three physically isolated streams (one
+	// per tier). Report each lane so the metrics endpoint exposes per-tier
+	// depth instead of a single monolithic figure.
+	var queues []struct{ stream, consumer string }
+	for _, tier := range tierOrder {
+		spec := tierStreams[tier]
+		queues = append(queues, struct{ stream, consumer string }{spec.streamName, spec.consumerName})
+	}
+	queues = append(queues,
+		struct{ stream, consumer string }{knowledgeCompileStreamName, "KNOWLEDGE_COMPILE_CONSUMER"},
+		struct{ stream, consumer string }{syncerStreamName, syncerConsumerName},
+	)
+	for _, queue := range queues {
 		stream, err := n.jetStream.Stream(ctx, queue.stream)
 		if errors.Is(err, jetstream.ErrStreamNotFound) {
 			continue

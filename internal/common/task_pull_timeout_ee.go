@@ -20,4 +20,8 @@ package common
 
 import "time"
 
-const HandlerPullTimeout = time.Second
+// HandlerPullTimeout bounds the admin manual-pull (PullMessageFromQueue). It
+// also drains the three lanes (high -> medium -> default) under one outer
+// deadline, so it must cover all three lane windows (>= 3s) or the lower lanes
+// are starved the same way the worker pull is.
+const HandlerPullTimeout = 3 * time.Second

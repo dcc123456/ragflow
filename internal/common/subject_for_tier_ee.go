@@ -20,9 +20,19 @@ package common
 
 import "fmt"
 
+// subjectForTier maps an enterprise tier to its JetStream subject: high and
+// medium get their own priority lanes, and the legacy default lane reuses the
+// shared TaskSubject so an OSS split needs no rename. An unknown tier is an
+// error, never a silent fallback to the default lane.
 func subjectForTier(tier Tier) (string, error) {
-	if tier != TierDefault {
+	switch tier {
+	case TierHigh:
+		return TaskSubjectHigh, nil
+	case TierMedium:
+		return TaskSubjectMedium, nil
+	case TierDefault:
+		return TaskSubject, nil
+	default:
 		return "", fmt.Errorf("unknown task tier %q", tier)
 	}
-	return TaskSubject, nil
 }

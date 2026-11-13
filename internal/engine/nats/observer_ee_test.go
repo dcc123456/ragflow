@@ -21,7 +21,7 @@ func TestQueueMetrics(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	for range 2 {
-		if err := queue.PublishTask(common.TaskSubject, []byte(`{"task_id":"metrics"}`)); err != nil {
+		if err := queue.PublishTask(common.TaskSubjectMedium, []byte(`{"task_id":"metrics"}`)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -31,12 +31,23 @@ func TestQueueMetrics(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(metrics) != 1 || metrics[0] != (QueueMetrics{"RAGFLOW_TASKS", pending, inProgress, completed}) {
-			t.Fatalf("queue metrics = %+v, want pending=%d, inProgress=%d, completed=%d", metrics, pending, inProgress, completed)
+		var got *QueueMetrics
+		for i := range metrics {
+			if metrics[i].Name == "RAGFLOW_TASKS_MEDIUM" {
+				got = &metrics[i]
+				break
+			}
+		}
+		if got == nil {
+			t.Fatalf("medium lane missing from metrics: %+v", metrics)
+		}
+		want := QueueMetrics{"RAGFLOW_TASKS_MEDIUM", pending, inProgress, completed}
+		if *got != want {
+			t.Fatalf("medium queue metrics = %+v, want %+v", *got, want)
 		}
 	}
 	assertQueue(2, 0, 0)
-	if err := queue.InitConsumer(common.TaskSubject); err != nil {
+	if err := queue.InitConsumer(common.TaskSubjectMedium); err != nil {
 		t.Fatal(err)
 	}
 	messages, err := queue.PullMessages(ctx, 1)
@@ -48,7 +59,7 @@ func TestQueueMetrics(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertQueue(1, 0, 1)
-	if err := queue.stream.DeleteConsumer(ctx, "RAGFLOW_CONSUMER"); err != nil {
+	if err := queue.stream.DeleteConsumer(ctx, "RAGFLOW_CONSUMER_MEDIUM"); err != nil {
 		t.Fatal(err)
 	}
 	assertQueue(1, 0, 0)
@@ -85,8 +96,8 @@ func TestQueueMetricsIncludesPushConsumers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(metrics) != 3 {
-		t.Fatalf("metrics = %+v, want all three task streams", metrics)
+	if len(metrics) != 5 {
+		t.Fatalf("metrics = %+v, want three task lanes plus knowledge-compile and syncer", metrics)
 	}
 	for _, metric := range metrics {
 		if metric.Pending != 0 || metric.InProgress != 0 || metric.Completed != 0 {

@@ -20,4 +20,9 @@ package service
 
 import "time"
 
-const taskPullRequestTimeout = time.Second
+// taskPullRequestTimeout bounds a single dispatch pull. The enterprise build
+// drains three lanes (high -> medium -> default), and each lane waits up to the
+// engine's 1s tier window before giving up, so the outer budget must cover all
+// three lanes (>= 3s); otherwise an empty high lane consumes the whole budget
+// and the lower lanes are never reached, starving normal ingestion.
+const taskPullRequestTimeout = 3 * time.Second
