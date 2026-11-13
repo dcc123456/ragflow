@@ -7,14 +7,9 @@ import (
 	"strings"
 	"testing"
 
+	"ragflow/internal/parser/cadsource"
 	"ragflow/internal/utility"
 )
-
-// eeFileTypeCAD mirrors the production FileTypeCAD constant
-// (internal/utility/file_ee.go). It is declared locally so this test compiles
-// and asserts the registration contract before the production constant and
-// wiring exist. The value MUST equal "cad".
-const eeFileTypeCAD = utility.FileType("cad")
 
 // minimalDXF is a synthetic R2000 DXF (mirrors go-cad's own sample): one TEXT
 // "hello dxf" on layer "Wall" at world (1.0, 2.0). It exercises the real
@@ -87,8 +82,8 @@ func TestGetFileTypeCADResolvesRegisteredExtension(t *testing.T) {
 	registered := []string{"drawing.dwg", "DRAWING.DWG", "drawing.dxf", "drawing.dxfb"}
 	for _, name := range registered {
 		t.Run(name, func(t *testing.T) {
-			if got := utility.GetFileType(name); got != eeFileTypeCAD {
-				t.Errorf("GetFileType(%q) = %q, want %q (extension must be registered)", name, got, eeFileTypeCAD)
+			if got := utility.GetFileType(name); got != utility.FileTypeCAD {
+				t.Errorf("GetFileType(%q) = %q, want %q (extension must be registered)", name, got, utility.FileTypeCAD)
 			}
 		})
 	}
@@ -99,22 +94,21 @@ func TestGetFileTypeCADResolvesRegisteredExtension(t *testing.T) {
 // OTHER. This passes trivially before registration and must stay true after.
 func TestGetFileTypeCADDoesNotOverMatch(t *testing.T) {
 	for _, name := range []string{"drawing.dwgx", "drawing.cad", "notes.dxf.bak"} {
-		if got := utility.GetFileType(name); got == eeFileTypeCAD {
+		if got := utility.GetFileType(name); got == utility.FileTypeCAD {
 			t.Errorf("GetFileType(%q) = %q, must not over-match", name, got)
 		}
 	}
 }
 
 // TestGetParserCADReturnsProducer verifies the parser factory registration:
-// GetParser for the CAD type must return a usable producer without error. RED:
-// the type is unsupported until the factory is registered.
+// GetParser for the CAD type must return a usable producer without error.
 func TestGetParserCADReturnsProducer(t *testing.T) {
-	p, ft, err := GetParser(eeFileTypeCAD, []byte(minimalDXF))
+	p, ft, err := GetParser(utility.FileTypeCAD, []byte(minimalDXF))
 	if err != nil {
-		t.Fatalf("GetParser(%q): %v (factory must be registered)", eeFileTypeCAD, err)
+		t.Fatalf("GetParser(%q): %v (factory must be registered)", utility.FileTypeCAD, err)
 	}
-	if ft != eeFileTypeCAD {
-		t.Errorf("effective type = %q, want %q", ft, eeFileTypeCAD)
+	if ft != utility.FileTypeCAD {
+		t.Errorf("effective type = %q, want %q", ft, utility.FileTypeCAD)
 	}
 	if p == nil {
 		t.Fatal("GetParser returned nil producer")
@@ -124,11 +118,11 @@ func TestGetParserCADReturnsProducer(t *testing.T) {
 
 // TestCADParserProducesText drives the registered producer through
 // ParseWithResult and confirms the extracted drawing text reaches the parser
-// payload as a text DocItem.
+// payload as a text DocItem, while the structured document travels on File.
 func TestCADParserProducesText(t *testing.T) {
-	p, _, err := GetParser(eeFileTypeCAD, []byte(minimalDXF))
+	p, _, err := GetParser(utility.FileTypeCAD, []byte(minimalDXF))
 	if err != nil {
-		t.Fatalf("GetParser(%q): %v", eeFileTypeCAD, err)
+		t.Fatalf("GetParser(%q): %v", utility.FileTypeCAD, err)
 	}
 	res := p.ParseWithResult(context.Background(), "drawing.dxf", []byte(minimalDXF))
 	if res.Err != nil {
@@ -136,6 +130,9 @@ func TestCADParserProducesText(t *testing.T) {
 	}
 	if !res.Produced() {
 		t.Fatal("ParseWithResult produced no payload")
+	}
+	if _, ok := res.File["cad"].(*cadsource.Drawing); !ok {
+		t.Fatalf("File[\"cad\"] = %T, want *cadsource.Drawing", res.File["cad"])
 	}
 	found := false
 	for _, it := range res.JSON {
@@ -149,31 +146,35 @@ func TestCADParserProducesText(t *testing.T) {
 	}
 }
 
-// TestCADGoCadExtraction drives the go-cad wrapper directly and confirms the
-// drawing text, world coordinates and layer survive the wrapper. This guards
-// the extractCADText contract that CADParser depends on.
-func TestCADGoCadExtraction(t *testing.T) {
-	texts, err := extractCADText([]byte(minimalDXF), true)
+// TestCADTextItemsCarrySpatialMetadata verifies the flat DocItem projection
+// keeps the CAD context the downstream chunker needs.
+func TestCADTextItemsCarrySpatialMetadata(t *testing.T) {
+	doc, err := cadsource.Extract(context.Background(), "drawing.dxf", []byte(minimalDXF))
 	if err != nil {
-		t.Fatalf("extractCADText: %v", err)
+		t.Fatalf("cadsource.Extract: %v", err)
 	}
-	if len(texts) == 0 {
-		t.Fatal("expected at least one extracted text, got none")
+	items := CADTextItems(doc)
+	if len(items) == 0 {
+		t.Fatal("CADTextItems returned no items")
 	}
-	var got *cadText
-	for i := range texts {
-		if texts[i].Text == "hello dxf" {
-			got = &texts[i]
+	var target map[string]any
+	for _, item := range items {
+		m := item.ToMap()
+		if m["text"] == "hello dxf" {
+			target = m
 			break
 		}
 	}
-	if got == nil {
-		t.Fatalf("TEXT 'hello dxf' not extracted; got %d texts: %v", len(texts), texts)
+	if target == nil {
+		t.Fatalf("no projected item for 'hello dxf': %+v", items)
 	}
-	if got.X != 1.0 || got.Y != 2.0 {
-		t.Errorf("coordinate mismatch: want (1.0, 2.0), got (%.4f, %.4f)", got.X, got.Y)
+	if target["cad_x"] != 1.0 || target["cad_y"] != 2.0 {
+		t.Errorf("projected coordinates = (%v, %v), want (1, 2)", target["cad_x"], target["cad_y"])
 	}
-	if got.Layer == 0 {
-		t.Errorf("layer handle should be populated (non-zero), got %d", got.Layer)
+	if target["cad_layer"] != "Wall" {
+		t.Errorf("projected layer = %v, want Wall", target["cad_layer"])
+	}
+	if target["cad_sheet_id"] != "s0" {
+		t.Errorf("projected sheet = %v, want s0", target["cad_sheet_id"])
 	}
 }

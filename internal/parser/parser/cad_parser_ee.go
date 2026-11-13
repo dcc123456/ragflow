@@ -20,81 +20,44 @@ package parser
 
 import (
 	"context"
-	"fmt"
-	"path/filepath"
-	"strings"
 
-	cad "github.com/unitedrhino/go-cad"
+	"ragflow/internal/parser/cadsource"
 )
 
-// CADParser extracts text from CAD drawings (DWG/DXF/DXFB). It implements
-// ParseResultProducer so the standard ingestion pipeline can consume it once
-// the CAD file type is registered via RegisterParserFactory.
-type CADParser struct {
-	textOnly bool
-}
+// CADParser extracts the structured CAD document from DWG/DXF/DXFB bytes. It
+// implements ParseResultProducer so the standard ingestion pipeline can consume
+// it once the CAD file type is registered via RegisterParserFactory.
+type CADParser struct{}
 
-// NewCADParser builds a CADParser. textOnly is retained for a future visual
-// rendering path (sheet PNG); v1 extracts vector text only.
-func NewCADParser(textOnly bool) *CADParser {
-	return &CADParser{textOnly: textOnly}
+// NewCADParser builds a CADParser. The textOnly flag is part of the parser
+// factory contract; CAD extraction always produces both the structured document
+// and its text projection, so the flag does not change the result.
+func NewCADParser(_ bool) *CADParser {
+	return &CADParser{}
 }
 
 // String identifies the parser in logs and diagnostics.
 func (p *CADParser) String() string { return "CADParser" }
 
-// ParseWithResult implements ParseResultProducer. DXF uses go-cad's text
-// decoder, DWG the bit-level decoder; every extracted drawing text becomes a
-// text DocItem.
+// ParseWithResult implements ParseResultProducer. The structured CAD document
+// travels on File["cad"] for the CAD chunker; JSON carries the flat text
+// projection used by previews and by pipelines without a CAD chunker.
 func (p *CADParser) ParseWithResult(ctx context.Context, filename string, data []byte) ParseResult {
-	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(filename), "."))
-	isDXF := ext == "dxf" || ext == "dxfb"
-	texts, err := extractCADText(data, isDXF)
-	if err != nil {
+	if err := ctx.Err(); err != nil {
 		return ParseResult{Err: err}
 	}
-	items := make([]DocItem, 0, len(texts))
-	for _, t := range texts {
-		items = append(items, NewTextJSONItem(t.Text))
+	doc, err := cadsource.Extract(ctx, filename, data)
+	if err != nil {
+		return ParseResult{Err: err}
 	}
 	return ParseResult{
 		File: map[string]any{
 			"name":   filename,
 			"size":   len(data),
 			"format": "cad",
+			"cad":    doc,
 		},
-		JSON: items,
+		JSON:     CADTextItems(doc),
+		Warnings: doc.Diagnostics.Warnings,
 	}
-}
-
-// cadText mirrors go-cad's drawing.TextInfo: extracted drawing text plus its
-// world coordinates and layer handle.
-type cadText struct {
-	Text  string
-	Layer uint64
-	X, Y  float64
-}
-
-// extractCADText parses raw DWG/DXF bytes and extracts all drawing text (TEXT,
-// MTEXT, ATTRIB and block-inserted attributes) with world coordinates and
-// layer. It is a thin wrapper over github.com/unitedrhino/go-cad.
-func extractCADText(data []byte, isDXF bool) ([]cadText, error) {
-	var (
-		doc *cad.Document
-		err error
-	)
-	if isDXF {
-		doc, err = cad.ParseDXF(data)
-	} else {
-		doc, err = cad.Parse(data)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("cad: parse: %w", err)
-	}
-	infos := doc.Texts()
-	out := make([]cadText, 0, len(infos))
-	for _, t := range infos {
-		out = append(out, cadText{Text: t.Text, Layer: t.Layer, X: t.X, Y: t.Y})
-	}
-	return out, nil
 }
