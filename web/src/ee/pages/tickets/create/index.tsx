@@ -11,7 +11,7 @@ import {
   useFetchTicketGroups,
 } from '@/ee/hooks/use-ticket-request';
 import { useFetchUserInfo } from '@/hooks/use-user-setting-request';
-import { fileToBase64 } from '@/utils/file-util';
+import { fileToBase64 } from '@/ee/utils/file-util';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ArrowLeft } from 'lucide-react';
 import { useEffect, useState } from 'react';

@@ -15,16 +15,13 @@
  */
 
 import { history } from '@/utils/simple-history-util';
-import axios, {
-  type AxiosResponse,
-  type InternalAxiosRequestConfig,
-} from 'axios';
+import axios from 'axios';
 
 import message from '@/components/ui/message';
 import { Authorization } from '@/constants/authorization';
 import i18n from '@/locales/config';
 import { Routes } from '@/routes';
-import API from '@/utils/api';
+import api from '@/utils/api';
 import { adminStorage } from '@/utils/authorization-util';
 import { convertTheKeysOfTheObjectToSnake } from '@/utils/common-util';
 import { ResultCode, RetcodeMessage } from '@/utils/request';
@@ -34,27 +31,11 @@ import {
   GoServiceStatus,
 } from './admin-service-adapter';
 
-import { LLMFactory } from '@/constants/llm';
-import type {
-  EmailLoginParams,
-  LDAPLoginParams,
-} from '@/hooks/use-login-request';
-import {
-  IFactory,
-  IMyLlmValue,
-  IThirdOAIModelCollection,
-} from '@/interfaces/database/llm';
-import { isLocalLlmFactory } from '@/pages/user-setting/utils';
-import api from '@/utils/api';
-import { keyBy } from 'lodash';
+const request = axios.create({
+  timeout: 300000,
+});
 
-function redirectToLogin() {
-  adminStorage.removeAll();
-  history.push(Routes.Admin);
-  window.location.reload();
-}
-
-function injectAuthorizationToRequest(config: InternalAxiosRequestConfig) {
+request.interceptors.request.use((config) => {
   const data = convertTheKeysOfTheObjectToSnake(config.data);
   const params = convertTheKeysOfTheObjectToSnake(config.params) as any;
 
@@ -66,13 +47,8 @@ function injectAuthorizationToRequest(config: InternalAxiosRequestConfig) {
   }
 
   return newConfig;
-}
-
-const request = axios.create({
-  timeout: 300000,
 });
 
-request.interceptors.request.use(injectAuthorizationToRequest);
 request.interceptors.response.use(
   (response) => {
     if (response.config.responseType === 'blob') {
@@ -89,7 +65,9 @@ request.interceptors.response.use(
         position: 'top-right',
       });
 
-      redirectToLogin();
+      adminStorage.removeAll();
+      history.push(Routes.Admin);
+      window.location.reload();
     } else if (data?.code && data.code !== 0) {
       message.error(`${i18n.t('message.hint')}: ${data?.code}`, {
         description: data?.message,
@@ -118,7 +96,9 @@ request.interceptors.response.use(
         duration: 3,
       });
 
-      redirectToLogin();
+      adminStorage.removeAll();
+      history.push(Routes.Admin);
+      window.location.reload();
     } else if (data?.code && data.code !== 0) {
       message.error({
         message: `${i18n.t('message.hint')}: ${data?.code}`,
@@ -139,53 +119,63 @@ request.interceptors.response.use(
   },
 );
 
-const requestSilent = axios.create({
-  timeout: 300000,
-});
+const {
+  adminLogin,
+  adminLogout,
+  adminListUsers,
+  adminCreateUser,
+  adminGetUserDetails,
+  adminUpdateUserStatus,
+  adminUpdateUserPassword,
+  adminDeleteUser,
+  adminListUserDatasets,
+  adminListUserAgents,
 
-requestSilent.interceptors.request.use(injectAuthorizationToRequest);
-requestSilent.interceptors.response.use((response) => {
-  if (response.config.responseType === 'blob') {
-    return response;
-  }
+  adminListServices,
+  adminShowServiceDetails,
 
-  const { data } = response ?? {};
+  adminListRoles,
+  adminListRolesWithPermission,
+  adminCreateRole,
+  adminDeleteRole,
+  adminUpdateRoleDescription,
+  adminGetRolePermissions,
+  adminAssignRolePermissions,
+  adminRevokeRolePermissions,
 
-  if (data?.code === 401) {
-    redirectToLogin();
-  }
+  adminGetUserPermissions,
 
-  return response;
-});
+  adminListResources,
+
+  adminListWhitelist,
+  adminCreateWhitelistEntry,
+  adminUpdateWhitelistEntry,
+  adminDeleteWhitelistEntry,
+  adminImportWhitelist,
+
+  adminGetSystemVersion,
+
+  adminListSandboxProviders,
+  adminGetSandboxProviderSchema,
+  adminGetSandboxConfig,
+  adminSetSandboxConfig,
+  adminTestSandboxConnection,
+} = api;
 
 type ResponseData<D = NonNullable<unknown>> = {
   code: number;
   message: string;
   data: D;
-  total?: number;
 };
 
-export const login = (params: EmailLoginParams | LDAPLoginParams) =>
-  request.post<ResponseData<AdminService.LoginData>>(API.adminLogin, params);
-
-export const logout = () => request.get<ResponseData<boolean>>(API.adminLogout);
-
-export const listUsers = (params?: {
-  keyword?: string;
-  sort?: 'asc' | 'desc';
-  order?: string;
-  page?: number;
-  page_size?: number;
-  role?: string;
-  status?: string;
-  plan?: string;
-}) =>
-  request.get<ResponseData<AdminService.ListUsersItem[]>>(API.adminListUsers, {
-    params,
-  });
+export const login = (params: { email: string; password: string }) =>
+  request.post<ResponseData<AdminService.LoginData>>(adminLogin, params);
+export const logout = () => request.post<ResponseData<void>>(adminLogout);
+export const listUsers = () =>
+  request.get<ResponseData<AdminService.ListUsersItem[]>>(adminListUsers, {});
 
 export const createUser = (email: string, password: string) =>
-  request.post<ResponseData<boolean>>(API.adminCreateUser, {
+  request.post<ResponseData<Record<string, unknown>>>(adminCreateUser, {
     username: email,
     password,
   });
@@ -198,37 +188,31 @@ export const revokeSuperuser = (email: string) =>
 
 export const getUserDetails = (email: string) =>
   request.get<ResponseData<[AdminService.UserDetail]>>(
-    API.adminGetUserDetails(email),
+    adminGetUserDetails(email),
   );
-
 export const listUserDatasets = (email: string) =>
   request.get<ResponseData<AdminService.ListUserDatasetItem[]>>(
-    API.adminListUserDatasets(email),
+    adminListUserDatasets(email),
   );
-
 export const listUserAgents = (email: string) =>
   request.get<ResponseData<AdminService.ListUserAgentItem[]>>(
-    API.adminListUserAgents(email),
+    adminListUserAgents(email),
   );
-
 export const updateUserStatus = (email: string, status: 'on' | 'off') =>
-  request.put(API.adminUpdateUserStatus(email), { activate_status: status });
-
+  request.put(adminUpdateUserStatus(email), { activate_status: status });
 export const updateUserPassword = (email: string, password: string) =>
-  request.put(API.adminUpdateUserPassword(email), { new_password: password });
-
+  request.put(adminUpdateUserPassword(email), { new_password: password });
 export const deleteUser = (email: string) =>
-  request.delete(API.adminDeleteUser(email));
+  request.delete(adminDeleteUser(email));
 
 export const listServices = async () => {
-  const { data } = await request.get<ResponseData<GoServiceStatus[]>>(
-    API.adminListServices,
-  );
+  const { data } =
+    await request.get<ResponseData<GoServiceStatus[]>>(adminListServices);
   return data.code === 0 ? adaptServiceList(data.data) : [];
 };
 export const showServiceDetails = async (serviceId: number | string) => {
   const { data } = await request.get<ResponseData<GoServiceStatus>>(
-    API.adminShowServiceDetails(encodeURIComponent(String(serviceId))),
+    adminShowServiceDetails(encodeURIComponent(String(serviceId))),
   );
   return data.code === 0 ? adaptServiceDetail(data.data) : undefined;
 };
@@ -237,89 +221,50 @@ export const createRole = (params: {
   roleName: string;
   description?: string;
 }) =>
-  request.post<ResponseData<AdminService.RoleDetail>>(API.adminCreateRole, {
-    role_name: params.roleName,
-    description: params.description,
-  });
-
+  request.post<ResponseData<AdminService.RoleDetail>>(adminCreateRole, params);
 export const updateRoleDescription = (role: string, description: string) =>
   request.put<ResponseData<AdminService.RoleDetail>>(
-    API.adminUpdateRoleDescription(role),
+    adminUpdateRoleDescription(role),
     { description },
   );
-
 export const deleteRole = (role: string) =>
-  request.delete<ResponseData<ResponseData<never>>>(API.adminDeleteRole(role));
-
+  request.delete<ResponseData<ResponseData<never>>>(adminDeleteRole(role));
 export const listRoles = () =>
-  request.get<ResponseData<AdminService.ListRoleItem[]>>(API.adminListRoles);
-
+  request.get<
+    ResponseData<{ roles: AdminService.ListRoleItem[]; total: number }>
+  >(adminListRoles);
 export const listRolesWithPermission = () =>
-  request.get<ResponseData<AdminService.ListRoleItemWithPermission[]>>(
-    API.adminListRolesWithPermission,
-  );
-
+  request.get<
+    ResponseData<{
+      roles: AdminService.ListRoleItemWithPermission[];
+      total: number;
+    }>
+  >(adminListRolesWithPermission);
 export const getRolePermissions = (role: string) =>
   request.get<ResponseData<AdminService.RoleDetailWithPermission>>(
-    API.adminGetRolePermissions(role),
+    adminGetRolePermissions(role),
   );
-
 export const assignRolePermissions = (
   role: string,
   permissions: Partial<AdminService.AssignRolePermissionsInput>,
-) => {
-  const updates = Object.entries(permissions).flatMap(([resource, values]) => {
-    const actions = Object.entries(values ?? {})
-      .filter(([, enabled]) => enabled)
-      .map(([action]) => action);
-    return actions.length > 0 ? [{ resource, actions }] : [];
+) =>
+  request.post<ResponseData<never>>(adminAssignRolePermissions(role), {
+    new_permissions: permissions,
   });
-
-  return Promise.all(
-    updates.map(({ resource, actions }) =>
-      request.post<ResponseData<never>>(API.adminAssignRolePermissions(role), {
-        actions,
-        resource,
-      }),
-    ),
-  );
-};
-
 export const revokeRolePermissions = (
   role: string,
   permissions: Partial<AdminService.RevokeRolePermissionInput>,
-) => {
-  const updates = Object.entries(permissions).flatMap(([resource, values]) => {
-    const actions = Object.entries(values ?? {})
-      .filter(([, enabled]) => enabled === false)
-      .map(([action]) => action);
-    return actions.length > 0 ? [{ resource, actions }] : [];
-  });
-
-  return Promise.all(
-    updates.map(({ resource, actions }) =>
-      request.delete<ResponseData<never>>(
-        API.adminRevokeRolePermissions(role),
-        {
-          data: { actions, resource },
-        },
-      ),
-    ),
-  );
-};
-
-export const updateUserRole = (username: string, role: string) =>
-  request.put<ResponseData<never>>(API.adminUpdateUserRole(username), {
-    role_name: role,
+) =>
+  request.delete<ResponseData<never>>(adminRevokeRolePermissions(role), {
+    data: { revoke_permissions: permissions },
   });
 
 export const getUserPermissions = (username: string) =>
   request.get<ResponseData<AdminService.UserDetailWithPermission>>(
-    API.adminGetUserPermissions(username),
+    adminGetUserPermissions(username),
   );
-
 export const listResources = () =>
-  request.get<ResponseData<AdminService.ResourceType>>(API.adminListResources);
+  request.get<ResponseData<AdminService.ResourceType>>(adminListResources);
 
 export const listWhitelist = () =>
   request.get<
@@ -327,253 +272,72 @@ export const listWhitelist = () =>
       total: number;
       white_list: AdminService.ListWhitelistItem[];
     }>
-  >(API.adminListWhitelist);
+  >(adminListWhitelist);
 
 export const createWhitelistEntry = (email: string) =>
-  request.post<ResponseData<never>>(API.adminCreateWhitelistEntry, { email });
+  request.post<ResponseData<never>>(adminCreateWhitelistEntry, { email });
 
 export const updateWhitelistEntry = (id: number, email: string) =>
-  request.put<ResponseData<never>>(API.adminUpdateWhitelistEntry(id), {
-    email,
-  });
+  request.put<ResponseData<never>>(adminUpdateWhitelistEntry(id), { email });
 
 export const deleteWhitelistEntry = (email: string) =>
-  request.delete<ResponseData<never>>(API.adminDeleteWhitelistEntry(email));
+  request.delete<ResponseData<never>>(adminDeleteWhitelistEntry(email));
 
 export const importWhitelistFromExcel = (file: File) => {
   const fd = new FormData();
 
   fd.append('file', file);
 
-  return request.post<ResponseData<never>>(API.adminImportWhitelist, fd);
+  return request.post<ResponseData<never>>(adminImportWhitelist, fd);
 };
 
 export const getSystemVersion = () =>
-  request.get<ResponseData<{ version: string }>>(API.adminGetSystemVersion);
+  request.get<ResponseData<{ version: string }>>(adminGetSystemVersion);
 
-function castFromInt(value: string): number | null {
-  const parsed = parseInt(value);
-  return isNaN(parsed) ? null : parsed;
-}
-
-export const listVariables = async () => {
-  const resp = await request.get<
-    ResponseData<
-      {
-        name: string;
-        value: string;
-        data_type: AdminService.SystemVariables.Types.DataType;
-        source: string;
-      }[]
-    >
-  >(API.adminVariables);
-
-  if (resp.data?.data) {
-    const mappedData = resp.data.data.map((variable) => {
-      switch (variable.data_type) {
-        case 'bool':
-          return {
-            ...variable,
-            value: variable.value === 'true' || variable.value === 'True',
-          };
-        case 'integer':
-          return {
-            ...variable,
-            value: castFromInt(variable.value),
-          };
-        default:
-          return variable;
-      }
-    });
-
-    // In-place modification
-    // @ts-ignore
-    resp.data.data = keyBy(mappedData, 'name');
-  }
-
-  return resp as unknown as AxiosResponse<
-    ResponseData<AdminService.SystemVariables>
-  >;
-};
-
-export const getVariable = (name: string) =>
-  request.get<ValueOf<ResponseData<AdminService.SystemVariables>>>(
-    API.adminVariables,
-    {
-      params: {
-        var_name: name,
-      },
-    },
-  );
-
-export const setVariable = (name: string, value: any) =>
-  request.put<ResponseData<never>>(API.adminVariables, {
-    var_name: name,
-    var_value: value,
-  });
-
-export const uploadSensitiveWordFilter = (file: File) => {
-  const fd = new FormData();
-  fd.append('file', file);
-  return request.post<
-    ResponseData<{ size: number; word_count: number; filename: string }>
-  >(API.adminUploadSensitiveWordFilter, fd);
-};
-
-export const downloadSensitiveWordFilter = () => {
-  return request.get<Blob>(API.adminDownloadSensitiveWordFilter, {
-    responseType: 'blob',
-  });
-};
-
-export const deleteLdapServer = (serverId: string) => {
-  return request.delete<ResponseData<never>>(API.adminVariables, {
-    data: {
-      source: `ldap|${serverId}`,
-    },
-  });
-};
-
-export const testSMTPConnection = (
-  params: AdminService.TestSMTPConnectionInput,
-) =>
-  requestSilent.post<ResponseData<boolean>>(
-    API.adminTestSMTPConnection,
-    params,
-  );
-
-export const getRoleDefaultModels = (role: string) =>
-  request.get<ResponseData<AdminService.RoleDefaultModelList>>(
-    API.adminRoleDefaultModels(role),
-  );
-
-export const setRoleDefaultModel = (
-  role: string,
-  input: AdminService.SetRoleDefaultModelInput,
-) =>
-  request.patch<ResponseData<boolean>>(API.adminRoleDefaultModels(role), input);
-
-export const listMyLlm = () =>
-  request.get<ResponseData<Record<LLMFactory, IMyLlmValue>>>(
-    API.adminListMyLlm,
-    {
-      params: {
-        include_details: true,
-      },
-    },
-  );
-
-export const listLlmFactories = () =>
-  request.get<ResponseData<IFactory[]>>(API.adminListLlmFactories);
-
-export const listAllFactoryLlms = () =>
-  request.get<ResponseData<IThirdOAIModelCollection>>(
-    API.adminListAllFactoryLlms,
-  );
-
-export const deleteFactory = (factoryName: string) =>
-  request.post<ResponseData<never>>(API.adminDeleteLlmFactory, {
-    llm_factory: factoryName,
-  });
-
-export const addFactory = (inputs: AdminService.AddLlmFactoryInput) =>
-  request.post<ResponseData<never>>(
-    isLocalLlmFactory(inputs.llm_factory)
-      ? API.adminAddLlmFactory
-      : API.adminSetLlmApiKey,
-    inputs,
-  );
-
+// Sandbox settings APIs
 export const listSandboxProviders = () =>
   request.get<ResponseData<AdminService.SandboxProvider[]>>(
-    API.adminListSandboxProviders,
+    adminListSandboxProviders,
   );
 
-// export const getSandboxConfig = () =>
-//   request.get<ResponseData<AdminService.SandboxConfig>>(
-//     API.adminGetSandboxConfig,
-//   );
+export const getSandboxProviderSchema = (providerId: string) =>
+  request.get<ResponseData<Record<string, AdminService.SandboxConfigField>>>(
+    adminGetSandboxProviderSchema(providerId),
+  );
 
 export const getSandboxConfig = (providerType?: string) =>
-  request.get<ResponseData<AdminService.SandboxConfig>>(
-    API.adminGetSandboxConfig,
+  request.get<ResponseData<AdminService.SandboxConfig>>(adminGetSandboxConfig, {
+    params: { provider_type: providerType },
+  });
+
+export const setSandboxConfig = (params: {
+  providerType: string;
+  config: Record<string, unknown>;
+}) =>
+  request.post<ResponseData<AdminService.SandboxConfig>>(
+    adminSetSandboxConfig,
     {
-      params: { provider_type: providerType },
+      provider_type: params.providerType,
+      config: params.config,
     },
   );
 
-export const setSandboxConfig = (params: AdminService.SetSandboxConfigInput) =>
-  request.post<ResponseData<never>>(API.adminSetSandboxConfig, params);
-
-export const getSandboxProviderSchema = (providerId: string) =>
-  request.get<ResponseData<AdminService.SandboxProviderSchema>>(
-    API.adminGetSandboxProviderSchema(providerId),
-  );
-
-export const testSandboxConnection = (
-  params: AdminService.TestSandboxConnectionInput,
-) =>
-  request.post<ResponseData<AdminService.SandboxTestResult>>(
-    API.adminTestSandboxConnection,
-    params,
-  );
-
-// LLM Trace Statistics
-export const getLlmTraceSummary = (params: AdminService.LlmTraceByOrgParams) =>
-  request.get<ResponseData<AdminService.LlmTraceSummary>>(
-    API.adminLlmTraceSummary,
-    { params },
-  );
-
-export const getLlmTraceByOrg = (
-  params: AdminService.LlmTraceByOrgParams & AdminService.PageParams,
-) =>
-  request.get<ResponseData<AdminService.LlmTraceByOrgItem[]>>(
-    API.adminLlmTraceByOrg,
-    { params },
-  );
-export const getLlmTraceRecent = (
-  params: AdminService.LlmTraceByOrgParams & AdminService.PageParams,
-) =>
-  request.get<ResponseData<AdminService.LlmTraceRecentItem[]>>(
-    API.adminLlmTraceRecent,
-    { params },
-  );
-
-export const getLlmTraceTopConsumers = (
-  params: AdminService.LlmTraceTopConsumersParams & AdminService.PageParams,
-) =>
-  request.get<ResponseData<AdminService.LlmTraceTopConsumer[]>>(
-    API.adminLlmTraceTopConsumers,
-    { params },
-  );
-
-export const getLlmTraceTrends = (params: AdminService.LlmTraceTrendsParams) =>
-  request.get<ResponseData<AdminService.LlmTraceTrend[]>>(
-    API.adminLlmTraceTrends,
-    { params },
-  );
-
-export const getLlmTraceByModel = (
-  params: AdminService.LlmTraceByModelParams,
-) =>
-  request.get<ResponseData<AdminService.LlmTraceByModelItem[]>>(
-    API.adminLlmTraceByModel,
-    { params },
-  );
-// License APIs
-export const getLicense = () =>
-  request.get<ResponseData<AdminService.LicenseInfo>>(API.adminGetLicense);
-
-export const setLicense = (license: string) =>
-  request.post<ResponseData<AdminService.LicenseInfo>>(API.adminSetLicense, {
-    license,
+export const testSandboxConnection = (params: {
+  providerType: string;
+  config: Record<string, unknown>;
+}) =>
+  request.post<
+    ResponseData<{
+      success: boolean;
+      message: string;
+      details?: {
+        exit_code: number;
+        execution_time: number;
+        stdout: string;
+        stderr: string;
+      };
+    }>
+  >(adminTestSandboxConnection, {
+    provider_type: params.providerType,
+    config: params.config,
   });
-
-export const checkLicense = () =>
-  request.get<ResponseData<string>>(`${API.adminGetLicense}?check=true`);
-
-export const getFingerprint = () =>
-  request.get<ResponseData<AdminService.FingerprintResponse>>(
-    API.adminGetFingerprint,
-  );

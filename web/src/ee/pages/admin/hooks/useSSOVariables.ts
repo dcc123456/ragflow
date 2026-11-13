@@ -9,10 +9,10 @@ import {
 } from 'lodash';
 import { useCallback, useMemo } from 'react';
 
-import { deleteLdapServer } from '@/services/admin-service';
+import { deleteLdapServer } from '@/ee/services/admin-service';
 
 import { type SchemaType as SSOLDAPSchemaType } from '@/ee/pages/admin/sso-providers/ldap-list';
-import { uuidParts } from '@/pages/admin/utils';
+import { uuidParts } from '@/ee/pages/admin/utils';
 import useAdminVariables from '@/ee/pages/admin/hooks/useAdminVariables';
 
 const SSO_ID_SEPARATOR = '|';
@@ -35,18 +35,18 @@ const SSO_LDAP_EXTRACTOR_REGEX = new RegExp(
 );
 
 export type IdpData =
-  | AdminService.SystemVariables.SSO.IDP.Google
-  | AdminService.SystemVariables.SSO.IDP.GitHub
-  | AdminService.SystemVariables.SSO.IDP.Feishu;
+  | AdminServiceEe.SystemVariables.SSO.IDP.Google
+  | AdminServiceEe.SystemVariables.SSO.IDP.GitHub
+  | AdminServiceEe.SystemVariables.SSO.IDP.Feishu;
 
 export type GroupedIDPVariables = {
-  google: AdminService.SystemVariables.SSO.IDP.Google;
-  github: AdminService.SystemVariables.SSO.IDP.GitHub;
-  feishu: AdminService.SystemVariables.SSO.IDP.Feishu;
+  google: AdminServiceEe.SystemVariables.SSO.IDP.Google;
+  github: AdminServiceEe.SystemVariables.SSO.IDP.GitHub;
+  feishu: AdminServiceEe.SystemVariables.SSO.IDP.Feishu;
 };
 
 export type GroupedLDAPVariables = {
-  [x: string]: AdminService.SystemVariables.SSO.LDAP;
+  [x: string]: AdminServiceEe.SystemVariables.SSO.LDAP;
 };
 
 export type GroupedSSOVariables = {
@@ -67,7 +67,7 @@ export function useAddLdapServer() {
         mapKeys(
           { enabled: true, ...data },
           (_, key) => `ldap|${id}.${key}`,
-        ) as AdminService.SetVariablesInput,
+        ) as AdminServiceEe.SetVariablesInput,
       );
     },
     onSuccess: () => {
@@ -89,7 +89,7 @@ export function useMutateLdapServer(id: string) {
     mutationFn: async () => {
       return setVariables({
         [`ldap|${id}.enabled`]: true,
-      } as unknown as AdminService.SetVariablesInput);
+      } as unknown as AdminServiceEe.SetVariablesInput);
     },
   });
 
@@ -98,7 +98,7 @@ export function useMutateLdapServer(id: string) {
     mutationFn: async () => {
       return setVariables({
         [`ldap|${id}.enabled`]: false,
-      } as unknown as AdminService.SetVariablesInput);
+      } as unknown as AdminServiceEe.SetVariablesInput);
     },
     onSuccess: () => {
       refetch();
@@ -112,7 +112,7 @@ export function useMutateLdapServer(id: string) {
         mapKeys(
           data,
           (_, key) => `ldap|${id}.${key}`,
-        ) as AdminService.SetVariablesInput,
+        ) as AdminServiceEe.SetVariablesInput,
       );
     },
     onSuccess: () => {
@@ -147,7 +147,7 @@ export function useMutateLdapServer(id: string) {
 }
 
 export function useMutateIdpProvider(
-  id: AdminService.SystemVariables.SSO.IDP.ProviderId,
+  id: AdminServiceEe.SystemVariables.SSO.IDP.ProviderId,
 ) {
   const { refetch, setVariables } = useAdminVariables();
 
@@ -156,7 +156,7 @@ export function useMutateIdpProvider(
     mutationFn: async () => {
       return setVariables({
         [`${id}|sso.enabled`]: true,
-      } as unknown as AdminService.SetVariablesInput);
+      } as unknown as AdminServiceEe.SetVariablesInput);
     },
   });
 
@@ -165,7 +165,7 @@ export function useMutateIdpProvider(
     mutationFn: async () => {
       return setVariables({
         [`${id}|sso.enabled`]: false,
-      } as unknown as AdminService.SetVariablesInput);
+      } as unknown as AdminServiceEe.SetVariablesInput);
     },
     onSuccess: () => {
       refetch();
@@ -179,7 +179,7 @@ export function useMutateIdpProvider(
         mapKeys(
           data,
           (_, key) => `${id}|sso.${key}`,
-        ) as unknown as AdminService.SetVariablesInput,
+        ) as unknown as AdminServiceEe.SetVariablesInput,
       );
     },
     onSuccess: () => {
@@ -273,7 +273,7 @@ export function useSSOVariables() {
         Object.fromEntries([
           ...disableNames.map((name) => [`${name}.enabled`, false]),
           ...enableNames.map((name) => [`${name}.enabled`, true]),
-        ]) as AdminService.SetVariablesInput,
+        ]) as AdminServiceEe.SetVariablesInput,
       );
     },
     [setVariables, ssoVariables.ldap],

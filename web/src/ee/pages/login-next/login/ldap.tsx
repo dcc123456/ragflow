@@ -19,8 +19,8 @@ import { useTranslate } from '@/hooks/common-hooks';
 import {
   useLoginChannels,
   useLoginWithChannel,
-} from '@/hooks/use-login-request';
-import { isLicenseError, rsaPsw } from '@/utils';
+} from '@/ee/hooks/use-login-request';
+import { isLicenseError, rsaPsw } from '@/ee/utils';
 
 import {
   Select,

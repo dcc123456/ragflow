@@ -48,8 +48,8 @@ export const useCreateSearch = () => {
     mutationKey: ['createSearch'],
     mutationFn: async (props) => {
       const { data: response } = await searchService.createSearch(props);
-      if (response.code === 0) {
-        message.success(t('message.created'));
+      if (response.code !== 0) {
+        throw new Error(response.message || 'Failed to create search');
       }
       return response.data;
     },

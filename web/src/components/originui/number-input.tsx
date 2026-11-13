@@ -20,10 +20,10 @@ interface NumberInputProps {
   height?: number | string;
   min?: number;
   max?: number;
+  step?: number;
   hideIcons?: boolean;
   integer?: boolean;
   inputClassName?: string;
-  step?: number;
   precision?: number;
 }
 
@@ -62,9 +62,9 @@ const NumberInput = forwardRef<
     onChange,
     onBlur: onBlurProp,
     height,
-    step = 1,
     min = 0,
     max = Infinity,
+    step = 1,
     hideIcons = false,
     integer = false,
     inputClassName,

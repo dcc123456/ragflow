@@ -29,9 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useSystemConfig } from '@/hooks/use-system-request';
 import { IModalProps } from '@/interfaces/common';
-import { formatBytes } from '@/lib/utils';
 import { extractTableColumns, isTableFile } from '@/utils/table-column-extract';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { TFunction } from 'i18next';
@@ -93,7 +91,6 @@ type UploadFormProps = {
   submit: (values?: UploadFormSchemaType) => void;
   showParseOnCreation?: boolean;
   isTableParser?: boolean;
-  accept?: Record<string, string[]>;
   description?: ReactNode;
 };
 function UploadForm({
@@ -103,7 +100,6 @@ function UploadForm({
   description,
 }: UploadFormProps) {
   const { t } = useTranslation();
-  const { config } = useSystemConfig();
   const FormSchema = buildUploadFormSchema(t);
 
   type UploadFormSchemaType = z.infer<typeof FormSchema>;
@@ -117,12 +113,6 @@ function UploadForm({
     },
   });
 
-  const uploadSizeLimit = config?.upload_size_limit;
-  const uploadDescription = uploadSizeLimit
-    ? t('system.uploadDescription', {
-        size: formatBytes(uploadSizeLimit),
-      })
-    : undefined;
   const [extractedColumns, setExtractedColumns] = useState<string[]>([]);
   const [columnMode, setColumnMode] = useState<'auto' | 'manual'>('auto');
   const [columnRoles, setColumnRoles] = useState<TableColumnRoles>({});
@@ -206,7 +196,7 @@ function UploadForm({
                 handleFilesChange(files);
               }}
               accept={{}}
-              description={uploadDescription}
+              description={description}
               data-testid="dataset-upload-dropzone"
             />
           )}
@@ -289,16 +279,15 @@ function UploadForm({
 }
 
 type FileUploadDialogProps = IModalProps<UploadFormSchemaType> &
-  Pick<UploadFormProps, 'showParseOnCreation' | 'isTableParser'> & {
-    accept?: Record<string, string[]>;
-    description?: ReactNode;
-  };
+  Pick<
+    UploadFormProps,
+    'showParseOnCreation' | 'isTableParser' | 'description'
+  >;
 export function FileUploadDialog({
   hideModal,
   onOk,
   loading,
   showParseOnCreation = false,
-  accept,
   isTableParser = false,
   description,
 }: FileUploadDialogProps) {
@@ -317,7 +306,6 @@ export function FileUploadDialog({
           submit={onOk!}
           showParseOnCreation={showParseOnCreation}
           isTableParser={isTableParser}
-          accept={accept}
           description={description}
         />
         <DialogFooter>

@@ -120,18 +120,6 @@ declare namespace AdminService {
         message: AdminService.TaskExecutorInfo;
       };
 
-  export type PermissionType = 'enable' | 'read' | 'write' | 'share';
-
-  export type RoleResourceName =
-    | 'dataset'
-    | 'chat'
-    | 'agent'
-    | 'search'
-    | 'file'
-    | 'team'
-    | 'memory'
-    | 'model_provider';
-
   export type PermissionData = {
     enable: boolean;
     read: boolean;
@@ -140,36 +128,36 @@ declare namespace AdminService {
   };
 
   export type ListRoleItem = {
-    id: number;
+    id: string;
     role_name: string;
-    description: string | null;
-    create_date: string | null;
-    update_date: string | null;
+    description: string;
+    create_date: string;
+    update_date: string;
   };
 
   export type ListRoleItemWithPermission = ListRoleItem & {
-    permissions: Record<RoleResourceName, PermissionData>;
+    permissions: Record<string, PermissionData>;
   };
 
   export type RoleDetailWithPermission = {
     role: {
-      id: number;
-      role_name: string;
-      description: string | null;
+      id: string;
+      name: string;
+      description: string;
     };
-    permissions: Record<RoleResourceName, PermissionData>;
+    permissions: Record<string, PermissionData>;
   };
 
   export type RoleDetail = {
-    id: number;
-    role_name: string;
-    description: string | null;
-    create_date: string | null;
-    update_date: string | null;
+    id: string;
+    name: string;
+    description: string;
+    create_date: string;
+    update_date: string;
   };
 
   export type AssignRolePermissionsInput = Record<
-    RoleResourceName,
+    string,
     Partial<PermissionData>
   >;
   export type RevokeRolePermissionInput = AssignRolePermissionsInput;
@@ -183,7 +171,7 @@ declare namespace AdminService {
   };
 
   export type ResourceType = {
-    resource_types: RoleResourceName[];
+    resource_types: string[];
   };
 
   export type ListWhitelistItem = {
@@ -193,217 +181,6 @@ declare namespace AdminService {
     create_time: number;
     update_date: string;
     update_time: number;
-  };
-
-  export type TestSMTPConnectionInput = {
-    host: string;
-    port: number;
-    username: string;
-    password: string;
-    use_ssl?: boolean;
-    use_tls?: boolean;
-    timeout?: number;
-  };
-
-  export namespace SystemVariables {
-    namespace Utilities {
-      type DefineVariables<
-        Defs extends Record<string, Types.DataType>,
-        NamePrefix extends string = '',
-        Source extends Types.SourceName = 'variable',
-      > = {
-        [N in keyof Defs]: {
-          source: Source;
-          data_type: Defs[N];
-          name: '' extends NamePrefix
-            ? N
-            : `${NamePrefix}${Types.NameSeparator}${N}`;
-          value: Types.ValueDataTypeMap[Defs[N]];
-        };
-      };
-
-      type ExtractValue<T extends Record<string, { value: DataType }>> = {
-        [K in keyof T]: T[K]['value'];
-      };
-    }
-
-    namespace Types {
-      type NameSeparator = '.';
-      type ValueDataTypeMap = {
-        bool: boolean;
-        integer: number | null; // null if the value is not a number
-        string: string;
-      };
-
-      type SourceName =
-        | 'variable'
-        | 'google|sso'
-        | 'github|sso'
-        | 'feishu|sso'
-        | `ldap|${string}`;
-      type DataType = keyof ValueDataTypeMap;
-
-      type BoolType<O = object> = O & { data_type: 'bool'; value: boolean };
-      type IntegerType<O = object> = O & {
-        data_type: 'integer';
-        value?: number;
-      };
-      type StringType<O = object> = O & { data_type: 'string'; value: string };
-    }
-
-    type Basic = Utilities.DefineVariables<{
-      enable_whitelist: 'bool';
-      default_role: 'string';
-    }>;
-
-    type notification = Utilities.DefineVariables<{
-      'notification.enabled': 'bool';
-      'notification.content': 'string';
-    }>;
-
-    type ExposeModelProvider = Utilities.DefineVariables<{
-      'expose_model_provider.enabled': 'bool';
-    }>;
-
-    type ExposeApi = Utilities.DefineVariables<{
-      'expose_api.enabled': 'bool';
-    }>;
-
-    type EmailVerification = Utilities.DefineVariables<{
-      'email_verification.enabled': 'bool';
-    }>;
-
-    type SensitiveWordFilter = Utilities.DefineVariables<{
-      'sensitive_word_filter.enabled': 'bool';
-      'sensitive_word_filter.response': 'string';
-      'sensitive_word_filter.file_version': 'string';
-      'sensitive_word_filter.file_name': 'string';
-    }>;
-
-    type Mail = Utilities.DefineVariables<
-      {
-        server: 'string';
-        port: 'integer';
-        timeout: 'integer';
-        username: 'string';
-        password: 'string';
-        default_sender: 'string';
-        use_ssl: 'bool';
-        use_tls: 'bool';
-      },
-      'mail'
-    >;
-
-    export namespace SSO {
-      export namespace IDP {
-        export type ProviderId = 'google' | 'github' | 'feishu';
-        export type Google = Utilities.DefineVariables<
-          {
-            enabled: 'bool';
-            client_id: 'string';
-            client_secret: 'string';
-            redirect_uri: 'string';
-          },
-          'google|sso',
-          'google|sso'
-        >;
-
-        export type GitHub = Utilities.DefineVariables<
-          {
-            enabled: 'bool';
-            client_id: 'string';
-            client_secret: 'string';
-          },
-          'github|sso',
-          'github|sso'
-        >;
-
-        export type Feishu = Utilities.DefineVariables<
-          {
-            enabled: 'bool';
-            client_id: 'string';
-            client_secret: 'string';
-            redirect_uri: 'string';
-            scope: 'string';
-          },
-          'feishu|sso',
-          'feishu|sso'
-        >;
-      }
-
-      export type LDAP = Utilities.DefineVariables<
-        {
-          enabled: 'bool';
-          name: 'string';
-          url: 'string';
-          dn: 'string';
-          password: 'string';
-          search_filter: 'string';
-          attribute_list: 'string';
-        },
-        `ldap|${string}`,
-        `ldap|${string}`
-      >;
-    }
-
-    type Name = keyof SystemVariables;
-  }
-
-  type SystemVariables = SystemVariables.Basic &
-    SystemVariables.notification &
-    SystemVariables.ExposeModelProvider &
-    SystemVariables.ExposeApi &
-    SystemVariables.EmailVerification &
-    SystemVariables.SensitiveWordFilter &
-    PrefixKeys<SystemVariables.Mail, 'mail'> &
-    PrefixKeys<SystemVariables.SSO.IDP.Google, 'google|sso'> &
-    PrefixKeys<SystemVariables.SSO.IDP.GitHub, 'github|sso'> &
-    PrefixKeys<SystemVariables.SSO.IDP.Feishu, 'feishu|sso'> &
-    PrefixKeys<SystemVariables.SSO.LDAP, `ldap|${string}`>;
-
-  export type SetVariablesInput = Partial<
-    SystemVariables.Utilities.ExtractValue<SystemVariables>
-  >;
-
-  export type DeleteVariablesInput = {
-    source?: SystemVariables.Types.SourceName;
-    names?: SystemVariables.Name[];
-  };
-
-  export type RefreshVariablesInput = {
-    oauth?: boolean;
-    smtp?: boolean;
-  };
-
-  export type RoleDefaultModelType =
-    | 'llm'
-    | 'embedding'
-    | 'vlm'
-    | 'asr'
-    | 'rerank'
-    | 'tts';
-  export type RoleDefaultModelSetupStatus = 'complete' | 'partial' | 'not_set';
-
-  export type RoleDefaultModelItem = {
-    role_id: number;
-    model_type: RoleDefaultModelType;
-    model_id: string;
-    tenant_id: string;
-  };
-
-  export type RoleDefaultModelList = {
-    model_list: RoleDefaultModelItem[];
-    setup_status: RoleDefaultModelSetupStatus;
-  };
-
-  export type SetRoleDefaultModelInput = {
-    model_type: RoleDefaultModelType;
-    model_id: string;
-  };
-
-  export type AddLlmFactoryInput = {
-    llm_factory: string;
-    [x: string]: any;
   };
 
   // Sandbox settings types
@@ -456,138 +233,5 @@ declare namespace AdminService {
   export type SandboxConfig = {
     provider_type: string;
     config: Record<string, unknown>;
-  };
-
-  export type SandboxProviderSchema = {
-    provider_type: string;
-    name: string;
-    description: string;
-    fields: Record<string, SandboxConfigField>;
-  };
-
-  export type SetSandboxConfigInput = {
-    provider_type: string;
-    config: Record<string, unknown>;
-  };
-
-  export type TestSandboxConnectionInput = {
-    provider_type: string;
-    config: Record<string, unknown>;
-  };
-
-  export type SandboxTestResult = {
-    success: boolean;
-    message?: string;
-    details?: Record<string, unknown>;
-  };
-
-  // LLM Trace Statistics types
-  export type LlmTraceDimension = 'user' | 'team' | 'dept' | 'bu';
-
-  export type PageParams = {
-    page: number;
-    page_size: number;
-  };
-  export type LlmTraceByOrgParams = {
-    hours: string;
-    dimension: LlmTraceDimension;
-    keyword?: string;
-  };
-
-  export type LlmTraceTopConsumersParams = {
-    hours: string;
-    dimension: LlmTraceDimension;
-    limit?: string;
-  };
-
-  export type LlmTraceTrendsParams = {
-    hours: string;
-    dimension: LlmTraceDimension;
-  };
-
-  export type LlmTraceByModelParams = {
-    hours: string;
-  };
-
-  export type LlmTraceSummary = {
-    avg_duration_ms: number;
-    input_tokens: number;
-    output_tokens: number;
-    total_requests: number;
-    total_tokens: number;
-    total_traces: number;
-    unique_depts: number;
-    unique_teams: number;
-    unique_users: number;
-  };
-
-  export type LlmTraceByOrgItem = {
-    name: string;
-    input_tokens: number;
-    output_tokens: number;
-    total_tokens: number;
-    request_count: number;
-    avg_duration_ms: number;
-    user_count?: number;
-  };
-
-  export type LlmTraceTopConsumer = {
-    rank: number;
-    name: string;
-    dimension: LlmTraceDimension;
-    input_tokens: number;
-    output_tokens: number;
-    total_tokens: number;
-    request_count: number;
-    avg_duration_ms: number;
-  };
-
-  export type LlmTraceTrend = {
-    time: string;
-    input_tokens: number;
-    output_tokens: number;
-    total_tokens: number;
-    request_count: number;
-    avg_duration_ms: number;
-  };
-
-  export interface LlmTraceRecentItem {
-    user_name: string;
-    input_tokens: number;
-    output_tokens: number;
-    total_tokens: number;
-    duration_ms: number;
-    model: string;
-    timestamp: string;
-    dept_name: string;
-    team_name: string[];
-  }
-  export type LlmTraceByModelItem = {
-    model_name: string;
-    input_tokens: number;
-    output_tokens: number;
-    total_tokens: number;
-    request_count: number;
-    avg_duration_ms: number;
-  };
-  // License types
-  export type LicenseType = 'trial' | 'standard' | 'perpetual' | 'cluster';
-  export type LicenseStatus = 'valid' | 'expired' | 'pending' | 'inactive';
-
-  export type LicenseInfo = {
-    ID: string;
-    Version: string;
-    CustomerName: string;
-    IssuedAt: string;
-    ValidFrom: string;
-    ValidUntil: string;
-  };
-
-  export type SetLicenseInput = {
-    license: string;
-  };
-
-  export type FingerprintResponse = {
-    fingerprint: string;
   };
 }

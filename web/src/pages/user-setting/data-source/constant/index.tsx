@@ -69,7 +69,6 @@ export enum DataSourceKey {
   AIRTABLE = 'airtable',
   ASANA = 'asana',
   IMAP = 'imap',
-  LARK = 'lark',
   DINGTALK_AI_TABLE = 'dingtalk_ai_table',
   SEAFILE = 'seafile',
   MYSQL = 'mysql',
@@ -390,17 +389,11 @@ export const generateDataSourceInfo = (t: TFunction) => {
       description: t(`setting.${DataSourceKey.ZENDESK}Description`),
       icon: <SvgIcon name={'data-source/zendesk'} width={38} />,
     },
-    [DataSourceKey.LARK]: {
-      name: 'Lark',
-      description: t(`setting.${DataSourceKey.LARK}Description`),
-      icon: <SvgIcon name={'data-source/lark'} width={38} />,
-    },
     [DataSourceKey.ZOTERO]: {
       name: 'Zotero',
       description: t(`setting.${DataSourceKey.ZOTERO}Description`),
       icon: <SvgIcon name={'data-source/zotero'} width={38} />,
     },
-
     [DataSourceKey.SEAFILE]: {
       name: 'SeaFile',
       description: t(`setting.${DataSourceKey.SEAFILE}Description`),
@@ -1514,12 +1507,6 @@ const generateDataSourceFormFields = (t: TFunction) => ({
       ],
     },
   ],
-  [DataSourceKey.LARK]: [
-    {
-      label: 'App id',
-      name: 'config.credentials.app_id',
-    },
-  ],
   [DataSourceKey.ZOTERO]: [
     {
       label: t('setting.dataSourceFieldZoteroUserId'),
@@ -1642,23 +1629,6 @@ const generateDataSourceFormFields = (t: TFunction) => ({
       required: true,
     },
     {
-      label: 'Token Type',
-      name: 'config.token_type',
-      type: FormFieldType.Segmented,
-      required: false,
-      options: [
-        { label: 'Folder', value: 'folder' },
-        { label: 'Wiki', value: 'wiki' },
-      ],
-    },
-    {
-      label: 'Token',
-      name: 'config.token',
-      type: FormFieldType.Text,
-      required: false,
-    },
-    {
-      // label: 'SQL Query',
       label: t('setting.dataSourceFieldSqlQuery'),
       name: 'config.query',
       type: FormFieldType.Textarea,
@@ -2643,18 +2613,6 @@ export const DataSourceFormDefaultValues = {
         zendesk_email: '',
         zendesk_token: '',
       },
-    },
-  },
-  [DataSourceKey.LARK]: {
-    name: '',
-    source: DataSourceKey.LARK,
-    config: {
-      credentials: {
-        app_id: '',
-        app_secret: '',
-      },
-      token_type: 'folder',
-      token: '',
     },
   },
   [DataSourceKey.ZOTERO]: {

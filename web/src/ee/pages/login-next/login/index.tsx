@@ -1,5 +1,5 @@
 import { useTranslate } from '@/hooks/common-hooks';
-import { useLoginChannels } from '@/hooks/use-login-request';
+import { useLoginChannels } from '@/ee/hooks/use-login-request';
 import { AlertTriangle } from 'lucide-react';
 import { useState } from 'react';
 

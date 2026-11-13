@@ -10,7 +10,7 @@ import { useFetchExternalChatInfo } from '@/hooks/use-chat-request';
 import { Message } from '@/interfaces/database/chat';
 import { get } from 'lodash';
 import trim from 'lodash/trim';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { v4 as uuid } from 'uuid';
 
@@ -62,7 +62,6 @@ export const useSendSharedMessage = () => {
     removeAllMessagesExceptFirst,
   } = useSelectDerivedMessages();
   const [hasError, setHasError] = useState(false);
-  const hasFetchedSessionId = useRef(false);
 
   const sendMessage = useCallback(
     async (
@@ -110,8 +109,6 @@ export const useSendSharedMessage = () => {
   );
 
   const fetchSessionId = useCallback(async () => {
-    if (hasFetchedSessionId.current) return;
-    hasFetchedSessionId.current = true;
     const payload = { question: '' };
     const ret = await send(completionUrl, { ...payload, ...data });
     if (isCompletionError(ret)) {
@@ -121,10 +118,8 @@ export const useSendSharedMessage = () => {
   }, [send, completionUrl]);
 
   useEffect(() => {
-    if (conversationId) {
-      fetchSessionId();
-    }
-  }, [conversationId, fetchSessionId]);
+    fetchSessionId();
+  }, [fetchSessionId]);
 
   useEffect(() => {
     if (answer.answer) {

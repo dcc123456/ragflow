@@ -28,7 +28,6 @@ import api from '@/utils/api';
 import nextRequest from '@/utils/next-request';
 import registerServer, { registerNextServer } from '@/utils/register-server';
 import request from '@/utils/request';
-import type { AxiosResponse } from 'axios';
 
 const {
   createKb,
@@ -40,9 +39,6 @@ const {
   listPipelines,
   getMeta,
   retrievalTestShare,
-  check_embedding,
-  duplicate_kb,
-  switchEmbeddingModel,
 } = api;
 
 const methods = {
@@ -81,28 +77,6 @@ const methods = {
   listPipelines: {
     url: listPipelines,
     method: 'get',
-  },
-  // pipelineRerun: {
-  //   url: api.pipelineRerun,
-  //   method: 'post',
-  // },
-
-  checkEmbedding: {
-    url: check_embedding,
-    method: 'post',
-  },
-  // getMetaData: {
-  //   url: getMetaData,
-  //   method: 'get',
-  // },
-
-  duplicateKb: {
-    url: duplicate_kb,
-    method: 'post',
-  },
-  switchEmbeddingModel: {
-    url: switchEmbeddingModel,
-    method: 'post',
   },
 };
 
@@ -654,36 +628,6 @@ export function deletePipelineTask({
   wipe?: boolean;
 }) {
   return request.delete(api.unbindPipelineTask(kb_id, type, wipe));
-}
-
-export const traceDuplicate = (id: string) =>
-  request.get<
-    AxiosResponse<{
-      code: number;
-      message: string;
-      data: {
-        begin_at: string;
-        chunk_ids: string;
-        create_date: string;
-        create_time: number;
-        digest: string;
-        doc_id: string;
-        from_page: number;
-        id: string;
-        priority: number;
-        process_duration: number;
-        progress: number;
-        progress_msg: string;
-        retry_count: number;
-        task_type: string;
-        to_page: number;
-        update_date: string;
-        update_time: number;
-      };
-    }>
-  >(api.traceDuplicate(id));
-export function traceEmbedding(id: string) {
-  return request.get(api.traceEmbedding(id));
 }
 
 export default kbService;

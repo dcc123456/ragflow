@@ -6,7 +6,7 @@ import {
   listRolesWithPermission,
   revokeRolePermissions,
   updateRoleDescription,
-} from '@/services/admin-service';
+} from '@/ee/services/admin-service';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { CreateRoleFormData } from '@/ee/pages/admin/forms/role-form';
 import type {

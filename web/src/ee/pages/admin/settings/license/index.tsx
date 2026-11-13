@@ -69,8 +69,8 @@ export function License() {
 }
 
 interface LicenseTableProps {
-  license?: AdminService.LicenseInfo;
-  licenseStatus: AdminService.LicenseStatus;
+  license?: AdminServiceEe.LicenseInfo;
+  licenseStatus: AdminServiceEe.LicenseStatus;
   isLoading: boolean;
 }
 
@@ -141,7 +141,7 @@ function LicenseTable({
 }
 
 interface StatusBadgeProps {
-  status: AdminService.LicenseStatus;
+  status: AdminServiceEe.LicenseStatus;
 }
 
 function StatusBadge({ status }: StatusBadgeProps) {

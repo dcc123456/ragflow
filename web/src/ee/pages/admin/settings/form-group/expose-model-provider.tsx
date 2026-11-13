@@ -52,11 +52,11 @@ ExposeModelProviderFormGroup.mapValuesToData = (
 ) => {
   return {
     'expose_model_provider.enabled': formValues.enabled,
-  } satisfies AdminService.SetVariablesInput;
+  } satisfies AdminServiceEe.SetVariablesInput;
 };
 
 ExposeModelProviderFormGroup.mapValuesFromData = (
-  data: AdminService.SystemVariables,
+  data: AdminServiceEe.SystemVariables,
 ): ExposeModelProviderFormGroup.SchemaType => {
   return {
     enabled: !!data['expose_model_provider.enabled']?.value,

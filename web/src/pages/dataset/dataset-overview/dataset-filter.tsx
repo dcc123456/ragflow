@@ -29,12 +29,11 @@ const DatasetFilter = (
     setActive,
     ...rest
   } = props;
-  void rest;
   const { t } = useTranslation();
   const filterCount = useMemo(() => {
     return typeof value === 'object' && value !== null
       ? Object.values(value).reduce((pre, cur) => {
-          return pre + Number(cur.length || 0);
+          return pre + cur.length;
         }, 0)
       : 0;
   }, [value]);

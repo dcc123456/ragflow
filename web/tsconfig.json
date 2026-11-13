@@ -24,6 +24,7 @@
 
     "baseUrl": ".",
     "paths": {
+      "@/ee/*": ["src/ee/*"],
       "@/*": ["src/*"],
       "@parent/*": ["../src/*"]
     },

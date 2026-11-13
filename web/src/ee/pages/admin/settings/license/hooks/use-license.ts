@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
-import { getLicense, setLicense } from '@/services/admin-service';
+import { getLicense, setLicense } from '@/ee/services/admin-service';
 
 export function useLicense() {
   const { t } = useTranslation();
@@ -40,8 +40,8 @@ export function useLicense() {
 
   // Calculate license status based on dates
   const getLicenseStatus = (
-    license?: AdminService.LicenseInfo,
-  ): AdminService.LicenseStatus => {
+    license?: AdminServiceEe.LicenseInfo,
+  ): AdminServiceEe.LicenseStatus => {
     if (!license) return 'pending';
     const now = new Date();
     const validFrom = new Date(license.ValidFrom);

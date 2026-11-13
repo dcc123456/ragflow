@@ -24,9 +24,9 @@ import {
   useLogin,
   useLoginChannels,
   useLoginWithChannel,
-} from '@/hooks/use-login-request';
+} from '@/ee/hooks/use-login-request';
 import { useSystemConfig } from '@/hooks/use-system-request';
-import { isLicenseError, rsaPsw } from '@/utils';
+import { isLicenseError, rsaPsw } from '@/ee/utils';
 import RememberMeCheckbox from '@/ee/pages/login-next/components/RememberMeCheckbox';
 
 import { useAuth } from '@/hooks/auth-hooks';

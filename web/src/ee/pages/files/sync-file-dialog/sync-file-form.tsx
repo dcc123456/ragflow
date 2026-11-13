@@ -38,7 +38,7 @@ import {
 import {
   listDataSourceFiles,
   type DataSourceFileItem,
-} from '@/services/data-source-service';
+} from '@/ee/services/data-source-service';
 import notification from '@/utils/notification';
 import { useQuery } from '@tanstack/react-query';
 import { t } from 'i18next';
@@ -94,7 +94,7 @@ export function SyncFileForm({
   const { data: folderList, isFetching: isFetchingFolderList } = useQuery({
     queryKey: ['fileManager/sync/fetchFileList', currentFolderId],
     queryFn: async () => {
-      const { data } = await fetchFileList(currentFolderId);
+      const { data } = await fetchFileList({ parentId: currentFolderId });
       return data.files.filter(
         (item: IFile) => item.type === 'folder',
       ) as IFile[];
@@ -104,11 +104,7 @@ export function SyncFileForm({
 
   const supportedCategorizedList = useMemo(
     () =>
-      categorizedList.filter(
-        (item) =>
-          item.id === DataSourceKey.LARK ||
-          item.id === DataSourceKey.CONFLUENCE,
-      ),
+      categorizedList.filter((item) => item.id === DataSourceKey.CONFLUENCE),
     [categorizedList],
   );
 
@@ -131,12 +127,13 @@ export function SyncFileForm({
   } = useQuery({
     queryKey: ['fileManager/sync/listDataSourceFiles', selectedDataSourceId],
     queryFn: async () => {
-      const { data } = await listDataSourceFiles(selectedDataSourceId);
+      const {
+        code,
+        message,
+        data: files,
+      } = await listDataSourceFiles(selectedDataSourceId);
 
-      // @ts-ignore
-      if (data.code) {
-        const { code, message } = data as any;
-
+      if (code) {
         notification.error({
           message: `${t('message.hint')}: ${code}`,
           description: message,
@@ -150,8 +147,8 @@ export function SyncFileForm({
       }
 
       return {
-        data,
-        flatData: flattenTreeData(data),
+        data: files ?? [],
+        flatData: flattenTreeData(files ?? []),
       };
     },
     retry: false,

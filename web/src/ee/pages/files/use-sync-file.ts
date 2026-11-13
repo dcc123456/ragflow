@@ -2,7 +2,7 @@ import { useSetModalState } from '@/hooks/common-hooks';
 import {
   DataSourceFileItem,
   syncDataSourceFiles,
-} from '@/services/data-source-service';
+} from '@/ee/services/data-source-service';
 import { useMutation } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';

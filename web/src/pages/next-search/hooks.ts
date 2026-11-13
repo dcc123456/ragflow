@@ -313,7 +313,7 @@ export const useFetchRelatedQuestions = (
         search_id: searchId,
       });
 
-      return Array.isArray(data?.data) ? data.data : [];
+      return data?.data ?? [];
     },
   });
 

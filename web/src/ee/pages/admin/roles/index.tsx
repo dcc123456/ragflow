@@ -76,7 +76,7 @@ function RoleCard({
   isUpdatingDefaultTenantRole,
   onSetDefaultTenantRole,
 }: {
-  role: AdminService.ListRoleItemWithPermission;
+  role: AdminServiceEe.ListRoleItemWithPermission;
   isDefaultTenantRole: boolean;
   isDefaultTenantRoleLoading: boolean;
   isDefaultTenantRoleError: boolean;
@@ -294,7 +294,7 @@ function RoleCard({
       {/* Modify role description modal */}
       <Dialog
         open={editModalState.visible}
-        onOpenChange={editModalState.setVisible}
+        onOpenChange={editModalState.hideModal}
       >
         <DialogContent aria-describedby={undefined}>
           <DialogHeader>
@@ -356,7 +356,7 @@ function RoleCard({
       {/* Delete role modal */}
       <Dialog
         open={deleteModalState.visible}
-        onOpenChange={deleteModalState.setVisible}
+        onOpenChange={deleteModalState.hideModal}
       >
         <DialogContent aria-describedby={undefined}>
           <DialogHeader>
@@ -458,7 +458,7 @@ function AdminRoles() {
       {/* Add role modal */}
       <Dialog
         open={createModalState.visible}
-        onOpenChange={createModalState.setVisible}
+        onOpenChange={createModalState.hideModal}
       >
         <DialogContent
           aria-describedby={undefined}

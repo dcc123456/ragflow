@@ -11,6 +11,8 @@ import {
   useCreateEvaluationCollection,
   useFetchEvaluationCollectionList,
 } from '@/ee/hooks/use-evaluation-request';
+import { useSystemConfig } from '@/hooks/use-system-request';
+import { formatBytes } from '@/lib/utils';
 import { Upload } from 'lucide-react';
 import { Dispatch, SetStateAction, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -29,6 +31,15 @@ export const EvaluationPage = {
   }: {
     setFileInstance: Dispatch<SetStateAction<FilesInstanceType>>;
   }) => {
+    const { t } = useTranslation();
+    const { config } = useSystemConfig();
+    const uploadSizeLimit = config?.upload_size_limit;
+    const uploadDescription = uploadSizeLimit
+      ? t('system.uploadDescription', {
+          size: formatBytes(uploadSizeLimit),
+        })
+      : undefined;
+
     const {
       selectedItem,
       editModalVisible,
@@ -103,10 +114,7 @@ export const EvaluationPage = {
             hideModal={hideFileUploadModal}
             onOk={onFileUploadOk}
             loading={fileUploadLoading}
-            accept={{
-              'application/vnd.ms-excel': ['.xlsx', '.xls'],
-              'text/csv': ['.csv'],
-            }}
+            description={uploadDescription}
           ></FileUploadDialog>
         )}
 

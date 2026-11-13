@@ -2,7 +2,7 @@ import { useTranslate } from '@/hooks/common-hooks';
 import {
   downloadSensitiveWordFilter,
   uploadSensitiveWordFilter,
-} from '@/services/admin-service';
+} from '@/ee/services/admin-service';
 import { downloadFileFromBlob } from '@/utils/file-util';
 import { Download } from 'lucide-react';
 import { useState } from 'react';
@@ -154,11 +154,11 @@ SensitiveWordFilterFormGroup.mapValuesToData = (
   return {
     'sensitive_word_filter.enabled': formValues.enabled,
     'sensitive_word_filter.response': formValues.response,
-  } satisfies AdminService.SetVariablesInput;
+  } satisfies AdminServiceEe.SetVariablesInput;
 };
 
 SensitiveWordFilterFormGroup.mapValuesFromData = (
-  data: AdminService.SystemVariables,
+  data: AdminServiceEe.SystemVariables,
 ): SensitiveWordFilterFormGroup.SchemaType => {
   const response = data['sensitive_word_filter.response']?.value;
   const fileName = data['sensitive_word_filter.file_name']?.value;

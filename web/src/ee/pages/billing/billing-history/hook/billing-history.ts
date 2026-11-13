@@ -1,4 +1,4 @@
-import { useGetPaginationWithRouter } from '@/hooks/logic-hooks';
+import { useGetPaginationWithRouter } from '@/ee/hooks/use-pagination';
 import billingService from '@/ee/services/price';
 import { formatIsoDateTime } from '@/utils/date';
 import { useQuery } from '@tanstack/react-query';

@@ -14,12 +14,6 @@ import {
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 
-import { listRoles } from '@/services/admin-service';
-
-import { SelectWithSearch } from '@/components/originui/select-with-search';
-import EnterpriseFeature from '../components/enterprise-feature';
-import { IS_ENTERPRISE } from '../utils';
-
 interface CreateUserFormData {
   email: string;
   password: string;
@@ -38,13 +32,6 @@ export const CreateUserForm = ({
   onSubmit = () => {},
 }: CreateUserFormProps) => {
   const { t } = useTranslation();
-
-  const { data: roleList } = useQuery({
-    queryKey: ['admin/listRoles'],
-    queryFn: async () => (await listRoles()).data.data,
-    enabled: IS_ENTERPRISE,
-    retry: false,
-  });
 
   return (
     <Form {...form}>
@@ -120,34 +107,6 @@ export const CreateUserForm = ({
             </FormItem>
           )}
         />
-
-        <EnterpriseFeature>
-          {/* Role field */}
-          {() => (
-            <FormField
-              control={form.control}
-              name="role"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-sm font-medium">
-                    {t('admin.role')}
-                  </FormLabel>
-                  <FormControl>
-                    <SelectWithSearch
-                      {...field}
-                      options={
-                        roleList?.map((role) => ({
-                          label: role.role_name,
-                          value: role.role_name,
-                        })) ?? []
-                      }
-                    />
-                  </FormControl>
-                </FormItem>
-              )}
-            />
-          )}
-        </EnterpriseFeature>
       </form>
     </Form>
   );

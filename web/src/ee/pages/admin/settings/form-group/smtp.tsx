@@ -20,7 +20,7 @@ import { Button } from '@/components/ui/button';
 import { Input, NumberInput } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 
-import { testSMTPConnection } from '@/services/admin-service';
+import { testSMTPConnection } from '@/ee/services/admin-service';
 import { AxiosError } from 'axios';
 import { toast } from 'sonner';
 import FormGroup from './FormGroup';
@@ -286,7 +286,7 @@ function SMTPSettingsFormGroup() {
 }
 
 SMTPSettingsFormGroup.mapValuesFromData = (
-  data: AdminService.SystemVariables,
+  data: AdminServiceEe.SystemVariables,
 ): SMTPSettingsFormGroup.SchemaType => {
   return {
     server: data['mail.server']?.value,
@@ -323,7 +323,7 @@ SMTPSettingsFormGroup.mapValuesToData = (
     'mail.default_sender': formValues.defaultSender,
     'mail.use_ssl': formValues.ssl,
     'mail.use_tls': formValues.tls,
-  } satisfies AdminService.SetVariablesInput;
+  } satisfies AdminServiceEe.SetVariablesInput;
 };
 
 SMTPSettingsFormGroup.defaultValues = Object.freeze({

@@ -21,7 +21,7 @@ import {
 } from '@/ee/pages/admin/hooks/useSSOVariables';
 
 type CardProps = {
-  id: AdminService.SystemVariables.SSO.IDP.ProviderId;
+  id: AdminServiceEe.SystemVariables.SSO.IDP.ProviderId;
   title: string;
   dialogTitle: string;
   iconComponent?: (props?: any) => React.ReactNode;
@@ -78,7 +78,7 @@ export default function SSOProviderCloudIdpCard(props: CardProps) {
       </CardContent>
 
       <Dialog open={visible} onOpenChange={hideModal}>
-        <DialogContent closeDisabled={mutation.isUpdating}>
+        <DialogContent closable={false} closeDisabled={mutation.isUpdating}>
           <DialogHeader>
             <DialogTitle>{dialogTitle}</DialogTitle>
           </DialogHeader>

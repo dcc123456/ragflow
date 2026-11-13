@@ -80,11 +80,11 @@ NotificationSettingsFormGroup.mapValuesToData = (
   return {
     'notification.enabled': formValues.enabled,
     'notification.content': formValues.content,
-  } satisfies AdminService.SetVariablesInput;
+  } satisfies AdminServiceEe.SetVariablesInput;
 };
 
 NotificationSettingsFormGroup.mapValuesFromData = (
-  data: AdminService.SystemVariables,
+  data: AdminServiceEe.SystemVariables,
 ): NotificationSettingsFormGroup.SchemaType => {
   const enabled = !!data['notification.enabled']?.value;
   const content = data['notification.content']?.value;

@@ -29,7 +29,7 @@ import { useAuth } from '@/hooks/auth-hooks';
 import { cn } from '@/lib/utils';
 import { Routes } from '@/routes';
 import { rsaPsw } from '@/utils';
-import authorizationUtil, { adminStorage } from '@/utils/authorization-util';
+import { adminStorage } from '@/utils/authorization-util';
 
 import { login } from '@/services/admin-service';
 
@@ -89,8 +89,7 @@ function AdminLogin() {
   const loading = loginMutation.isPending;
 
   useEffect(() => {
-    // if (isLogin) {
-    if (isLogin && authorizationUtil.getUserInfoObject()) {
+    if (isLogin) {
       navigate(Routes.AdminServices);
     }
   }, [isLogin, navigate]);
@@ -192,7 +191,7 @@ function AdminLogin() {
                               className="h-10"
                               type="password"
                               placeholder={t('passwordPlaceholder')}
-                              autoComplete="current-password"
+                              autoComplete="password"
                             />
                           </FormControl>
 
@@ -230,7 +229,7 @@ function AdminLogin() {
                 </Form>
               </CardContent>
 
-              <CardFooter className="block px-10 pt-8 pb-14">
+              <CardFooter className="px-10 pt-8 pb-14">
                 <Button
                   form={formId}
                   variant="highlighted"

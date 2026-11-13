@@ -17,24 +17,11 @@
 import { RAGFlowAvatar } from '@/components/ragflow-avatar';
 import { TruncatedText } from '@/components/truncated-text';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
-import { cn } from '@/lib/utils';
 import { formatDate } from '@/utils/date';
-import {
-  ElementType,
-  PropsWithChildren,
-  ReactNode,
-  useRef,
-  useState,
-} from 'react';
+import { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
 interface IProps {
-  className?: string;
   data: {
     name: string;
     description?: string;
@@ -56,8 +43,6 @@ function Time({ time }: { time: string | number | undefined }) {
 }
 
 export function HomeCard({
-  children,
-  className,
   data,
   onClick,
   moreDropdown,
@@ -66,7 +51,7 @@ export function HomeCard({
   testId,
   showReleaseTime = false,
   extra,
-}: PropsWithChildren<IProps>) {
+}: IProps) {
   const { t } = useTranslation();
 
   return (
@@ -78,13 +63,10 @@ export function HomeCard({
         // navigateToSearch(data?.id);
         onClick?.();
       }}
-      tabIndex={0}
-      className={cn(
-        `px-2.5 py-4 flex gap-2 items-start group h-full w-full${
-          onClick ? ' hover:shadow-md cursor-pointer' : ''
-        }`,
-        className,
-      )}
+      tabIndex={onClick ? 0 : undefined}
+      className={`px-2.5 py-4 flex gap-2 items-start group h-full w-full${
+        onClick ? ' hover:shadow-md cursor-pointer' : ''
+      }`}
     >
       <div>
         <RAGFlowAvatar
@@ -116,42 +98,40 @@ export function HomeCard({
         </CardHeader>
 
         <CardContent className="p-0">
-          <div className="flex flex-col justify-between gap-1 flex-1 h-full w-full">
+          <div className="flex flex-col justify-between gap-1 flex-1 h-full w-[calc(100%-50px)]">
             <section className="flex justify-between"></section>
 
             <section className="flex flex-col gap-1 mt-1">
-              {children || (
-                <>
-                  <TruncatedText
-                    className="whitespace-nowrap overflow-hidden text-ellipsis"
-                    tooltip={data.description}
-                  >
-                    {data.description}
-                  </TruncatedText>
-                  {extra}
-                  <div className="flex justify-between items-center min-w-0">
-                    {showReleaseTime ? (
-                      <section className="text-sm text-text-secondary space-y-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          {`${t('flow.lastSavedAt')}:`}
-                          <Time time={data.update_time}></Time>
-                        </div>
-                        {data.release_time && (
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="whitespace-nowrap">
-                              {t('flow.publishedAt')}:
-                            </span>
-                            <Time time={data.release_time}></Time>
-                          </div>
-                        )}
-                      </section>
-                    ) : (
+              <TruncatedText
+                className="whitespace-nowrap overflow-hidden text-ellipsis"
+                tooltip={data.description}
+              >
+                {data.description}
+              </TruncatedText>
+              {extra}
+              <div className="flex justify-between items-center min-w-0">
+                {showReleaseTime ? (
+                  <section className="text-sm text-text-secondary space-y-1 min-w-0">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="whitespace-nowrap">
+                        {t('flow.lastSavedAt')}:
+                      </span>
                       <Time time={data.update_time}></Time>
+                    </div>
+                    {data.release_time && (
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="whitespace-nowrap">
+                          {t('flow.publishedAt')}:
+                        </span>
+                        <Time time={data.release_time}></Time>
+                      </div>
                     )}
-                    {sharedBadge}
-                  </div>
-                </>
-              )}
+                  </section>
+                ) : (
+                  <Time time={data.update_time}></Time>
+                )}
+                {sharedBadge}
+              </div>
             </section>
           </div>
         </CardContent>

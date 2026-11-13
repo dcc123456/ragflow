@@ -1,6 +1,6 @@
 import message from '@/components/ui/message';
 import { useSetModalState } from '@/hooks/common-hooks';
-import userService from '@/services/user-service';
+import userService from '@/ee/services/user-service';
 import { useCallback, useState } from 'react';
 
 export { useCountdown } from '@/ee/pages/login-next/hooks/use-countdown';

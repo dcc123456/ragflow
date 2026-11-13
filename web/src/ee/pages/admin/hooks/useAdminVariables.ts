@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 
-import { listVariables, setVariable } from '@/services/admin-service';
+import { listVariables, setVariable } from '@/ee/services/admin-service';
 
 export default function useAdminVariables() {
   const { t } = useTranslation();
@@ -15,15 +15,15 @@ export default function useAdminVariables() {
       return rawData?.data;
     },
     retry: false,
-    initialData: {} as AdminService.SystemVariables,
+    initialData: {} as AdminServiceEe.SystemVariables,
   });
 
   const { mutateAsync: setVariables, isPending: isUpdating } = useMutation({
-    mutationFn: (variables: AdminService.SetVariablesInput) => {
+    mutationFn: (variables: AdminServiceEe.SetVariablesInput) => {
       const diff = Object.entries(
         pickBy(
           variables,
-          (v, k) => v != data[k as AdminService.SystemVariables.Name]?.value,
+          (v, k) => v != data[k as AdminServiceEe.SystemVariables.Name]?.value,
         ),
       );
 

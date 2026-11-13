@@ -51,7 +51,7 @@ export const confluenceConstant = (t: TFunction) => [
     options: [
       { label: t('setting.dataSourceOptionEverything'), value: 'everything' },
       { label: t('setting.dataSourceOptionSpace'), value: 'space' },
-      // { label: t('setting.dataSourceOptionPage'), value: 'page' },
+      { label: t('setting.dataSourceOptionPage'), value: 'page' },
     ],
   },
   {
@@ -90,15 +90,15 @@ export const confluenceConstant = (t: TFunction) => [
       return index_mode === 'space';
     },
   },
-  // {
-  //   name: 'config.index_recursively',
-  //   label: 'Index Recursively',
-  //   type: FormFieldType.Checkbox,
-  //   shouldRender: (formValues: any) => {
-  //     const index_mode = formValues?.config?.index_mode;
-  //     return index_mode === 'page';
-  //   },
-  // },
+  {
+    name: 'config.index_recursively',
+    label: t('setting.dataSourceFieldIndexRecursively'),
+    type: FormFieldType.Checkbox,
+    shouldRender: (formValues: any) => {
+      const index_mode = formValues?.config?.index_mode;
+      return index_mode === 'page';
+    },
+  },
   {
     name: FilterFormField + '.tip',
     label: ' ',

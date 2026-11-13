@@ -30,10 +30,10 @@ export const useSetModalState = (initialVisible = false) => {
   }, []);
 
   const switchVisible = useCallback(() => {
-    setVisible((x) => !x);
-  }, []);
+    setVisible(!visible);
+  }, [visible]);
 
-  return { visible, showModal, hideModal, switchVisible, setVisible };
+  return { visible, showModal, hideModal, switchVisible };
 };
 
 export const useDeepCompareEffect = (
@@ -99,20 +99,12 @@ interface IProps {
   content?: ReactNode;
   onOk?: (...args: any[]) => any;
   onCancel?: (...args: any[]) => any;
-  okText?: string;
 }
 
 export const useShowDeleteConfirm = () => {
   const { t } = useTranslation();
   const showDeleteConfirm = useCallback(
-    ({
-      title,
-      content,
-      onOk,
-      onCancel,
-      header,
-      okText,
-    }: IProps): Promise<number> => {
+    ({ title, content, onOk, onCancel, header }: IProps): Promise<number> => {
       return new Promise((resolve, reject) => {
         Modal.show({
           title: header,
@@ -123,7 +115,7 @@ export const useShowDeleteConfirm = () => {
           },
           footer: null,
           maskClosable: false,
-          okText: okText ?? t('common.delete'),
+          okText: t('common.delete'),
           cancelText: t('common.cancel'),
           style: {
             width: '450px',

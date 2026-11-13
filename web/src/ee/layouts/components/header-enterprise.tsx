@@ -3,7 +3,6 @@ import type { MouseEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router';
 
-import { IconFontFill } from '@/components/icon-font';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -13,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { RAGFlowTooltip } from '@/components/ui/tooltip';
+import { EeIcon } from '@/ee/components/icons';
 import { useSwitchTenant } from '@/ee/hooks/use-switch-tenant';
 import { PriceName } from '@/ee/pages/price/constant';
 import { useFetchCurrentPlan } from '@/ee/pages/price/hook/use-price-hooks';
@@ -144,7 +144,7 @@ export function EnterpriseHeaderTicketsLink() {
         className="p-2 text-text-secondary hover:text-text-primary focus-visible:text-text-primary"
         to={PrivateRoutes.Tickets}
       >
-        <IconFontFill name="kefu" className="text-text-primary" />
+        <EeIcon name="kefu" className="text-text-primary" />
       </Link>
     </RAGFlowTooltip>
   );

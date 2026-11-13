@@ -18,10 +18,10 @@ import { Link, useLocation, useNavigate } from 'react-router';
 import { z } from 'zod';
 
 import { useTranslate } from '@/hooks/common-hooks';
-import { useRegister } from '@/hooks/use-login-request';
+import { useRegister } from '@/ee/hooks/use-login-request';
 import { useSystemConfig } from '@/hooks/use-system-request';
 import { NICKNAME_PATTERN } from '@/pages/user-setting/profile/constants';
-import { rsaPsw } from '@/utils';
+import { rsaPsw } from '@/ee/utils';
 import { useTranslation } from 'react-i18next';
 import {
   useCountdown,

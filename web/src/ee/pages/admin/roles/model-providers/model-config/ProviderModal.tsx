@@ -31,7 +31,7 @@ export type ProviderModalProps = Omit<
   closable?: boolean;
   onClose?: () => void;
   onSubmit: (
-    data: AdminService.AddLlmFactoryInput,
+    data: AdminServiceEe.AddLlmFactoryInput,
     rawData: FieldValues,
   ) => void;
 };

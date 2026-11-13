@@ -82,13 +82,6 @@ export function useDisableDifferenceEmbeddingDataset(
     );
   }, [datasetListOrigin, selectedDatasets]);
 
-  // const selectedEmbedId = useMemo(() => {
-  //   const selectedDatasetIds = Array.isArray(datasetId) ? datasetId : [];
-  //   const data = datasetList?.find((item) =>
-  //     selectedDatasetIds.includes(item.id),
-  //   );
-  //   return data?.embedding_model ?? '';
-
   // Datasets are mutually selectable when their embedding models resolve to
   // the same base model name, even if they use different provider instances
   // (e.g. "BAAI/bge-m3@renew@SILICONFLOW" vs "BAAI/bge-m3@COPY@SILICONFLOW").

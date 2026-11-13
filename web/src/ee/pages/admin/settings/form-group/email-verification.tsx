@@ -52,11 +52,11 @@ EmailVerificationFormGroup.mapValuesToData = (
 ) => {
   return {
     'email_verification.enabled': formValues.enabled,
-  } satisfies AdminService.SetVariablesInput;
+  } satisfies AdminServiceEe.SetVariablesInput;
 };
 
 EmailVerificationFormGroup.mapValuesFromData = (
-  data: AdminService.SystemVariables,
+  data: AdminServiceEe.SystemVariables,
 ): EmailVerificationFormGroup.SchemaType => {
   return {
     enabled:

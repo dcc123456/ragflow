@@ -1,5 +1,13 @@
 export default {
   translation: {
+    login: {
+      licenseExpired: '許可證已過期。請聯繫管理員續期。',
+    },
+    setting: {
+      larkDescription: '連接飛書同步指定文件夾中的文件。',
+      larkFolderTip: '留空則不執行。',
+      larkWikiTip: '留空則不執行。',
+    },
     permission: {
       myTeam: '我的團隊',
       member: '成員',

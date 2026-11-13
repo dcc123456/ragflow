@@ -2947,8 +2947,6 @@ Le informazioni strutturate importanti possono includere: nomi, date, luoghi, ev
       delChat: 'Elimina chat',
       delMember: 'Elimina membro',
       delMemory: 'Elimina memoria',
-      delDepartment: 'Elimina dipartimento',
-      delGroup: 'Elimina gruppo',
     },
 
     empty: {

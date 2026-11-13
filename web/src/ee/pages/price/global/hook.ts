@@ -1,4 +1,4 @@
-import { convertBytesToGb } from '@/lib/utils';
+import { convertBytesToGb } from '@/ee/lib/utils';
 import i18n from '@/locales/config';
 import { isBillingEnabled } from '@/ee/services/billingStatus';
 import storagePrivate from '@/ee/utils/authorization-private-util';

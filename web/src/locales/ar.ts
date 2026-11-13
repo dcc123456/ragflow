@@ -2350,8 +2350,6 @@ export default {
       delChat: 'حذف الدردشة',
       delMember: 'حذف العضو',
       delMemory: 'حذف الذاكرة',
-      delDepartment: 'حذف القسم',
-      delGroup: 'حذف المجموعة',
     },
     empty: {
       noMCP: 'لا تتوفر خوادم MCP',

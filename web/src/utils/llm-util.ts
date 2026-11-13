@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-import { IThirdOAIModel, IAddedModel } from '@/interfaces/database/llm';
+import { IAddedModel } from '@/interfaces/database/llm';
 import { getCachedLlmList } from './llm-cache';
 
 // The names of the large models returned by the interface are similar to "deepseek-r1___OpenAI-API"
@@ -22,13 +22,6 @@ export function getRealModelName(llmName: string) {
   return llmName.split('__').at(0) ?? '';
 }
 
-export function buildLlmUuid(llm: IThirdOAIModel) {
-  return `${llm.llm_name}@${llm.fid}`;
-}
-
-export function getLlmFactoryName(name: string) {
-  return name?.split('#').at(0) ?? '';
-}
 // Get tenant model ID from LLM list by model name and factory ID
 export function getTenantModelId(
   llmList: Record<string, any>,

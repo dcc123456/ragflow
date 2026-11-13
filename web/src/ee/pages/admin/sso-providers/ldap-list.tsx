@@ -212,7 +212,7 @@ function SSOProviderLDAPAddButton({
       </Button>
 
       <Dialog open={visible} onOpenChange={hideModal}>
-        <DialogContent closeDisabled={mutation.isAdding}>
+        <DialogContent closable={false} closeDisabled={mutation.isAdding}>
           <DialogHeader>
             <DialogTitle>{t('addDialogTitle')}</DialogTitle>
           </DialogHeader>
@@ -259,7 +259,7 @@ function SSOProviderLDAPAddButton({
 
 type ListItemProps = {
   id: string;
-  data: AdminService.SystemVariables.SSO.LDAP;
+  data: AdminServiceEe.SystemVariables.SSO.LDAP;
   disabled?: boolean;
 };
 
@@ -323,7 +323,7 @@ function SSOProviderLDAPListItem(props: ListItemProps) {
       </CardContent>
 
       <Dialog open={visible} onOpenChange={hideModal}>
-        <DialogContent closeDisabled={mutation.isUpdating}>
+        <DialogContent closable={false} closeDisabled={mutation.isUpdating}>
           <DialogHeader>
             <DialogTitle>{t('editDialogTitle')}</DialogTitle>
           </DialogHeader>

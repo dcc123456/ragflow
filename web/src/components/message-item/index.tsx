@@ -216,6 +216,4 @@ const MessageItem = ({
   );
 };
 
-MessageItem.displayName = 'MessageItem';
-
 export default memo(MessageItem);

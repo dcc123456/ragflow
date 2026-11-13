@@ -19,8 +19,8 @@ import { LLMFactory } from '@/constants/llm';
 import { cn } from '@/lib/utils';
 import { parseModelValue } from '@/utils/llm-util';
 import { camelCase } from 'lodash';
-import { ReactNode, useEffect, useMemo } from 'react';
-import { useFormContext, useWatch } from 'react-hook-form';
+import { ReactNode, useMemo } from 'react';
+import { useFormContext } from 'react-hook-form';
 import { MinerUOptionsFormField } from './mineru-options-form-field';
 import { useModelTree } from './model-tree-select';
 import { PaddleOCROptionsFormField } from './paddleocr-options-form-field';
@@ -79,20 +79,6 @@ export function LayoutRecognizeFormField({
   const form = useFormContext();
 
   const { t } = useTranslate('knowledgeDetails');
-  const selectedParser = useWatch({ name });
-
-  useEffect(() => {
-    if (
-      !optionsWithoutLLM &&
-      hiddenDefaultParserTypes.includes(selectedParser)
-    ) {
-      form.setValue(name, ParseDocumentType.DeepDOC, {
-        shouldValidate: true,
-        shouldDirty: true,
-      });
-    }
-  }, [form, name, optionsWithoutLLM, selectedParser]);
-
   const {
     treeData: modelTree,
     allAddedModels,

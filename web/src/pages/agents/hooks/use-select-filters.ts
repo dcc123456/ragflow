@@ -13,7 +13,7 @@ export function useSelectFilters(canvasCategory?: string) {
 
   const tagList = useMemo(
     () =>
-      (tagCounts && tagCounts?.length > 0 ? tagCounts : []).map((t) => ({
+      (tagCounts ?? []).map((t) => ({
         id: t.tag,
         label: t.tag,
         count: t.count,

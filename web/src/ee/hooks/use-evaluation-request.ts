@@ -29,11 +29,11 @@ import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router';
 import { useSetModalState } from '@/hooks/common-hooks';
+import { useHandleSearchChange } from '@/hooks/logic-hooks';
 import {
   useGetPagination,
   useGetPaginationWithRouter,
-  useHandleSearchChange,
-} from '@/hooks/logic-hooks';
+} from '@/ee/hooks/use-pagination';
 import { useEvaluationUrl } from '@/ee/hooks/use-evaluation-url';
 
 type Pagination = { page?: number; pageSize?: number; total?: number };

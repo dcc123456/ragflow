@@ -26,7 +26,6 @@ import {
 import { useFindLlmByUuid } from '@/hooks/use-llm-request';
 import { useFetchUserInfo } from '@/hooks/use-user-setting-request';
 import { IClientConversation } from '@/interfaces/database/chat';
-import { hasManagePermissionPermission } from '@/ee/utils/permission-util';
 import {
   deriveModelPreset,
   removeUselessFieldsFromValues,
@@ -137,9 +136,6 @@ const ChatCard = forwardRef(function ChatCard(
 
   const { data: userInfo } = useFetchUserInfo();
   const { data: currentDialog } = useFetchChat();
-  const canManageChat = hasManagePermissionPermission(
-    currentDialog.operator_permission ?? 0,
-  );
   const findLlmByUuid = useFindLlmByUuid();
 
   // Each card must keep its own independently selected config after the initial
@@ -186,7 +182,7 @@ const ChatCard = forwardRef(function ChatCard(
         },
       },
     });
-  }, [dialogId, findLlmByUuid, form, updateChat]);
+  }, [dialogId, form, updateChat, findLlmByUuid]);
 
   useImperativeHandle(ref, (): HandlePressEnterType => (params) => {
     return handlePressEnter({

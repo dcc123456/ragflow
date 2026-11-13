@@ -16,20 +16,13 @@
 
 import message from '@/components/ui/message';
 import { Authorization } from '@/constants/authorization';
-import userService, {
-  getLoginChannels,
-  loginWithChannel,
-  loginWithLdap,
-  type LoginWithLdapInput,
-} from '@/services/user-service';
+import userService from '@/services/user-service';
 import {
   default as authorizationUtil,
   redirectToLogin,
   default as storage,
 } from '@/utils/authorization-util';
-import { useMutation, useQuery } from '@tanstack/react-query';
-import { groupBy } from 'lodash';
-import { useMemo } from 'react';
+import { useMutation } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useSaveSetting } from './use-user-setting-request';
 
@@ -42,81 +35,6 @@ export interface IRegisterRequestBody extends ILoginRequestBody {
   nickname: string;
 }
 
-export interface ILoginChannel {
-  channel: string;
-  display_name: string;
-  icon: string;
-}
-
-export const useLoginChannels = () => {
-  const { data, isLoading } = useQuery({
-    queryKey: ['loginChannels'],
-    queryFn: async (): Promise<ILoginChannel[]> => {
-      const { data: res = {} } = await getLoginChannels();
-      return res.data || [];
-    },
-    initialData: [],
-  });
-
-  const typeGroupedChannels = useMemo(
-    () =>
-      groupBy(data, (item) =>
-        item.channel.startsWith('ldap') ? 'ldap' : 'sso',
-      ),
-    [data],
-  );
-
-  const currentChannelType = useMemo((): 'sso' | 'ldap' | undefined => {
-    if (typeGroupedChannels.sso?.length) {
-      return 'sso';
-    }
-
-    if (typeGroupedChannels.ldap?.length) {
-      return 'ldap';
-    }
-
-    return undefined;
-  }, [typeGroupedChannels]);
-
-  return {
-    channels: data,
-    currentChannelType,
-    typeGroupedChannels,
-    loading: isLoading,
-  };
-};
-
-export const useLoginWithChannel = () => {
-  const { isPending: loading, mutateAsync } = useMutation({
-    mutationKey: ['loginWithChannel'],
-    mutationFn: async (channel: string) => {
-      loginWithChannel(channel);
-      return Promise.resolve();
-    },
-  });
-
-  const { mutateAsync: loginLdap, isPending: loginLdapLoading } = useMutation({
-    mutationFn: (inputs: LoginWithLdapInput) => loginWithLdap(inputs),
-  });
-
-  return {
-    loading: loading || loginLdapLoading,
-    login: mutateAsync,
-    loginLdap,
-  };
-};
-
-export type EmailLoginParams = {
-  email: string;
-  password: string;
-};
-
-export type LDAPLoginParams = {
-  username: string;
-  password: string;
-  ldap_server: string;
-};
-
 export const useLogin = () => {
   const { saveSetting } = useSaveSetting(true);
   const {
@@ -125,7 +43,7 @@ export const useLogin = () => {
     mutateAsync,
   } = useMutation({
     mutationKey: ['login'],
-    mutationFn: async (params: EmailLoginParams | LDAPLoginParams) => {
+    mutationFn: async (params: { email: string; password: string }) => {
       const { data: res = {}, response } = await userService.login(params);
       if (res.code === 0) {
         // The language is based on the .lng stored in the client's local storage.
@@ -146,7 +64,7 @@ export const useLogin = () => {
           userInfo: JSON.stringify(userInfo),
         });
       }
-      return { code: res.code, message: res.message };
+      return res.code;
     },
   });
 

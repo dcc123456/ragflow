@@ -246,11 +246,11 @@ function AdminServiceStatus() {
                       <RadioGroup
                         value={
                           (table
-                            .getColumn('service_type')
+                            .getColumn('service_type')!
                             ?.getFilterValue() as string) ?? ''
                         }
                         onValueChange={
-                          table.getColumn('service_type')?.setFilterValue
+                          table.getColumn('service_type')!?.setFilterValue
                         }
                       >
                         <Label className="flex items-center space-x-2">

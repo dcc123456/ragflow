@@ -15,11 +15,14 @@ import {
 import { useQuery } from '@tanstack/react-query';
 
 import { Badge } from '@/components/ui/badge';
-import { getLlmTraceByOrg, getLlmTraceRecent } from '@/services/admin-service';
+import {
+  getLlmTraceByOrg,
+  getLlmTraceRecent,
+} from '@/ee/services/admin-service';
 
 import { RAGFlowAvatar } from '@/components/ragflow-avatar';
 import message from '@/components/ui/message';
-import { useGetPaginationWithRouter } from '@/hooks/logic-hooks';
+import { useGetPaginationWithRouter } from '@/ee/hooks/use-pagination';
 import { useDebounce } from 'ahooks';
 import type {
   FilterValues,

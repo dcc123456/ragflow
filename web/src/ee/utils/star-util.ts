@@ -38,15 +38,20 @@ export class Channel {
 }
 
 const ExactListeners: string[] = [
-  api.document_upload,
-  api.chunk_list,
-  api.create_kb,
+  api.createKb,
   api.createChat,
   api.setCanvas,
   api.runCanvas,
-  api.retrieval_test,
+  api.retrievalTest,
   api.chatsRelatedQuestions,
-  api.kb_list,
+  api.kbList,
+];
+
+// Endpoints that build their URL from a dataset/document id, so they cannot
+// be listed as literal strings above.
+const DynamicListeners: RegExp[] = [
+  new RegExp(`^${restAPIv1}/datasets/[^/]+/documents$`),
+  new RegExp(`^${restAPIv1}/datasets/[^/]+/documents/[^/]+/chunks$`),
 ];
 
 const ChatDetailPattern = new RegExp(`^${restAPIv1}/chats/[^/]+$`);
@@ -56,7 +61,10 @@ const shouldShowStar = (url?: string, method?: string) => {
     return false;
   }
 
-  if (ExactListeners.includes(url)) {
+  if (
+    ExactListeners.includes(url) ||
+    DynamicListeners.some((pattern) => pattern.test(url))
+  ) {
     return true;
   }
 

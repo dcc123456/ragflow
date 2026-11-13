@@ -9,6 +9,7 @@ export function useAgentWithSourceType(record: IFlow) {
       ...record,
       resourceType: PermissionResourceType.Canvas,
       name: record.title,
+      tenant_id: record.tenant_id ?? '',
     };
   }, [record]);
 }

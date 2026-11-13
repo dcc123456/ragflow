@@ -17,8 +17,8 @@
 import message from '@/components/ui/message';
 import { useExportMcpServer } from '@/hooks/use-mcp-request';
 import { IMcpServer } from '@/interfaces/database/mcp';
-import i18n from '@/locales/config';
 import { downloadJsonFile } from '@/utils/file-util';
+import i18n from '@/locales/config';
 import { useCallback } from 'react';
 
 export function useExportMcp(mcp?: IMcpServer) {

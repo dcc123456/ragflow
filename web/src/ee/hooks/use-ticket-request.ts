@@ -15,10 +15,8 @@ import {
 } from '@/ee/services/ticket-service';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDebounce } from 'ahooks';
-import {
-  useGetPaginationWithRouter,
-  useHandleSearchChange,
-} from '@/hooks/logic-hooks';
+import { useHandleSearchChange } from '@/hooks/logic-hooks';
+import { useGetPaginationWithRouter } from '@/ee/hooks/use-pagination';
 
 export const enum TicketApiAction {
   FetchTickets = 'fetchTickets',

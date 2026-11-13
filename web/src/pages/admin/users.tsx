@@ -1,4 +1,4 @@
-import { ChangeEvent, useContext, useMemo, useState } from 'react';
+import { useContext, useLayoutEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
 
@@ -6,9 +6,9 @@ import {
   createColumnHelper,
   flexRender,
   getCoreRowModel,
+  getFilteredRowModel,
+  getPaginationRowModel,
   getSortedRowModel,
-  RowData,
-  SortingState,
   useReactTable,
 } from '@tanstack/react-table';
 
@@ -20,9 +20,6 @@ import {
 } from '@tanstack/react-query';
 
 import {
-  ArrowDown,
-  ArrowUp,
-  ArrowUpDown,
   LucideClipboardList,
   LucideDot,
   LucideTrash2,
@@ -30,19 +27,12 @@ import {
   LucideUserPlus,
 } from 'lucide-react';
 
-import { isBillingEnabled } from '@/ee/services/billingStatus';
 import { rsaPsw } from '@/utils';
 
 import Spotlight from '@/components/spotlight';
 import { TableEmpty } from '@/components/table-skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import {
   Card,
   CardContent,
@@ -76,7 +66,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { PriceName } from '@/ee/pages/price/constant';
 import { Routes } from '@/routes';
 import { LucideFilter, LucideSearch } from 'lucide-react';
 
@@ -87,7 +76,6 @@ import {
   createUser,
   deleteUser,
   grantSuperuser,
-  listRoles,
   listUsers,
   revokeSuperuser,
   updateUserPassword,
@@ -98,9 +86,7 @@ import {
   createColumnFilterFn,
   createFuzzySearchFn,
   EMPTY_DATA,
-  IS_ENTERPRISE,
   parseBooleanish,
-  USE_LDAP,
 } from './utils';
 
 import {
@@ -110,17 +96,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useDebounceFn } from 'ahooks';
 import EnterpriseFeature from './components/enterprise-feature';
 import { CurrentUserInfoContext } from './layouts/root-layout';
-
-declare module '@tanstack/react-table' {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  interface ColumnMeta<TData extends RowData, TValue> {
-    colWidth?: string;
-    colClassName?: string;
-  }
-}
 
 const columnHelper = createColumnHelper<AdminService.ListUsersItem>();
 const globalFilterFn = createFuzzySearchFn<AdminService.ListUsersItem>([
@@ -132,13 +109,6 @@ const STATUS_FILTER_OPTIONS = [
   { value: '', label: 'admin.all' },
   { value: 'active', label: 'admin.active' },
   { value: 'inactive', label: 'admin.inactive' },
-];
-
-const PLAN_FILTER_OPTIONS = [
-  { value: '', label: 'admin.all' },
-  { value: PriceName.Trial, label: 'admin.trial' },
-  { value: PriceName.Starter, label: 'admin.starter' },
-  { value: PriceName.Pro, label: 'admin.pro' },
 ];
 
 function AdminUserManagement() {
@@ -153,86 +123,16 @@ function AdminUserManagement() {
   const [createUserModalOpen, setCreateUserModalOpen] = useState(false);
   const [userToMakeAction, setUserToMakeAction] =
     useState<AdminService.ListUsersItem | null>(null);
-  const [keyword, setKeyword] = useState('');
-  const [sorting, setSorting] = useState<SortingState>([]);
-  const [pagination, setPagination] = useState({ page: 1, pageSize: 10 });
-  const [filters, setFilters] = useState({ role: '', status: '', plan: '' });
-  const [debouncedKeyword, setDebouncedKeyword] = useState('');
-
-  const resetPagination = () => {
-    setPagination((prev) => ({ ...prev, page: 1 }));
-  };
-
-  const updateFilters = (values: Partial<typeof filters>) => {
-    setFilters((prev) => ({ ...prev, ...values }));
-    resetPagination();
-  };
-
-  const handleRoleChange = (role: string) => updateFilters({ role });
-  const handleStatusChange = (status: string) => updateFilters({ status });
-  const handlePlanChange = (plan: string) => updateFilters({ plan });
-  const handleResetFilters = () =>
-    updateFilters({ role: '', status: '', plan: '' });
-
-  const { run: applyKeyword } = useDebounceFn(
-    (value: string) => {
-      setDebouncedKeyword(value);
-      resetPagination();
-    },
-    { wait: 500 },
-  );
-
-  const handleKeywordChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const value = event.target.value;
-    setKeyword(value);
-    applyKeyword(value);
-  };
 
   const changePasswordForm = useChangePasswordForm();
   const createUserForm = useCreateUserForm();
 
-  const { data: roleList } = useQuery({
-    queryKey: ['admin/listRoles'],
-    queryFn: async () => (await listRoles()).data.data,
-    enabled: IS_ENTERPRISE,
+  const { data: usersList } = useQuery({
+    queryKey: ['admin/listUsers'],
+    queryFn: async () => (await listUsers()).data.data,
     retry: false,
     placeholderData: keepPreviousData,
   });
-
-  const { data: usersResponse } = useQuery({
-    queryKey: [
-      'admin/listUsers',
-      debouncedKeyword,
-      sorting,
-      pagination,
-      filters,
-    ],
-    queryFn: async () => {
-      const { data } = await listUsers({
-        keyword: debouncedKeyword || undefined,
-        sort: sorting[0] ? (sorting[0].desc ? 'desc' : 'asc') : undefined,
-        order: sorting[0]?.id,
-        page: pagination.page,
-        page_size: pagination.pageSize,
-        role: filters.role || undefined,
-        status: filters.status || undefined,
-        plan: filters.plan || undefined,
-      });
-      if (data.code === 0) {
-        return {
-          users: data.data,
-          total: data.total ?? data.data.length,
-          page: pagination.page,
-          page_size: pagination.pageSize,
-        };
-      }
-    },
-    retry: false,
-    placeholderData: keepPreviousData,
-  });
-
-  const usersList = usersResponse?.users ?? EMPTY_DATA;
-  const paginationInfo = usersResponse ?? { page: 1, page_size: 10, total: 0 };
 
   // Delete user mutation
   const deleteUserMutation = useMutation({
@@ -308,81 +208,13 @@ function AdminUserManagement() {
     () => [
       columnHelper.accessor('email', {
         header: t('admin.email'),
-        meta: { colClassName: 'w-[30%]' },
-        cell: ({ cell }) => {
-          const value = cell.getValue() as string;
-          return (
-            <div className="truncate" title={value}>
-              {value}
-            </div>
-          );
-        },
       }),
       columnHelper.accessor('nickname', {
         header: t('admin.nickname'),
-        meta: { colClassName: 'w-[20%]' },
-        cell: ({ cell }) => {
-          const value = cell.getValue() as string;
-          return (
-            <div className="truncate" title={value}>
-              {value}
-            </div>
-          );
-        },
       }),
-
-      ...(USE_LDAP
-        ? [
-            columnHelper.accessor('ldap_server', {
-              header: t('admin.ldapServer'),
-              meta: { colWidth: '*' },
-            }),
-          ]
-        : []),
-
-      ...(IS_ENTERPRISE
-        ? [
-            columnHelper.accessor('role', {
-              header: t('admin.role'),
-              meta: { colClassName: 'w-24' },
-              cell: ({ row, cell }) => (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" className="min-w-16">
-                      {cell.getValue()}
-                    </Button>
-                  </DropdownMenuTrigger>
-
-                  <DropdownMenuContent>
-                    {roleList?.map(({ id, role_name }) => (
-                      <DropdownMenuItem
-                        key={id}
-                        onClick={() => {
-                          updateUserRoleMutation.mutate({
-                            email: row.original.email,
-                            role: role_name,
-                          });
-                        }}
-                      >
-                        {role_name}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              ),
-              filterFn: createColumnFilterFn(
-                (row, id, filterValue) => row.getValue(id) === filterValue,
-                {
-                  autoRemove: (v) => !v,
-                },
-              ),
-            }),
-          ]
-        : []),
 
       columnHelper.accessor('is_active', {
         header: t('admin.status'),
-        meta: { colClassName: 'w-40' },
         cell: ({ cell, row }) => {
           const isMe = row.original.email === userInfo?.email;
 
@@ -446,7 +278,6 @@ function AdminUserManagement() {
 
       columnHelper.accessor('is_superuser', {
         header: t('admin.userType'),
-        meta: { colClassName: 'w-40' },
         cell: ({ cell, row }) => {
           const isMe = row.original.email === userInfo?.email;
 
@@ -483,37 +314,9 @@ function AdminUserManagement() {
         },
       }),
 
-      ...(isBillingEnabled()
-        ? [
-            columnHelper.accessor('plan', {
-              header: t('admin.plan'),
-              meta: { colClassName: 'w-40' },
-              cell: ({ cell }) => cell.getValue() || '-',
-            }),
-          ]
-        : []),
-
-      columnHelper.accessor('last_login_time', {
-        meta: { colClassName: 'w-[20%]' },
-        header: ({ column }) => (
-          <Button
-            variant={'ghost'}
-            onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-          >
-            {t('admin.lastLoginTime')}
-            {column.getIsSorted() !== 'asc' &&
-              column.getIsSorted() !== 'desc' && <ArrowUpDown />}
-            {column.getIsSorted() == 'asc' && <ArrowUp />}
-            {column.getIsSorted() == 'desc' && <ArrowDown />}
-          </Button>
-        ),
-        cell: ({ cell }) => (cell.getValue() ? cell.getValue() : '-'),
-      }),
-
       columnHelper.display({
         id: 'actions',
         header: t('admin.actions'),
-        meta: { colClassName: 'w-52' },
         cell: ({ row }) => {
           const isMe = row.original.email === userInfo?.email;
 
@@ -596,18 +399,20 @@ function AdminUserManagement() {
     columns: columnDefs,
 
     globalFilterFn,
-    manualSorting: true,
-
-    state: {
-      sorting,
-    },
-    onSortingChange: setSorting,
 
     getCoreRowModel: getCoreRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
     getSortedRowModel: getSortedRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
 
     autoResetPageIndex: false,
   });
+
+  useLayoutEffect(() => {
+    if (table.getState().pagination.pageIndex > table.getPageCount()) {
+      table.setPageIndex(Math.max(0, table.getPageCount() - 1));
+    }
+  }, [usersList, table]);
 
   return (
     <>
@@ -631,69 +436,20 @@ function AdminUserManagement() {
                   className="bg-bg-base text-text-secondary"
                 >
                   <div className="p-2 space-y-6">
-                    <EnterpriseFeature>
-                      {() => (
-                        <section>
-                          <div className="font-bold mb-3">
-                            {t('admin.role')}
-                          </div>
-
-                          <RadioGroup
-                            value={filters.role}
-                            onValueChange={handleRoleChange}
-                          >
-                            <Label className="flex items-center space-x-2">
-                              <RadioGroupItem value="" />
-                              <span>{t('admin.all')}</span>
-                            </Label>
-
-                            {roleList?.map(({ id, role_name }) => (
-                              <Label
-                                key={id}
-                                className="flex items-center space-x-2"
-                              >
-                                <RadioGroupItem
-                                  className="bg-bg-input border-border-button"
-                                  value={role_name}
-                                />
-                                <span>{role_name}</span>
-                              </Label>
-                            ))}
-                          </RadioGroup>
-                        </section>
-                      )}
-                    </EnterpriseFeature>
-
                     <section>
                       <div className="font-bold mb-3">{t('admin.status')}</div>
 
                       <RadioGroup
-                        value={filters.status}
-                        onValueChange={handleStatusChange}
+                        value={
+                          (table
+                            .getColumn('is_active')
+                            ?.getFilterValue() as string) ?? ''
+                        }
+                        onValueChange={(value) =>
+                          table.getColumn('is_active')?.setFilterValue(value)
+                        }
                       >
                         {STATUS_FILTER_OPTIONS.map(({ label, value }) => (
-                          <Label
-                            key={value}
-                            className="flex items-center space-x-2"
-                          >
-                            <RadioGroupItem
-                              className="bg-bg-input border-border-button"
-                              value={value}
-                            />
-                            <span>{t(label)}</span>
-                          </Label>
-                        ))}
-                      </RadioGroup>
-                    </section>
-
-                    <section>
-                      <div className="font-bold mb-3">{t('admin.plan')}</div>
-
-                      <RadioGroup
-                        value={filters.plan}
-                        onValueChange={handlePlanChange}
-                      >
-                        {PLAN_FILTER_OPTIONS.map(({ label, value }) => (
                           <Label
                             key={value}
                             className="flex items-center space-x-2"
@@ -713,7 +469,7 @@ function AdminUserManagement() {
                     <Button
                       variant="outline"
                       className="dark:bg-bg-input dark:border-border-button text-text-secondary"
-                      onClick={handleResetFilters}
+                      onClick={() => table.resetColumnFilters()}
                     >
                       {t('admin.reset')}
                     </Button>
@@ -727,8 +483,8 @@ function AdminUserManagement() {
                 <Input
                   className="pl-10 h-10 bg-bg-input border-border-button"
                   placeholder={t('header.search')}
-                  value={keyword}
-                  onChange={handleKeywordChange}
+                  value={table.getState().globalFilter}
+                  onChange={(e) => table.setGlobalFilter(e.target.value)}
                 />
               </div>
 
@@ -743,19 +499,18 @@ function AdminUserManagement() {
           </CardHeader>
 
           <CardContent>
-            <Table className="table-fixed">
+            <Table>
               <colgroup>
-                {table.getVisibleLeafColumns().map((column) => {
-                  const { colWidth, colClassName } =
-                    column.columnDef.meta ?? {};
-                  return (
-                    <col
-                      key={column.id}
-                      width={colWidth}
-                      className={colClassName}
-                    />
-                  );
-                })}
+                <col width="*" />
+                <col className="w-[22%]" />
+
+                <EnterpriseFeature>
+                  {() => <col className="w-24" />}
+                </EnterpriseFeature>
+
+                <col className="w-40" />
+                <col className="w-40" />
+                <col className="w-52" />
               </colgroup>
 
               <TableHeader>
@@ -798,11 +553,14 @@ function AdminUserManagement() {
 
           <CardFooter className="flex items-center justify-end">
             <RAGFlowPagination
-              total={paginationInfo.total}
-              current={paginationInfo.page}
-              pageSize={paginationInfo.page_size}
+              total={table.getFilteredRowModel().rows.length}
+              current={table.getState().pagination.pageIndex + 1}
+              pageSize={table.getState().pagination.pageSize}
               onChange={(page, pageSize) => {
-                setPagination({ page, pageSize });
+                table.setPagination({
+                  pageIndex: page - 1,
+                  pageSize,
+                });
               }}
             />
           </CardFooter>

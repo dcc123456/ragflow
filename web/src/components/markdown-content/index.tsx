@@ -392,6 +392,4 @@ const MarkdownContent = ({
   );
 };
 
-MarkdownContent.displayName = 'MarkdownContent';
-
 export default memo(MarkdownContent);

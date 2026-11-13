@@ -3,7 +3,7 @@
 
 import type { FilterValues } from './types';
 
-import { getLlmTraceSummary } from '@/services/admin-service';
+import { getLlmTraceSummary } from '@/ee/services/admin-service';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useCreateFilters } from './hooks';

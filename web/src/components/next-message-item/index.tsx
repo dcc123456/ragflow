@@ -249,7 +249,7 @@ function MessageItem({
                       {isShare && !sendLoading && !isEmpty(item.content) && (
                         <AssistantGroupButton
                           messageId={item.id}
-                          content={item.content}
+                          content={messageContent}
                           prompt={item.prompt}
                           showLikeButton={showLikeButton}
                           audioBinary={item.audio_binary}

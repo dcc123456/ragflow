@@ -153,7 +153,7 @@ export interface FieldConfig {
 }
 
 // Re-export SkillSearchConfig from service to ensure consistency
-import { SkillSearchConfig } from '@/services/skill-space-service';
+export { SkillSearchConfig } from '@/services/skill-space-service';
 
 export interface SkillSearchResult {
   skill_id: string;

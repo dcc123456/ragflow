@@ -52,11 +52,11 @@ WhitelistSettingsFormGroup.mapValuesToData = (
 ) => {
   return {
     enable_whitelist: formValues.enabled,
-  } satisfies AdminService.SetVariablesInput;
+  } satisfies AdminServiceEe.SetVariablesInput;
 };
 
 WhitelistSettingsFormGroup.mapValuesFromData = (
-  data: AdminService.SystemVariables,
+  data: AdminServiceEe.SystemVariables,
 ): WhitelistSettingsFormGroup.SchemaType => {
   return {
     enabled: !!data.enable_whitelist?.value,

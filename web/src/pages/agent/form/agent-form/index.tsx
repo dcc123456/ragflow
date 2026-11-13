@@ -86,7 +86,6 @@ export type AgentFormSchemaType = z.infer<typeof FormSchema>;
 
 function AgentForm({ node }: INextOperatorForm) {
   const { t } = useTranslation();
-  const ownerTenantId = useOwnerTenantId();
   const { edges, deleteEdgesBySourceAndSourceHandle } = useGraphStore(
     (state) => state,
   );
@@ -95,6 +94,7 @@ function AgentForm({ node }: INextOperatorForm) {
 
   const defaultValues = useValues(node);
 
+  const ownerTenantId = useOwnerTenantId();
   const { formSchema, modelsFetched } = useUnavailableModelFormSchema(
     FormSchema,
     { ownerTenantId },
@@ -160,9 +160,6 @@ function AgentForm({ node }: INextOperatorForm) {
       }
     }
   }, [deleteEdgesBySourceAndSourceHandle, exceptionMethod, node?.id]);
-
-  const x = findLlmByUuid(llmId)?.model_type;
-  console.log('🚀 ~ AgentForm ~ x:', x);
 
   useWatchFormChange(node?.id, form);
 

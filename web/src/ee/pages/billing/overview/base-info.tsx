@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button';
 import message from '@/components/ui/message';
-import { convertBytesToGb } from '@/lib/utils';
+import { convertBytesToGb } from '@/ee/lib/utils';
 import { PriceName } from '@/ee/pages/price/constant';
 import {
   useCharge,

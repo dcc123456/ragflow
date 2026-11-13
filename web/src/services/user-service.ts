@@ -15,11 +15,8 @@
  */
 
 import api from '@/utils/api';
-import authorizationUtil from '@/utils/authorization-util';
-import notification from '@/utils/notification';
 import registerServer from '@/utils/register-server';
 import request, { post } from '@/utils/request';
-import { t } from 'i18next';
 
 const {
   login,
@@ -34,48 +31,11 @@ const {
   createSystemToken,
   getSystemConfig,
   setLangfuseConfig,
-  loginGetCaptcha,
-  loginSendVerifyCode,
-  loginVerifyEmail,
-  submitResetPassword,
-  registerGetCaptcha,
-  registerSendVerifyCode,
-  registerVerifyEmail,
 } = api;
 
 const methods = {
   login: {
     url: login,
-    method: 'post',
-  },
-  loginGetCaptcha: {
-    url: loginGetCaptcha,
-    method: 'post',
-    responseType: 'blob',
-  },
-  loginSendVerifyCode: {
-    url: loginSendVerifyCode,
-    method: 'post',
-  },
-  loginVerifyEmail: {
-    url: loginVerifyEmail,
-    method: 'post',
-  },
-  submitResetPassword: {
-    url: submitResetPassword,
-    method: 'post',
-  },
-  registerGetCaptcha: {
-    url: registerGetCaptcha,
-    method: 'post',
-    responseType: 'blob',
-  },
-  registerSendVerifyCode: {
-    url: registerSendVerifyCode,
-    method: 'post',
-  },
-  registerVerifyEmail: {
-    url: registerVerifyEmail,
     method: 'post',
   },
   logout: {
@@ -132,50 +92,7 @@ const methods = {
   },
 } as const;
 
-const userService = registerServer<keyof typeof methods>?.(methods, request);
-
-export const getLoginChannels = () => request.get(api.loginChannels);
-export const loginWithChannel = (channel: string) =>
-  (window.location.href = api.loginChannel(channel));
-
-export type LoginWithLdapInput = {
-  serverName: string;
-  username: string;
-  password: string;
-};
-
-export const loginWithLdap = async ({
-  serverName,
-  username,
-  password,
-}: LoginWithLdapInput) => {
-  const sp = new URLSearchParams({ username, password });
-
-  const resp = await fetch(`${api.loginChannel(serverName)}?${sp.toString()}`, {
-    method: 'GET',
-  });
-
-  if (resp.redirected) {
-    const url = new URL(resp.url);
-    const auth = url.searchParams.get('auth');
-
-    if (auth) {
-      authorizationUtil.setAuthorization(auth);
-      url.searchParams.delete('auth');
-      window.location.href = url.toString();
-    }
-  } else {
-    const data = await resp.json();
-
-    notification.error({
-      message: `${t('message.hint')}: ${data.code}`,
-      description: data.message,
-      duration: 3,
-    });
-
-    throw new Error(data.message);
-  }
-};
+const userService = registerServer<keyof typeof methods>(methods, request);
 
 export const listTenantUser = (tenantId: string) =>
   request.get(api.listTenantUser(tenantId));

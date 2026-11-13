@@ -118,13 +118,14 @@ export function mergeRoutes(
       inserted.push(...toRouteObjects([route]));
       continue;
     }
-    if (!route.children?.length) continue;
 
     const baseRoute = nextRoutes[matchIdx];
-    nextRoutes[matchIdx] = {
-      ...baseRoute,
-      children: mergeRoutes(route.children, baseRoute.children ?? []),
-    };
+    const merged: RouteNode = { ...baseRoute };
+    if (route.override) merged.Component = withLazyRoute(route.override);
+    if (route.children?.length) {
+      merged.children = mergeRoutes(route.children, baseRoute.children ?? []);
+    }
+    nextRoutes[matchIdx] = merged;
   }
 
   // Enterprise routes come first so they win rank ties against upstream

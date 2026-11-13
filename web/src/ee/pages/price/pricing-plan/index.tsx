@@ -1,6 +1,6 @@
 // pages/PricingPage.tsx
 import { Modal } from '@/components/ui/modal/modal';
-import { convertBytesToGb } from '@/lib/utils';
+import { convertBytesToGb } from '@/ee/lib/utils';
 import { t } from 'i18next';
 import {
   ArrowUpRight,

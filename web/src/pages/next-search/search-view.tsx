@@ -209,7 +209,7 @@ export default function SearchingView({
               </>
             )}
             {/* retrieval documents */}
-            {!isSearchStrEmpty && !sendingLoading && total > 0 && (
+            {!isSearchStrEmpty && !sendingLoading && (
               <section className="flex justify-start items-center gap-4">
                 <div className="w-44 ">
                   <RetrievalDocuments
@@ -241,7 +241,6 @@ export default function SearchingView({
               {chunks?.length > 0 && (
                 <>
                   {chunks.map((chunk, index) => {
-                    // const imageId = chunk.image_id || chunk.img_id;
                     return (
                       <div key={index}>
                         <div className="w-full flex flex-col">

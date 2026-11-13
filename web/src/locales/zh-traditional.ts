@@ -57,7 +57,6 @@ export default {
       rememberMe: '記住我',
       signInTip: '沒有帳戶？',
       signUpTip: '已經有帳戶？',
-      licenseExpired: '許可證已過期。請聯繫管理員續期。',
       nicknameLabel: '名稱',
       nicknamePlaceholder: '請輸入名稱',
       register: '創建賬戶',
@@ -817,9 +816,6 @@ export default {
       modelsToBeAddedTooltip:
         '若您的模型供應商未列於此處，但宣稱與 OpenAI 相容，可透過選擇「OpenAI-API-compatible」卡片來設定相關模型。',
       dropboxDescription: '連接 Dropbox，同步指定帳號下的文件與文件夾。',
-      larkDescription: '連接飛書同步指定文件夾中的文件。',
-      larkFolderTip: '留空則不執行。',
-      larkWikiTip: '留空則不執行。',
       sitemapDescription:
         '連接公開的 sitemap.xml，將其中列出的網頁和 PDF 文件同步到知識庫。',
       dataSourceFieldSitemapUrl: 'Sitemap URL',

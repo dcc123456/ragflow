@@ -32,6 +32,7 @@ export function SyncFileDialog({
       }}
     >
       <DialogContent
+        closable={false}
         closeDisabled={loading}
         onInteractOutside={(e) => e.preventDefault()}
       >

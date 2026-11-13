@@ -16,7 +16,6 @@
 
 import { IconMap, LLMFactory } from '@/constants/llm';
 import { cn } from '@/lib/utils';
-import { getLlmFactoryName } from '@/utils/llm-util';
 import Icon from '@ant-design/icons';
 import { IconComponentProps } from '@ant-design/icons/lib/components/Icon';
 import { memo, useMemo } from 'react';
@@ -137,7 +136,7 @@ const svgIcons = [
 ];
 
 export const LlmIcon = ({
-  name: originalName,
+  name,
   height = 48,
   width = 48,
   imgClass,
@@ -147,7 +146,6 @@ export const LlmIcon = ({
   width?: number;
   imgClass?: string;
 }) => {
-  const name = getLlmFactoryName(originalName);
   const isDark = useIsDarkTheme();
   const icon = useMemo(() => {
     const icontemp = IconMap[name as keyof typeof IconMap];

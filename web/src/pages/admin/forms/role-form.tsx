@@ -3,6 +3,7 @@ import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useQuery } from '@tanstack/react-query';
 import { z } from 'zod';
 
 import { Card, CardContent } from '@/components/ui/card';
@@ -19,8 +20,8 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
-import { useRoleResourceTypes } from '@/ee/pages/admin/hooks/useRole';
-import { formMergeDefaultValues, PERMISSION_TYPES } from '../utils';
+import { listResources } from '@/services/admin-service';
+import { PERMISSION_TYPES, formMergeDefaultValues } from '../utils';
 import rolePermissions from '@/ee/pages/admin/roles/role-permissions';
 
 export interface CreateRoleFormData {
@@ -42,7 +43,11 @@ export const CreateRoleForm = ({
 }: CreateRoleFormProps) => {
   const { t } = useTranslation();
 
-  const { resourceTypes } = useRoleResourceTypes();
+  const { data: resourceTypes } = useQuery({
+    queryKey: ['admin/resourceTypes'],
+    queryFn: async () => (await listResources()).data.data.resource_types,
+    retry: false,
+  });
 
   return (
     <Form {...form}>
@@ -110,9 +115,6 @@ export const CreateRoleForm = ({
             </TabsList>
 
             {resourceTypes?.map((resourceType) => {
-              if (resourceType === 'model_provider') {
-                return null;
-              }
               const permissionTypes =
                 rolePermissions.getRolePermissionTypes?.(resourceType) ??
                 PERMISSION_TYPES;
@@ -138,7 +140,7 @@ export const CreateRoleForm = ({
                                 <FormControl>
                                   <Switch
                                     {...field}
-                                    checked={!!field.value}
+                                    checked={field.value}
                                     onCheckedChange={field.onChange}
                                   />
                                 </FormControl>
@@ -152,30 +154,6 @@ export const CreateRoleForm = ({
                 </TabsContent>
               );
             })}
-
-            <TabsContent value="model_provider">
-              <Card className="border-0 bg-bg-card !shadow-none">
-                <CardContent className="py-0 h-16 flex items-center gap-8">
-                  <FormField
-                    name="permissions.model_provider.enable"
-                    render={({ field }) => (
-                      <FormItem className="space-y-0 inline-flex items-center gap-2">
-                        <FormLabel className="flex items-center gap-2">
-                          {t('admin.permissionType.accessControl')}
-                        </FormLabel>
-                        <div className="ml-auto flex items-center gap-4">
-                          <Switch
-                            {...field}
-                            checked={!!field.value}
-                            onCheckedChange={field.onChange}
-                          />
-                        </div>
-                      </FormItem>
-                    )}
-                  />
-                </CardContent>
-              </Card>
-            </TabsContent>
           </Tabs>
         </div>
       </form>

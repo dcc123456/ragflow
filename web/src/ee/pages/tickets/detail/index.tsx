@@ -10,7 +10,7 @@ import {
 } from '@/ee/hooks/use-ticket-request';
 import { useFetchUserInfo } from '@/hooks/use-user-setting-request';
 import { formatDateToLocal } from '@/utils/date';
-import { fileToBase64, formatBytes } from '@/utils/file-util';
+import { fileToBase64, formatBytes } from '@/ee/utils/file-util';
 import {
   ArrowLeft,
   CircleX,

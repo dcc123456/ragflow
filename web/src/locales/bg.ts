@@ -2467,8 +2467,6 @@ Important structured information may include: names, dates, locations, events, k
       delChat: 'Изтрий чат',
       delMember: 'Изтрий член',
       delMemory: 'Изтрий памет',
-      delDepartment: 'Изтрий отдел',
-      delGroup: 'Изтрий група',
     },
     empty: {
       noMCP: 'Няма налични MCP сървъри',

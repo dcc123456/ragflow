@@ -79,6 +79,8 @@ function TaskExecutorDetail({ content }: TaskExecutorDetailProps) {
   return (
     <section className="space-y-8">
       {Object.entries(content ?? {}).map(([name, data]) => {
+        console.log(data);
+
         const items = data.map((x) => ({
           ...x,
           now: dayjs(x.now).valueOf(),

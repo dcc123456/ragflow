@@ -17,7 +17,7 @@ import {
   listAllFactoryLlms,
   listLlmFactories,
   setRoleDefaultModel,
-} from '@/services/admin-service';
+} from '@/ee/services/admin-service';
 import '@/ee/services/admin-llm-scope';
 
 import { LlmModelType } from '@/constants/knowledge';
@@ -84,17 +84,17 @@ export const useRoleDefaultModels = (roleName: string) => {
         setup_status: data.data!.setup_status,
       } as {
         model_list: Record<
-          AdminService.RoleDefaultModelType,
-          AdminService.RoleDefaultModelItem
+          AdminServiceEe.RoleDefaultModelType,
+          AdminServiceEe.RoleDefaultModelItem
         >;
-        setup_status: AdminService.RoleDefaultModelSetupStatus;
+        setup_status: AdminServiceEe.RoleDefaultModelSetupStatus;
       };
     },
     gcTime: 0,
     initialData: {
       model_list: {} as Record<
-        AdminService.RoleDefaultModelType,
-        AdminService.RoleDefaultModelItem
+        AdminServiceEe.RoleDefaultModelType,
+        AdminServiceEe.RoleDefaultModelItem
       >,
       setup_status: 'not_set',
     },
@@ -102,7 +102,7 @@ export const useRoleDefaultModels = (roleName: string) => {
 
   const { mutateAsync, isPending: isUpdating } = useMutation({
     mutationKey: ['admin/setRoleDefaultModel', roleName],
-    mutationFn: async (input: AdminService.SetRoleDefaultModelInput) => {
+    mutationFn: async (input: AdminServiceEe.SetRoleDefaultModelInput) => {
       const { data } = await setRoleDefaultModel(roleName, input);
       return data?.data ?? {};
     },
@@ -241,7 +241,7 @@ export const useAddFactory = (factoryName: string) => {
 
   const { mutateAsync, isPending } = useMutation({
     mutationKey: ['admin/addFactory', factoryName],
-    mutationFn: async (inputs: AdminService.AddLlmFactoryInput) => {
+    mutationFn: async (inputs: AdminServiceEe.AddLlmFactoryInput) => {
       const { data } = await addFactory({
         ...inputs,
         llm_factory: factoryName,

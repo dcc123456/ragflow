@@ -14,7 +14,6 @@
  *  limitations under the License.
  */
 
-import { ResponseType } from '@/interfaces/database/base';
 import api from '@/utils/api';
 import registerServer from '@/utils/register-server';
 import request from '@/utils/request';
@@ -82,39 +81,5 @@ export const startBoxWebAuth = (payload: {
 
 export const pollBoxWebAuthResult = (payload: { flow_id: string }) =>
   request.post(api.boxWebAuthResult(), { data: payload });
-
-export type DataSourceFileItem = {
-  edit_time: string;
-  created_time: string;
-  type: string;
-  token: string;
-  name: string;
-  children?: DataSourceFileItem[];
-};
-
-export const listDataSourceFiles = (id: string) =>
-  request
-    .get<{ data: ResponseType<DataSourceFileItem[]> }>(
-      api.dataSourceListFiles(id),
-      {
-        noToast: true,
-      },
-    )
-    .then((res) => {
-      const payload = res.data;
-      return payload.code === 0 ? { data: payload.data } : { data: payload };
-    });
-
-export const syncDataSourceFiles = (
-  id: string,
-  targetFolderId: string,
-  fileTokens: DataSourceFileItem[],
-) =>
-  request.post(api.dataSourceSyncFiles(id), {
-    data: {
-      folder_id: targetFolderId,
-      token_lst: fileTokens,
-    },
-  });
 
 export default dataSourceService;

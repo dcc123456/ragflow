@@ -25,18 +25,19 @@ import {
 } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
-import { listUserAgents, listUserDatasets } from '@/services/admin-service';
+import { listUserAgents, listUserDatasets } from '@/ee/services/admin-service';
 
 import { TableEmpty } from '@/components/table-skeleton';
 
 const ASSET_NAMES = ['dataset', 'flow'];
 
 const datasetColumnHelper =
-  createColumnHelper<AdminService.ListUserDatasetItem>();
-const agentColumnHelper = createColumnHelper<AdminService.ListUserAgentItem>();
+  createColumnHelper<AdminServiceEe.ListUserDatasetItem>();
+const agentColumnHelper =
+  createColumnHelper<AdminServiceEe.ListUserAgentItem>();
 
 function UserDatasetTable(props: {
-  data?: AdminService.ListUserDatasetItem[];
+  data?: AdminServiceEe.ListUserDatasetItem[];
 }) {
   const { t } = useTranslation();
 
@@ -182,7 +183,7 @@ function UserDatasetTable(props: {
   );
 }
 
-function UserAgentTable(props: { data?: AdminService.ListUserAgentItem[] }) {
+function UserAgentTable(props: { data?: AdminServiceEe.ListUserAgentItem[] }) {
   const { t } = useTranslation();
 
   const columnDefs = useMemo(

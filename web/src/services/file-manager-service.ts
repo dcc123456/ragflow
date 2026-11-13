@@ -20,11 +20,8 @@ import request from '@/utils/request';
 
 const {
   listFile,
-  listEvaluationFile,
   removeFile,
   uploadFile,
-  uploadEvaluationFile,
-  renameFile,
   getAllParentFolder,
   createFolder,
   connectFileToKnowledge,
@@ -43,25 +40,12 @@ const methods = {
     // it by redirecting to the root folder instead of showing a toast.
     skipErrorCodes: [404],
   },
-  listEvaluationFile: {
-    url: listEvaluationFile,
-    method: 'get',
-  },
-
   removeFile: {
     url: removeFile,
     method: 'delete',
   },
   uploadFile: {
     url: uploadFile,
-    method: 'post',
-  },
-  uploadEvaluationFile: {
-    url: uploadEvaluationFile,
-    method: 'post',
-  },
-  renameFile: {
-    url: renameFile,
     method: 'post',
   },
   getAllParentFolder: {

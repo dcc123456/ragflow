@@ -82,7 +82,6 @@ export const useProfile = () => {
       timeZone: normalizeTimezone(userInfo.timezone) || DEFAULT_TIMEZONE?.name,
       avatar: userInfo.avatar || '',
       email: userInfo.email,
-      loginChannel: userInfo.login_channel,
       currPasswd: userInfo.password,
       loginChannel: userInfo.login_channel,
     };

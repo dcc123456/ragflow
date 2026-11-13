@@ -317,13 +317,13 @@ function MarkdownContent({
 
       const documentList = Object.values(reference?.doc_aggs ?? {});
       const document = documentList.find(
-        (x) => x?.doc_id === (chunkItem?.document_id || chunkItem?.doc_id),
+        (x) => x?.doc_id === chunkItem?.document_id,
       );
       const documentId = document?.doc_id;
       const documentUrl = document?.url;
       const fileThumbnail = documentId ? fileThumbnails[documentId] : '';
       const fileExtension = documentId ? getExtension(document?.doc_name) : '';
-      const imageId = chunkItem?.image_id || chunkItem?.img_id;
+      const imageId = chunkItem?.image_id;
 
       return {
         documentUrl,
@@ -379,9 +379,7 @@ function MarkdownContent({
           <div className={'space-y-2 max-w-[40vw] w-full'}>
             <div
               dangerouslySetInnerHTML={{
-                __html: DOMPurify.sanitize(
-                  chunkItem?.content ?? chunkItem?.content_with_weight ?? '',
-                ),
+                __html: DOMPurify.sanitize(chunkItem?.content ?? ''),
               }}
               className={classNames(styles.chunkContentText, 'w-full')}
               dir="auto"

@@ -53,11 +53,11 @@ ExposeApiFormGroup.mapValuesToData = (
 ) => {
   return {
     'expose_api.enabled': formValues.enabled,
-  } satisfies AdminService.SetVariablesInput;
+  } satisfies AdminServiceEe.SetVariablesInput;
 };
 
 ExposeApiFormGroup.mapValuesFromData = (
-  data: AdminService.SystemVariables,
+  data: AdminServiceEe.SystemVariables,
 ): ExposeApiFormGroup.SchemaType => {
   const value = data['expose_api.enabled']?.value;
   return {

@@ -5,6 +5,8 @@ import type { ComponentType, ReactNode } from 'react';
 export enum PrivateRoutes {
   Price = '/price',
   Billing = '/billing',
+  EvaluationDetail = '/evaluation-detail',
+  Evaluation = '/evaluation',
   Tickets = '/support',
   TicketCreate = '/support/create',
   TicketDetail = '/support/:id',
@@ -33,6 +35,12 @@ export type PrivateRoute = {
    * layout, so the latter is addressed as `matchIndex: 2`.
    */
   matchIndex?: number;
+  /**
+   * Replace the matched upstream route's component while keeping its position
+   * and children. Use it when the enterprise page keeps the upstream route
+   * shape but needs its own implementation (e.g. `/admin/users`).
+   */
+  override?: () => Promise<{ default: ComponentType<any> }>;
 };
 
 /**
@@ -41,10 +49,11 @@ export type PrivateRoute = {
  * `routes.tsx` — that file must stay byte-identical to upstream.
  *
  * Entries use the upstream `LazyRouteConfig` shape (`Component` is a dynamic
- * import) plus the `replace` / `matchIndex` merge directives above. A matched
- * entry only contributes `children`; its `Component` is used only when no
- * upstream route matches and the entry is added as a new route. Pathless
- * entries merge into the n-th pathless sibling.
+ * import) plus the `replace` / `matchIndex` / `override` merge directives
+ * above. A matched entry contributes `children` and, when `override` is set,
+ * replaces the matched route's component; its own `Component` is used only
+ * when no upstream route matches and the entry is added as a new route.
+ * Pathless entries merge into the n-th pathless sibling.
  */
 export const privateRoutes: PrivateRoute[] = [
   {
@@ -99,6 +108,13 @@ export const privateRoutes: PrivateRoute[] = [
     path: Routes.Admin,
     children: [
       {
+        // Enterprise admin login: same `/admin` path as upstream's login
+        // page, but the enterprise form posts through the enterprise service.
+        path: Routes.Admin,
+        matchIndex: 1,
+        override: () => import('@/ee/pages/admin/login'),
+      },
+      {
         path: `${Routes.AdminUserManagement}/:id`,
         Component: () => import('@/pages/admin/user-detail'),
       },
@@ -114,6 +130,24 @@ export const privateRoutes: PrivateRoute[] = [
             // The navigation layout is the only pathless child of the
             // authorized layout.
             children: [
+              {
+                // Service status and user management are maintained in the
+                // enterprise overlay: same upstream route slot, enterprise
+                // implementation.
+                path: Routes.AdminServices,
+                override: () => import('@/ee/pages/admin/service-status'),
+              },
+              {
+                path: Routes.AdminUserManagement,
+                override: () => import('@/ee/pages/admin/users'),
+              },
+              {
+                // Role management is maintained in the enterprise overlay;
+                // substitute the upstream page (which shares the route path).
+                replace: [Routes.AdminRoles],
+                path: Routes.AdminRoles,
+                Component: () => import('@/ee/pages/admin/roles'),
+              },
               {
                 path: PrivateRoutes.AdminModelUsageStatistics,
                 Component: () =>
