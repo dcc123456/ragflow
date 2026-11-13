@@ -29,10 +29,13 @@ import (
 )
 
 var (
-	AuditLogger *zap.Logger
+	AuditLogger  *zap.Logger
+	auditLogSink func(*OperationLog) error
 )
 
 func InitAudit(logType string, file FileOutput, serviceName string) error {
+	AuditLogger = nil
+	auditLogSink = nil
 	switch logType {
 	case "database":
 		return initDatabaseAuditLog()
@@ -45,6 +48,11 @@ func InitAudit(logType string, file FileOutput, serviceName string) error {
 
 func initDatabaseAuditLog() error {
 	return nil
+}
+
+// SetAuditLogSink installs the database destination during server startup.
+func SetAuditLogSink(sink func(*OperationLog) error) {
+	auditLogSink = sink
 }
 
 func initFileAuditLog(file FileOutput, serviceName string) error {
@@ -113,7 +121,16 @@ type OperationLog struct {
 }
 
 func Audit(operationLog *OperationLog, fields ...zap.Field) {
-	if AuditLogger == nil || operationLog == nil {
+	if operationLog == nil {
+		return
+	}
+	if auditLogSink != nil {
+		if err := auditLogSink(operationLog); err != nil {
+			Error("Failed to enqueue audit event", err)
+		}
+		return
+	}
+	if AuditLogger == nil {
 		return
 	}
 
