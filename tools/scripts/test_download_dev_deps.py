@@ -1029,7 +1029,7 @@ def test_deepdoc_ort_version_bash_missing_file(tmp_path):
 # (default ~/ragflow-native-libs, overridable via RAGFLOW_NATIVE_LIBS_DIR so CI
 # can mount the cache at a fixed host path instead of the build user's $HOME).
 # These tests pin that resolution contract (native_lib_version.sh) and the
-# sep-tests.yml wiring that mounts the cache into every BUILDER_CONTAINER.
+# sep-tests-ee.yml wiring that mounts the cache into every BUILDER_CONTAINER.
 
 
 def _sh_eval(func_call, env):
@@ -1078,7 +1078,7 @@ def test_sep_tests_mounts_native_libs_cache():
     # Slice 3 contract: the native static-lib user cache is mounted into every
     # BUILDER_CONTAINER (4 docker runs) and exposed via RAGFLOW_NATIVE_LIBS_DIR,
     # replacing the old /opt pre-bake. The YAML must also stay parseable.
-    assert os.path.isfile(SEP_TESTS_YML), f"sep-tests.yml not found at {SEP_TESTS_YML}"
+    assert os.path.isfile(SEP_TESTS_YML), f"sep-tests-ee.yml not found at {SEP_TESTS_YML}"
     with open(SEP_TESTS_YML, encoding="utf-8") as f:
         content = f.read()
     # YAML must still parse (guards against a malformed edit); skip when pyyaml
