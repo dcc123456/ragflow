@@ -28,6 +28,7 @@ import {
   PermissionManagementDialogContext,
 } from '@/ee/pages/user-setting/setting-team/team-management/permission-management-dialog';
 import { useModifyGroup } from '@/ee/pages/user-setting/setting-team/team-management/use-operate-group';
+import { useTenantMyPermissions } from '@/ee/pages/user-setting/team/use-member-role-query';
 
 export function TeamManagement() {
   const [activity, setActivity] = useState<TeamRole>(TeamRole.Member);
@@ -42,6 +43,8 @@ export function TeamManagement() {
   const { t } = useTranslation();
   const { data: tenantList } = useListTenant();
   const { data: tenantInfo } = useFetchTenantInfo();
+  const { data: myPermissions } = useTenantMyPermissions(tenantInfo.tenant_id);
+  const canManageMembers = !!myPermissions?.tenant_permissions.manage_members;
 
   const joinedTeams = useMemo(() => {
     return tenantList
@@ -165,9 +168,11 @@ export function TeamManagement() {
                 )}
                 {activity === TeamRole.Member &&
                   (isMyCreatedTeam ? (
-                    <Button onClick={showAddingTenantModal}>
-                      <UserPlus /> {t('setting.invite')}
-                    </Button>
+                    canManageMembers && (
+                      <Button onClick={showAddingTenantModal}>
+                        <UserPlus /> {t('setting.invite')}
+                      </Button>
+                    )
                   ) : (
                     <ConfirmDeleteDialog
                       onOk={handleQuitTenantUser}
@@ -202,8 +207,9 @@ export function TeamManagement() {
           initialValues={group}
         ></CreateGroupDialog>
       )}
-      {addingTenantModalVisible && (
+      {canManageMembers && addingTenantModalVisible && (
         <InviteDialog
+          tenantId={currentTeamId}
           hideModal={hideAddingTenantModal}
           onOk={handleAddUserOk}
         ></InviteDialog>

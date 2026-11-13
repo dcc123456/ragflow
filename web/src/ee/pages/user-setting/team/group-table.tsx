@@ -12,6 +12,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { ITenantGroup } from '@/ee/interfaces/database/team';
+import { TenantMembershipStatus } from '@/pages/user-setting/constants';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -25,6 +26,9 @@ const MEMBER_AVATAR_CLASS = 'size-6';
 const MEMBER_AVATAR_STYLE: React.CSSProperties = {
   boxShadow: '0 0 0 2px var(--bg-base)',
 };
+const OWNER_AVATAR_STYLE: React.CSSProperties = {
+  boxShadow: '0 0 0 2px rgb(var(--accent-primary))',
+};
 
 type GroupRow = {
   group: ITenantGroup;
@@ -37,6 +41,11 @@ type GroupTree = {
   childrenMap: Map<string, ITenantGroup[]>;
   roots: ITenantGroup[];
 };
+
+const compareGroupNames = (left: ITenantGroup, right: ITenantGroup) =>
+  (left.name ?? '').localeCompare(right.name ?? '', undefined, {
+    sensitivity: 'base',
+  }) || left.id.localeCompare(right.id);
 
 const buildGroupTree = (groups: ITenantGroup[]): GroupTree => {
   const groupIds = new Set(groups.map((group) => group.id));
@@ -57,9 +66,10 @@ const buildGroupTree = (groups: ITenantGroup[]): GroupTree => {
     childrenMap.set(parentId, children);
   });
 
-  const roots = groups.filter(
-    (group) => !group.parent_id || !groupIds.has(group.parent_id),
-  );
+  childrenMap.forEach((children) => children.sort(compareGroupNames));
+  const roots = groups
+    .filter((group) => !group.parent_id || !groupIds.has(group.parent_id))
+    .sort(compareGroupNames);
 
   return { childrenMap, roots };
 };
@@ -82,14 +92,21 @@ function GroupMemberStack({ group }: { group: ITenantGroup }) {
         name={member.nickname || member.email}
         avatar={member.avatar}
         isPerson
-        className={MEMBER_AVATAR_CLASS}
+        className={`${MEMBER_AVATAR_CLASS} ${
+          member.tenant_status === TenantMembershipStatus.Left
+            ? 'opacity-50'
+            : ''
+        }`}
+        style={{
+          ...(member.is_owner ? OWNER_AVATAR_STYLE : {}),
+        }}
       />
     );
   }
 
   return (
     <AvatarGroup
-      className="flex-row ps-2"
+      className="justify-end ps-2"
       {...(members.length > MEMBER_PREVIEW_LIMIT
         ? { max: MEMBER_PREVIEW_LIMIT }
         : {})}
@@ -100,8 +117,15 @@ function GroupMemberStack({ group }: { group: ITenantGroup }) {
           name={member.nickname || member.email}
           avatar={member.avatar}
           isPerson
-          className={MEMBER_AVATAR_CLASS}
-          style={{ ...MEMBER_AVATAR_STYLE, zIndex: members.length - index }}
+          className={`${MEMBER_AVATAR_CLASS} ${
+            member.tenant_status === TenantMembershipStatus.Left
+              ? 'opacity-50'
+              : ''
+          }`}
+          style={{
+            ...(member.is_owner ? OWNER_AVATAR_STYLE : MEMBER_AVATAR_STYLE),
+            zIndex: members.length - index,
+          }}
         />
       ))}
     </AvatarGroup>
@@ -111,7 +135,7 @@ function GroupMemberStack({ group }: { group: ITenantGroup }) {
 export function GroupTable({ keyword }: { keyword: string }) {
   const { t } = useTranslation();
   const { data: groups, loading } = useTenantGroups();
-  const [collapsedIds, setCollapsedIds] = useState<ReadonlySet<string>>(
+  const [expandedIds, setExpandedIds] = useState<ReadonlySet<string>>(
     new Set(),
   );
 
@@ -178,7 +202,7 @@ export function GroupTable({ keyword }: { keyword: string }) {
       }
 
       const children = childrenMap.get(group.id) ?? [];
-      const expanded = !!normalizedKeyword || !collapsedIds.has(group.id);
+      const expanded = !!normalizedKeyword || expandedIds.has(group.id);
 
       result.push({
         group,
@@ -195,7 +219,7 @@ export function GroupTable({ keyword }: { keyword: string }) {
     roots.forEach((root) => visit(root, 0));
 
     return result;
-  }, [childrenMap, collapsedIds, normalizedKeyword, roots, visibleGroupIds]);
+  }, [childrenMap, expandedIds, normalizedKeyword, roots, visibleGroupIds]);
 
   const handleToggleGroup = useCallback(
     (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -205,7 +229,7 @@ export function GroupTable({ keyword }: { keyword: string }) {
         return;
       }
 
-      setCollapsedIds((previous) => {
+      setExpandedIds((previous) => {
         const next = new Set(previous);
 
         if (next.has(groupId)) {

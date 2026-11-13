@@ -3,11 +3,17 @@ import {
   ConfirmDeleteDialogNode,
 } from '@/components/confirm-delete-dialog';
 import { Button } from '@/components/ui/button';
-import { GroupPermission, hasResourcePermission } from '@/ee/constants/team';
-import { ITenantGroup } from '@/ee/interfaces/database/team';
 import {
-  ArrowLeftRight,
+  GroupMemberStatus,
+  GroupPermission,
+  hasResourcePermission,
+} from '@/ee/constants/team';
+import { ITenantGroup } from '@/ee/interfaces/database/team';
+import { useFetchUserInfo } from '@/hooks/use-user-setting-request';
+import {
   LayersPlus,
+  LogOut,
+  Move,
   Pencil,
   Trash2,
   UserCog,
@@ -16,10 +22,14 @@ import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { GroupFormDialog } from './group-form-dialog';
 import { GroupMembersDialog } from './group-members-dialog';
-import { TransferOwnerDialog } from './transfer-owner-dialog';
-import { useDeleteTenantGroup } from './use-group-query';
+import { MoveGroupDialog } from './move-group-dialog';
+import {
+  useDeleteTenantGroup,
+  useRemoveTenantGroupMember,
+  useTenantGroupMembers,
+} from './use-group-query';
 
-type ActiveGroupDialog = 'edit' | 'subgroup' | 'members' | 'transfer' | null;
+type ActiveGroupDialog = 'edit' | 'subgroup' | 'members' | 'move' | null;
 
 export function GroupRowActions({
   group,
@@ -30,7 +40,15 @@ export function GroupRowActions({
 }) {
   const { t } = useTranslation();
   const [activeDialog, setActiveDialog] = useState<ActiveGroupDialog>(null);
+  const { data: userInfo } = useFetchUserInfo();
+  const { data: members } = useTenantGroupMembers(
+    group.id,
+    group.member_count > 0,
+  );
   const { deleteGroup } = useDeleteTenantGroup(group.id);
+  const { loading: leaving, removeMember } = useRemoveTenantGroupMember(
+    group.id,
+  );
 
   const permission = group.permission;
   const canEdit = hasResourcePermission(permission, GroupPermission.Owner);
@@ -49,9 +67,21 @@ export function GroupRowActions({
     permission,
     GroupPermission.Owner,
   );
+  const canMoveGroup = group.parent_id
+    ? hasResourcePermission(parentPermission, GroupPermission.DeleteSubgroup)
+    : canTransferOwner;
+  const canOpenMemberManagement = canManageMembers || canTransferOwner;
   const canDelete =
     hasResourcePermission(permission, GroupPermission.Owner) ||
     hasResourcePermission(parentPermission, GroupPermission.DeleteSubgroup);
+  const isMember =
+    group.is_member ||
+    members.some(
+      (member) =>
+        member.user_id === userInfo.id &&
+        member.status === GroupMemberStatus.Joined,
+    );
+  const canLeave = isMember && !group.is_owner && !!userInfo.id;
 
   const handleShowEdit = useCallback(() => {
     setActiveDialog('edit');
@@ -65,8 +95,8 @@ export function GroupRowActions({
     setActiveDialog('members');
   }, []);
 
-  const handleShowTransferOwner = useCallback(() => {
-    setActiveDialog('transfer');
+  const handleShowMoveGroup = useCallback(() => {
+    setActiveDialog('move');
   }, []);
 
   const handleHideDialog = useCallback(() => {
@@ -76,6 +106,12 @@ export function GroupRowActions({
   const handleDelete = useCallback(async () => {
     await deleteGroup();
   }, [deleteGroup]);
+
+  const handleLeave = useCallback(async () => {
+    if (userInfo.id) {
+      await removeMember(userInfo.id);
+    }
+  }, [removeMember, userInfo.id]);
 
   return (
     <div className="flex items-center justify-end gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
@@ -101,7 +137,7 @@ export function GroupRowActions({
           <LayersPlus />
         </Button>
       )}
-      {canManageMembers && (
+      {canOpenMemberManagement && (
         <Button
           variant="ghost"
           size="icon-sm"
@@ -112,16 +148,42 @@ export function GroupRowActions({
           <UserCog />
         </Button>
       )}
-      {canTransferOwner && (
+      {canMoveGroup && (
         <Button
           variant="ghost"
           size="icon-sm"
-          onClick={handleShowTransferOwner}
-          aria-label={t('permission.transferOwner')}
-          title={t('permission.transferOwner')}
+          onClick={handleShowMoveGroup}
+          aria-label={t('common.move')}
+          title={t('common.move')}
         >
-          <ArrowLeftRight />
+          <Move />
         </Button>
+      )}
+      {canLeave && (
+        <ConfirmDeleteDialog
+          onOk={handleLeave}
+          title={t('permission.leaveGroup')}
+          okButtonText={t('permission.leaveGroup')}
+          content={{
+            node: (
+              <ConfirmDeleteDialogNode
+                avatar={{ avatar: group.avatar, name: group.name }}
+                name={group.name}
+                warnText={t('permission.leaveGroupHint')}
+              />
+            ),
+          }}
+        >
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            disabled={leaving}
+            aria-label={t('permission.leaveGroup')}
+            title={t('permission.leaveGroup')}
+          >
+            <LogOut />
+          </Button>
+        </ConfirmDeleteDialog>
       )}
       {canDelete && (
         <ConfirmDeleteDialog
@@ -156,8 +218,8 @@ export function GroupRowActions({
       {activeDialog === 'members' && (
         <GroupMembersDialog group={group} hideModal={handleHideDialog} />
       )}
-      {activeDialog === 'transfer' && (
-        <TransferOwnerDialog group={group} hideModal={handleHideDialog} />
+      {activeDialog === 'move' && (
+        <MoveGroupDialog group={group} hideModal={handleHideDialog} />
       )}
     </div>
   );

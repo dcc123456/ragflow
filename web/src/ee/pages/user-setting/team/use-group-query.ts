@@ -7,7 +7,7 @@ import {
   UpdateTenantGroupPayload,
   createTenantGroup,
   deleteTenantGroup,
-  inviteTenantGroupMember,
+  addTenantGroupMember,
   listTenantGroupMembers,
   listTenantGroups,
   moveTenantGroup,
@@ -23,20 +23,26 @@ export const GroupKeys = {
   all: ['tenantGroup'] as const,
   list: () => [...GroupKeys.all, 'list'] as const,
   members: (groupId: string) => [...GroupKeys.all, 'members', groupId] as const,
+  memberLists: () => [...GroupKeys.all, 'members'] as const,
   action: (action: string, groupId: string) =>
     [...GroupKeys.all, 'action', action, groupId] as const,
 };
 
-const useInvalidateGroupQueries = (groupId?: string) => {
+const useInvalidateGroupQueries = (
+  groupId?: string,
+  allMemberLists = false,
+) => {
   const queryClient = useQueryClient();
 
   return useCallback(() => {
     queryClient.invalidateQueries({ queryKey: GroupKeys.list() });
 
-    if (groupId) {
+    if (allMemberLists) {
+      queryClient.invalidateQueries({ queryKey: GroupKeys.memberLists() });
+    } else if (groupId) {
       queryClient.invalidateQueries({ queryKey: GroupKeys.members(groupId) });
     }
-  }, [groupId, queryClient]);
+  }, [allMemberLists, groupId, queryClient]);
 };
 
 const useGroupMutation = <TVariables>(
@@ -165,23 +171,23 @@ export const useDeleteTenantGroup = (groupId: string) => {
   return { loading, deleteGroup: run };
 };
 
-export const useInviteTenantGroupMember = (groupId: string) => {
+export const useAddTenantGroupMember = (groupId: string) => {
   const invalidate = useInvalidateGroupQueries(groupId);
   const { loading, run } = useGroupMutation(
-    GroupKeys.action('inviteMember', groupId),
+    GroupKeys.action('addMember', groupId),
     async (userId: string) => {
-      const { data } = await inviteTenantGroupMember(groupId, userId);
+      const { data } = await addTenantGroupMember(groupId, userId);
 
       return data?.code;
     },
     invalidate,
   );
 
-  return { loading, inviteMember: run };
+  return { loading, addMember: run };
 };
 
 export const useRemoveTenantGroupMember = (groupId: string) => {
-  const invalidate = useInvalidateGroupQueries(groupId);
+  const invalidate = useInvalidateGroupQueries(groupId, true);
   const { loading, run } = useGroupMutation(
     GroupKeys.action('removeMember', groupId),
     async (userId: string) => {

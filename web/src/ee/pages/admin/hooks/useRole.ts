@@ -99,20 +99,36 @@ export function useMutateRole(roleName: string) {
   });
 
   const updateRolePermissionMutation = useMutation({
-    mutationFn: (data: {
+    mutationFn: async (data: {
       resourceName: string;
-      permissionType: PermissionType;
-      value: boolean;
+      permissions: Partial<Record<PermissionType, boolean>>;
     }) => {
-      const permissionDiffData = {
-        [data.resourceName]: {
-          [data.permissionType]: data.value,
-        },
-      };
+      const toGrant: Partial<AdminService.PermissionData> = {};
+      const toRevoke: Partial<AdminService.PermissionData> = {};
+      for (const [action, enabled] of Object.entries(data.permissions) as [
+        PermissionType,
+        boolean,
+      ][]) {
+        if (enabled) {
+          toGrant[action] = true;
+        } else {
+          toRevoke[action] = false;
+        }
+      }
 
-      return data.value
-        ? assignRolePermissions(roleName, permissionDiffData)
-        : revokeRolePermissions(roleName, permissionDiffData);
+      const revokeData = {
+        [data.resourceName]: toRevoke,
+      } as Partial<AdminService.RevokeRolePermissionInput>;
+      const assignData = {
+        [data.resourceName]: toGrant,
+      } as Partial<AdminService.AssignRolePermissionsInput>;
+
+      if (Object.keys(toRevoke).length > 0) {
+        await revokeRolePermissions(roleName, revokeData);
+      }
+      if (Object.keys(toGrant).length > 0) {
+        await assignRolePermissions(roleName, assignData);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({

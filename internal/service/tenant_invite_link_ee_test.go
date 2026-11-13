@@ -122,27 +122,27 @@ func TestTenantInviteLinkCanBeUsedByMultipleUsersForSevenDays(t *testing.T) {
 	}
 	for _, userID := range []string{"first-user", "second-user"} {
 		inviteeCtx := permission.WithIdentity(t.Context(), userID, tenantID)
-		if err := svc.AcceptTenantInviteLinkEE(inviteeCtx, userID, link.Token, store); err != nil {
-			t.Fatalf("AcceptTenantInviteLinkEE(%q) error = %v", userID, err)
+		if err := svc.RequestTenantInviteLinkEE(inviteeCtx, userID, link.Token, store); err != nil {
+			t.Fatalf("RequestTenantInviteLinkEE(%q) error = %v", userID, err)
 		}
 		var membership entity.UserTenant
 		if err := db.Where("user_id = ? AND tenant_id = ?", userID, tenantID).Take(&membership).Error; err != nil {
 			t.Fatalf("load membership for %q: %v", userID, err)
 		}
-		if membership.Role != "45" || membership.InvitedBy != "owner-user" || membership.Status == nil || *membership.Status != entity.TenantMembershipStatusJoined {
+		if membership.Role != "" || membership.InvitedBy != "owner-user" || membership.Status == nil || *membership.Status != entity.TenantMembershipStatusRequested {
 			t.Fatalf("membership for %q = %#v", userID, membership)
 		}
 	}
 	if store.values[key] != stored {
-		t.Fatal("accepting the link consumed it; the link must remain reusable until expiry")
+		t.Fatal("requesting with the link consumed it; the link must remain reusable until expiry")
 	}
 	var auditCount int64
 	if err := db.Model(&entity.PermissionChangeLog{}).
-		Where("event_type IN ?", []string{"tenant.invitation_link.created", "tenant.invitation_link.accepted"}).Count(&auditCount).Error; err != nil {
+		Where("event_type IN ?", []string{"tenant.invitation_link.created", "tenant.invitation_link.requested"}).Count(&auditCount).Error; err != nil {
 		t.Fatalf("count invitation link audit events: %v", err)
 	}
 	if auditCount != 3 {
-		t.Fatalf("invitation link audit events = %d, want create plus two accepts", auditCount)
+		t.Fatalf("invitation link audit events = %d, want create plus two requests", auditCount)
 	}
 	var audit entity.PermissionChangeLog
 	if err := db.Where("event_type = ?", "tenant.invitation_link.created").Take(&audit).Error; err != nil {
@@ -156,7 +156,7 @@ func TestTenantInviteLinkCanBeUsedByMultipleUsersForSevenDays(t *testing.T) {
 	}
 }
 
-func TestTenantInviteLinkAcceptanceRejectsWithoutRolePermission(t *testing.T) {
+func TestTenantInviteLinkRequestRejectsWithoutRolePermission(t *testing.T) {
 	db := setupTenantRoleTestDB(t)
 	tenantID := "tenant-disabled-link"
 	status := string(entity.StatusValid)
@@ -185,12 +185,12 @@ func TestTenantInviteLinkAcceptanceRejectsWithoutRolePermission(t *testing.T) {
 	store := newMemoryTenantInviteLinkStore()
 	store.values[tenantInviteLinkKey(token)] = string(payload)
 	svc := NewTenantService()
-	if err := svc.AcceptTenantInviteLinkEE(permission.WithIdentity(t.Context(), "invitee", tenantID), "invitee", token, store); err == nil {
-		t.Fatal("AcceptTenantInviteLinkEE() succeeded without Tenant invitation permission")
+	if err := svc.RequestTenantInviteLinkEE(permission.WithIdentity(t.Context(), "invitee", tenantID), "invitee", token, store); err == nil {
+		t.Fatal("RequestTenantInviteLinkEE() succeeded without Tenant invitation permission")
 	} else {
 		var coded *common.CodedError
 		if !errors.As(err, &coded) || coded.Code != common.CodeForbidden {
-			t.Fatalf("AcceptTenantInviteLinkEE() error = %v, want forbidden role-permission rejection", err)
+			t.Fatalf("RequestTenantInviteLinkEE() error = %v, want forbidden role-permission rejection", err)
 		}
 	}
 	var count int64

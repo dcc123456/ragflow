@@ -58,7 +58,10 @@ export default function BasicLogin({ onLicenseError }: BasicLoginProps) {
   const { login, loading: loginLoading } = useLogin();
   const { config } = useSystemConfig();
   const { currentChannelType, typeGroupedChannels } = useLoginChannels();
-  const redirectTo = searchParams.get('redirect') || '/';
+  const redirectTo =
+    searchParams.get('redirect') ||
+    (location.state as { redirectTo?: string } | null)?.redirectTo ||
+    '/';
   const { login: loginWithChannel } = useLoginWithChannel();
 
   const form = useForm<SchemaType>({

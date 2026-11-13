@@ -135,7 +135,7 @@ func (h *TenantHandler) ListGroupMembers(c *gin.Context) {
 	common.RespondSuccess(c, gin.H{"members": members}, "")
 }
 
-func (h *TenantHandler) InviteGroupMember(c *gin.Context) {
+func (h *TenantHandler) AddGroupMember(c *gin.Context) {
 	userID, tenantID, ok := tenantRoleRequestContext(c)
 	if !ok {
 		return
@@ -147,7 +147,7 @@ func (h *TenantHandler) InviteGroupMember(c *gin.Context) {
 		common.RespondError(c, common.CodeBadRequest, "user_id is required")
 		return
 	}
-	member, err := service.NewGroupService().InviteGroupMember(c.Request.Context(), userID, tenantID, strings.TrimSpace(c.Param("group_id")), request.UserID)
+	member, err := service.NewGroupService().AddGroupMember(c.Request.Context(), userID, tenantID, strings.TrimSpace(c.Param("group_id")), request.UserID)
 	if err != nil {
 		writeGroupError(c, err)
 		return
@@ -205,39 +205,6 @@ func (h *TenantHandler) TransferGroupOwnership(c *gin.Context) {
 		return
 	}
 	common.RespondSuccess(c, group, "")
-}
-
-func (h *TenantHandler) ListGroupInvitations(c *gin.Context) {
-	userID, tenantID, ok := tenantRoleRequestContext(c)
-	if !ok {
-		return
-	}
-	invitations, err := service.NewGroupService().ListGroupInvitations(c.Request.Context(), userID, tenantID)
-	if err != nil {
-		writeGroupError(c, err)
-		return
-	}
-	common.RespondSuccess(c, gin.H{"invitations": invitations}, "")
-}
-
-func (h *TenantHandler) RespondToGroupInvitation(c *gin.Context) {
-	userID, tenantID, ok := tenantRoleRequestContext(c)
-	if !ok {
-		return
-	}
-	var request struct {
-		Accept *bool `json:"accept" binding:"required"`
-	}
-	if err := c.ShouldBindJSON(&request); err != nil || request.Accept == nil {
-		common.RespondError(c, common.CodeBadRequest, "accept is required")
-		return
-	}
-	if err := service.NewGroupService().RespondToGroupInvitation(c.Request.Context(), userID, tenantID,
-		strings.TrimSpace(c.Param("invitation_id")), *request.Accept); err != nil {
-		writeGroupError(c, err)
-		return
-	}
-	common.RespondSuccess(c, gin.H{"success": true}, "")
 }
 
 func writeGroupError(c *gin.Context, err error) {

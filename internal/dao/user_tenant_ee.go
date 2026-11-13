@@ -70,8 +70,8 @@ func (dao *UserTenantDAO) FindActiveTenantIDForLogin(ctx context.Context, db *go
 	return choice.TenantID, nil
 }
 
-// GetMembersByTenantIDIncludingOwner returns active, invited, and requested
-// tenant members, including the owner.
+// GetMembersByTenantIDIncludingOwner returns joined, invited, requested, and
+// left tenant members, including the owner.
 func (dao *UserTenantDAO) GetMembersByTenantIDIncludingOwner(ctx context.Context, db *gorm.DB, tenantID string) ([]*TenantMemberItem, error) {
 	var results []*TenantMemberItem
 	err := db.WithContext(ctx).Table("user_tenant").
@@ -80,11 +80,15 @@ func (dao *UserTenantDAO) GetMembersByTenantIDIncludingOwner(ctx context.Context
 			"user.status AS is_active, user.is_anonymous, user.is_superuser, "+
 			"DATE_FORMAT(user.update_date, '%Y-%m-%dT%H:%i:%s') AS update_date").
 		Joins("JOIN user ON user_tenant.user_id = user.id").
-		Where("user_tenant.tenant_id = ? AND user_tenant.status IN ?", tenantID, []string{
-			entity.TenantMembershipStatusJoined,
-			entity.TenantMembershipStatusInvited,
-			entity.TenantMembershipStatusRequested,
-		}).
+		Where("user_tenant.tenant_id = ? AND (user_tenant.status IN ? OR (user_tenant.status = ? AND user_tenant.role <> ''))",
+			tenantID,
+			[]string{
+				entity.TenantMembershipStatusJoined,
+				entity.TenantMembershipStatusInvited,
+				entity.TenantMembershipStatusRequested,
+			},
+			entity.TenantMembershipStatusLeft,
+		).
 		Scan(&results).Error
 	return results, err
 }

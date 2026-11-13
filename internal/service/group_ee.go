@@ -22,6 +22,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"unicode/utf8"
 
@@ -71,32 +72,24 @@ type GroupItem struct {
 	FormattedPath *string  `json:"formatted_path,omitempty"`
 	Status        string   `json:"status"`
 	IsOwner       bool     `json:"is_owner"`
+	IsMember      bool     `json:"is_member"`
 	Permission    int32    `json:"permission"`
 	Permissions   []string `json:"permissions"`
 	MemberCount   int64    `json:"member_count"`
 }
 
-// GroupMemberItem describes a Tenant member's group membership and permissions.
+// GroupMemberItem describes a Tenant user's group membership and permissions.
 type GroupMemberItem struct {
-	MemberID    string   `json:"member_id"`
-	UserID      string   `json:"user_id"`
-	Nickname    string   `json:"nickname"`
-	Email       string   `json:"email"`
-	Avatar      *string  `json:"avatar,omitempty"`
-	Status      string   `json:"status"`
-	IsOwner     bool     `json:"is_owner"`
-	Permission  int32    `json:"permission"`
-	Permissions []string `json:"permissions"`
-}
-
-// GroupInvitationItem is a pending invitation for the current user.
-type GroupInvitationItem struct {
-	ID         string  `json:"id"`
-	GroupID    string  `json:"group_id"`
-	GroupName  *string `json:"group_name,omitempty"`
-	InvitedBy  string  `json:"invited_by"`
-	Status     string  `json:"status"`
-	CreateTime *int64  `json:"create_time,omitempty"`
+	MemberID     string   `json:"member_id"`
+	UserID       string   `json:"user_id"`
+	Nickname     string   `json:"nickname"`
+	Email        string   `json:"email"`
+	Avatar       *string  `json:"avatar,omitempty"`
+	Status       string   `json:"status"`
+	TenantStatus string   `json:"tenant_status"`
+	IsOwner      bool     `json:"is_owner"`
+	Permission   int32    `json:"permission"`
+	Permissions  []string `json:"permissions"`
 }
 
 // CreateGroupRequest contains the fields needed to create a root group or subgroup.
@@ -140,7 +133,7 @@ func (s *GroupService) ListGroups(ctx context.Context, userID, tenantID string) 
 		if !access.memberships[group.ID] && mask == 0 {
 			continue
 		}
-		item, err := makeGroupItem(db, &group, access.membership.ID, mask)
+		item, err := makeGroupItem(db, &group, access.membership.ID, mask, access.memberships[group.ID])
 		if err != nil {
 			return nil, err
 		}
@@ -167,7 +160,7 @@ func (s *GroupService) GetGroup(ctx context.Context, userID, tenantID, groupID s
 	if !access.memberships[group.ID] && mask == 0 {
 		return nil, common.NewCodedError(common.CodeNotFound, "Group not found")
 	}
-	return makeGroupItem(db, group, access.membership.ID, mask)
+	return makeGroupItem(db, group, access.membership.ID, mask, access.memberships[group.ID])
 }
 
 // CreateGroup creates a root group or a child group, depending on parent_id.
@@ -250,7 +243,7 @@ func (s *GroupService) CreateGroup(ctx context.Context, userID, tenantID string,
 	if err != nil {
 		return nil, err
 	}
-	return makeGroupItem(dao.DB.WithContext(ctx), &group, ownerMembershipID, groupPermissionOperationMask|entity.GroupPermissionOwner)
+	return makeGroupItem(dao.DB.WithContext(ctx), &group, ownerMembershipID, groupPermissionOperationMask|entity.GroupPermissionOwner, true)
 }
 
 type groupAccess struct {
@@ -369,7 +362,7 @@ func hasAncestorOwner(groups []entity.GroupInfo, group entity.GroupInfo, memberI
 	return false
 }
 
-func makeGroupItem(db *gorm.DB, group *entity.GroupInfo, currentMemberID string, mask int32) (*GroupItem, error) {
+func makeGroupItem(db *gorm.DB, group *entity.GroupInfo, currentMemberID string, mask int32, isMember bool) (*GroupItem, error) {
 	var owner entity.UserTenant
 	ownerUserID := ""
 	if err := db.Select("user_id").Where("id = ? AND tenant_id = ?", group.OwnerID, group.TenantID).Take(&owner).Error; err == nil {
@@ -380,8 +373,9 @@ func makeGroupItem(db *gorm.DB, group *entity.GroupInfo, currentMemberID string,
 	var memberCount int64
 	if err := db.Table("group_member").
 		Joins("JOIN user_tenant ON user_tenant.id = group_member.member_id").
-		Where("group_member.group_id = ? AND group_member.status = ? AND user_tenant.status = ?",
-			group.ID, entity.GroupMemberStatusJoined, string(entity.StatusValid)).
+		Where("group_member.group_id = ? AND group_member.status = ? AND (user_tenant.status = ? OR (user_tenant.status = ? AND user_tenant.role <> ''))",
+			group.ID, entity.GroupMemberStatusJoined,
+			entity.TenantMembershipStatusJoined, entity.TenantMembershipStatusLeft).
 		Count(&memberCount).Error; err != nil {
 		return nil, fmt.Errorf("count group members: %w", err)
 	}
@@ -398,6 +392,7 @@ func makeGroupItem(db *gorm.DB, group *entity.GroupInfo, currentMemberID string,
 		FormattedPath: group.FormattedPath,
 		Status:        groupStringValue(group.Status),
 		IsOwner:       group.OwnerID == currentMemberID,
+		IsMember:      isMember,
 		Permission:    mask,
 		Permissions:   groupPermissionNames(mask),
 		MemberCount:   memberCount,
@@ -965,15 +960,16 @@ func groupStringValue(value *string) string {
 }
 
 type groupMemberDetails struct {
-	MemberID string  `gorm:"column:member_id"`
-	UserID   string  `gorm:"column:user_id"`
-	Nickname string  `gorm:"column:nickname"`
-	Email    string  `gorm:"column:email"`
-	Avatar   *string `gorm:"column:avatar"`
-	Status   string  `gorm:"column:status"`
+	MemberID     string  `gorm:"column:member_id"`
+	UserID       string  `gorm:"column:user_id"`
+	Nickname     string  `gorm:"column:nickname"`
+	Email        string  `gorm:"column:email"`
+	Avatar       *string `gorm:"column:avatar"`
+	Status       string  `gorm:"column:status"`
+	TenantStatus string  `gorm:"column:tenant_status"`
 }
 
-// ListGroupMembers returns joined members and visible invitation states.
+// ListGroupMembers returns group members and invitation states, including users who left the Tenant.
 func (s *GroupService) ListGroupMembers(ctx context.Context, userID, tenantID, groupID string) ([]*GroupMemberItem, error) {
 	db := dao.DB.WithContext(ctx)
 	if err := requireGroupFeature(ctx, db, userID, tenantID, permission.ActionRead); err != nil {
@@ -989,11 +985,12 @@ func (s *GroupService) ListGroupMembers(ctx context.Context, userID, tenantID, g
 
 	var rows []groupMemberDetails
 	if err := db.Table("group_member").
-		Select("group_member.member_id, user_tenant.user_id, user.nickname, user.email, user.avatar, group_member.status").
+		Select("group_member.member_id, user_tenant.user_id, user.nickname, user.email, user.avatar, group_member.status, user_tenant.status AS tenant_status").
 		Joins("JOIN user_tenant ON user_tenant.id = group_member.member_id").
 		Joins("JOIN user ON user.id = user_tenant.user_id").
-		Where("group_member.group_id = ? AND group_member.status IN ? AND user_tenant.status = ?", groupID,
-			[]string{entity.GroupMemberStatusJoined, entity.GroupMemberStatusInvited, entity.GroupMemberStatusRejected}, string(entity.StatusValid)).
+		Where("group_member.group_id = ? AND group_member.status IN ? AND (user_tenant.status = ? OR (user_tenant.status = ? AND user_tenant.role <> ''))", groupID,
+			[]string{entity.GroupMemberStatusJoined, entity.GroupMemberStatusInvited, entity.GroupMemberStatusRejected},
+			entity.TenantMembershipStatusJoined, entity.TenantMembershipStatusLeft).
 		Order("group_member.create_time ASC").Order("group_member.id ASC").Scan(&rows).Error; err != nil {
 		return nil, fmt.Errorf("list group members: %w", err)
 	}
@@ -1010,15 +1007,40 @@ func (s *GroupService) ListGroupMembers(ctx context.Context, userID, tenantID, g
 		}
 		result = append(result, &GroupMemberItem{
 			MemberID: row.MemberID, UserID: row.UserID, Nickname: row.Nickname,
-			Email: row.Email, Avatar: row.Avatar, Status: row.Status,
+			Email: row.Email, Avatar: row.Avatar, Status: row.Status, TenantStatus: row.TenantStatus,
 			IsOwner: isOwner, Permission: mask, Permissions: groupPermissionNames(mask),
 		})
 	}
+	sort.SliceStable(result, func(i, j int) bool {
+		if result[i].IsOwner != result[j].IsOwner {
+			return result[i].IsOwner
+		}
+		leftTenantMembership := result[i].TenantStatus == entity.TenantMembershipStatusLeft
+		rightTenantMembership := result[j].TenantStatus == entity.TenantMembershipStatusLeft
+		if leftTenantMembership != rightTenantMembership {
+			return !leftTenantMembership
+		}
+		if len(result[i].Permissions) != len(result[j].Permissions) {
+			return len(result[i].Permissions) > len(result[j].Permissions)
+		}
+		leftName := strings.ToLower(result[i].Nickname)
+		if leftName == "" {
+			leftName = strings.ToLower(result[i].Email)
+		}
+		rightName := strings.ToLower(result[j].Nickname)
+		if rightName == "" {
+			rightName = strings.ToLower(result[j].Email)
+		}
+		if leftName != rightName {
+			return leftName < rightName
+		}
+		return result[i].UserID < result[j].UserID
+	})
 	return result, nil
 }
 
-// InviteGroupMember invites a current Tenant member into one group.
-func (s *GroupService) InviteGroupMember(ctx context.Context, userID, tenantID, groupID, targetUserID string) (*GroupMemberItem, error) {
+// AddGroupMember immediately adds a current Tenant member to one group.
+func (s *GroupService) AddGroupMember(ctx context.Context, userID, tenantID, groupID, targetUserID string) (*GroupMemberItem, error) {
 	targetUserID = strings.TrimSpace(targetUserID)
 	if targetUserID == "" {
 		return nil, common.NewCodedError(common.CodeBadRequest, "user_id is required")
@@ -1038,10 +1060,22 @@ func (s *GroupService) InviteGroupMember(ctx context.Context, userID, tenantID, 
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return common.NewCodedError(common.CodeNotFound, "Group not found")
 			}
-			return fmt.Errorf("load group for invitation: %w", err)
+			return fmt.Errorf("load group for member addition: %w", err)
 		}
 		if group.OwnerID == memberID {
 			return common.NewCodedError(common.CodeConflict, "The group owner is already a group member")
+		}
+		if group.ParentID != nil && *group.ParentID != "" {
+			var parentMembership entity.GroupMember
+			err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+				Where("group_id = ? AND member_id = ? AND status = ?", *group.ParentID, memberID, entity.GroupMemberStatusJoined).
+				Take(&parentMembership).Error
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return common.NewCodedError(common.CodeForbidden, "User must belong to the parent group before joining this group")
+			}
+			if err != nil {
+				return fmt.Errorf("check parent group membership: %w", err)
+			}
 		}
 
 		var existing entity.GroupMember
@@ -1052,28 +1086,25 @@ func (s *GroupService) InviteGroupMember(ctx context.Context, userID, tenantID, 
 			if existing.Status != nil && *existing.Status == entity.GroupMemberStatusJoined {
 				return common.NewCodedError(common.CodeConflict, "User is already a group member")
 			}
-			if existing.Status != nil && *existing.Status == entity.GroupMemberStatusInvited {
-				return common.NewCodedError(common.CodeConflict, "A group invitation is already pending")
-			}
 			before = map[string]interface{}{"group_member_id": existing.ID, "status": existing.Status}
 			if err := tx.Model(&entity.GroupMember{}).Where("id = ?", existing.ID).
-				Update("status", entity.GroupMemberStatusInvited).Error; err != nil {
-				return fmt.Errorf("update group invitation: %w", err)
+				Update("status", entity.GroupMemberStatusJoined).Error; err != nil {
+				return fmt.Errorf("activate group membership: %w", err)
 			}
 		} else if errors.Is(err, gorm.ErrRecordNotFound) {
 			existing = entity.GroupMember{
 				ID: common.GenerateUUID(), MemberID: memberID, GroupID: groupID,
-				Status: groupStringPointer(entity.GroupMemberStatusInvited),
+				Status: groupStringPointer(entity.GroupMemberStatusJoined),
 			}
 			if err := tx.Create(&existing).Error; err != nil {
-				return fmt.Errorf("create group invitation: %w", err)
+				return fmt.Errorf("create group membership: %w", err)
 			}
 		} else {
 			return fmt.Errorf("load existing group membership: %w", err)
 		}
-		if err := recordTenantPermissionChange(ctx, tx, permission.TenantIDFromContext(ctx), "group.member.invited", "user", targetUserID,
+		if err := recordTenantPermissionChange(ctx, tx, permission.TenantIDFromContext(ctx), "group.member.added", "user", targetUserID,
 			groupPermissionResourceType, groupID, "grant", 0, 0, before,
-			map[string]interface{}{"group_member_id": existing.ID, "member_id": memberID, "status": entity.GroupMemberStatusInvited, "invited_by": userID}); err != nil {
+			map[string]interface{}{"group_member_id": existing.ID, "member_id": memberID, "status": entity.GroupMemberStatusJoined, "added_by": userID}); err != nil {
 			return err
 		}
 		return nil
@@ -1084,128 +1115,70 @@ func (s *GroupService) InviteGroupMember(ctx context.Context, userID, tenantID, 
 	return s.groupMemberItem(ctx, tenantID, groupID, memberID)
 }
 
-// RespondToGroupInvitation accepts or rejects one pending invitation.
-func (s *GroupService) RespondToGroupInvitation(ctx context.Context, userID, tenantID, invitationID string, accept bool) error {
-	return dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := requireGroupFeature(ctx, tx, userID, tenantID, permission.ActionEnable); err != nil {
-			return err
-		}
-		membership, _, err := tenantMemberPermission(ctx, tx, permission.TenantIDFromContext(ctx), 0)
-		if err != nil {
-			return err
-		}
-		var invitation entity.GroupMember
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			Where("id = ? AND member_id = ? AND status = ?", invitationID, membership.ID, entity.GroupMemberStatusInvited).
-			Take(&invitation).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return common.NewCodedError(common.CodeNotFound, "Pending group invitation not found")
-			}
-			return fmt.Errorf("load group invitation: %w", err)
-		}
-		group, err := findActiveGroup(tx, tenantID, invitation.GroupID, true)
-		if err != nil {
-			return err
-		}
-		newStatus := entity.GroupMemberStatusRejected
-		eventType := "group.invitation.rejected"
-		if accept {
-			newStatus = entity.GroupMemberStatusJoined
-			eventType = "group.invitation.accepted"
-		}
-		if err := tx.Model(&entity.GroupMember{}).Where("id = ?", invitation.ID).Update("status", newStatus).Error; err != nil {
-			return fmt.Errorf("update group invitation status: %w", err)
-		}
-		return recordTenantPermissionChange(ctx, tx, permission.TenantIDFromContext(ctx), eventType, "user", userID,
-			groupPermissionResourceType, group.ID, "update", 0, 0,
-			map[string]interface{}{"group_member_id": invitation.ID, "status": entity.GroupMemberStatusInvited},
-			map[string]interface{}{"group_member_id": invitation.ID, "status": newStatus})
-	})
-}
-
-// ListGroupInvitations returns current-user invitations in the active Tenant.
-func (s *GroupService) ListGroupInvitations(ctx context.Context, userID, tenantID string) ([]*GroupInvitationItem, error) {
-	db := dao.DB.WithContext(ctx)
-	if err := requireGroupFeature(ctx, db, userID, tenantID, permission.ActionRead); err != nil {
-		return nil, err
-	}
-	membership, _, err := tenantMemberPermission(ctx, db, permission.TenantIDFromContext(ctx), 0)
-	if err != nil {
-		return nil, err
-	}
-	type invitationRow struct {
-		ID         string  `gorm:"column:id"`
-		GroupID    string  `gorm:"column:group_id"`
-		GroupName  *string `gorm:"column:group_name"`
-		Status     string  `gorm:"column:status"`
-		CreateTime *int64  `gorm:"column:create_time"`
-	}
-	var rows []invitationRow
-	if err := db.Table("group_member").
-		Select("group_member.id, group_member.group_id, group_info.name AS group_name, group_member.status, group_member.create_time").
-		Joins("JOIN group_info ON group_info.id = group_member.group_id").
-		Where("group_member.member_id = ? AND group_member.status = ? AND group_info.tenant_id = ? AND group_info.status = ?",
-			membership.ID, entity.GroupMemberStatusInvited, tenantID, string(entity.StatusValid)).
-		Order("group_member.create_time ASC").Order("group_member.id ASC").Scan(&rows).Error; err != nil {
-		return nil, fmt.Errorf("list group invitations: %w", err)
-	}
-	result := make([]*GroupInvitationItem, 0, len(rows))
-	for _, row := range rows {
-		item := &GroupInvitationItem{ID: row.ID, GroupID: row.GroupID, GroupName: row.GroupName, Status: row.Status, CreateTime: row.CreateTime}
-		var log entity.PermissionChangeLog
-		if err := db.Where("tenant_id = ? AND event_type = ? AND target_id = ? AND resource_id = ?",
-			tenantID, "group.member.invited", userID, row.GroupID).Order("create_time DESC").Take(&log).Error; err == nil {
-			if log.ActorUserID != nil {
-				item.InvitedBy = *log.ActorUserID
-			}
-		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fmt.Errorf("load group invitation actor: %w", err)
-		}
-		result = append(result, item)
-	}
-	return result, nil
-}
-
-// RemoveGroupMember removes a current Tenant member and revokes their direct group-management grant.
+// RemoveGroupMember removes a member from a group subtree; members may leave it themselves.
 func (s *GroupService) RemoveGroupMember(ctx context.Context, userID, tenantID, groupID, targetUserID string) error {
 	targetUserID = strings.TrimSpace(targetUserID)
 	return dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if _, err := requireGroupPermission(ctx, tx, userID, tenantID, groupID, entity.GroupPermissionRemoveMember); err != nil {
+		access, group, err := loadGroupForTenant(ctx, tx, userID, tenantID, groupID)
+		if err != nil {
 			return err
+		}
+		isSelfLeave := userID == targetUserID
+		if !isSelfLeave && access.masks[group.ID]&entity.GroupPermissionRemoveMember == 0 {
+			return common.NewCodedError(common.CodeForbidden, "Group permission denied")
 		}
 		membership, err := findTenantMembership(tx, tenantID, targetUserID, true)
 		if err != nil {
 			return err
 		}
-		var group entity.GroupInfo
-		if err := tx.Where("id = ? AND tenant_id = ? AND status = ?", groupID, tenantID, string(entity.StatusValid)).Take(&group).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return common.NewCodedError(common.CodeNotFound, "Group not found")
+		groups := groupSubtree(access.groups, group.ID)
+		groupIDs := make([]string, 0, len(groups))
+		for _, item := range groups {
+			groupIDs = append(groupIDs, item.ID)
+			if item.OwnerID != membership.ID {
+				continue
 			}
-			return fmt.Errorf("load group for member removal: %w", err)
+			if item.ID == group.ID {
+				return common.NewCodedError(common.CodeConflict, "Transfer group ownership before removing the owner")
+			}
+			groupName := groupStringValue(item.Name)
+			if groupName == "" {
+				groupName = item.ID
+			}
+			return common.NewCodedError(common.CodeConflict, fmt.Sprintf("Transfer ownership of descendant group %q before removing this member", groupName))
 		}
-		if group.OwnerID == membership.ID {
-			return common.NewCodedError(common.CodeConflict, "Transfer group ownership before removing the owner")
-		}
-		var groupMember entity.GroupMember
+
+		var groupMembers []entity.GroupMember
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			Where("group_id = ? AND member_id = ? AND status <> ?", groupID, membership.ID, entity.GroupMemberStatusRemoved).
-			Order("create_time DESC").Take(&groupMember).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return common.NewCodedError(common.CodeNotFound, "Group member not found")
-			}
-			return fmt.Errorf("load group member: %w", err)
+			Where("group_id IN ? AND member_id = ? AND status <> ?", groupIDs, membership.ID, entity.GroupMemberStatusRemoved).
+			Order("create_time DESC").Find(&groupMembers).Error; err != nil {
+			return fmt.Errorf("load group subtree memberships: %w", err)
 		}
-		beforeStatus := groupMember.Status
-		if err := tx.Model(&entity.GroupMember{}).Where("id = ?", groupMember.ID).Update("status", entity.GroupMemberStatusRemoved).Error; err != nil {
-			return fmt.Errorf("remove group member: %w", err)
+		memberIDs := make([]string, 0, len(groupMembers))
+		hasRootMembership := false
+		rootMembershipStatus := ""
+		for _, groupMember := range groupMembers {
+			memberIDs = append(memberIDs, groupMember.ID)
+			if groupMember.GroupID == group.ID {
+				hasRootMembership = true
+				rootMembershipStatus = groupStringValue(groupMember.Status)
+			}
+		}
+		if !hasRootMembership {
+			return common.NewCodedError(common.CodeNotFound, "Group member not found")
+		}
+		if isSelfLeave && rootMembershipStatus != entity.GroupMemberStatusJoined {
+			return common.NewCodedError(common.CodeNotFound, "Joined group member not found")
+		}
+		if err := tx.Model(&entity.GroupMember{}).Where("id IN ?", memberIDs).Update("status", entity.GroupMemberStatusRemoved).Error; err != nil {
+			return fmt.Errorf("remove group subtree memberships: %w", err)
 		}
 		var grants []entity.Permission
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			Where("tenant_id = ? AND resource_type = ? AND resource_id = ? AND member_id = ? AND status = ? AND (group_id IS NULL OR group_id = '')",
-				tenantID, groupPermissionResourceType, groupID, membership.ID, string(entity.StatusValid)).
+			Where("tenant_id = ? AND resource_type = ? AND resource_id IN ? AND member_id = ? AND status = ? AND (group_id IS NULL OR group_id = '')",
+				tenantID, groupPermissionResourceType, groupIDs, membership.ID, string(entity.StatusValid)).
 			Find(&grants).Error; err != nil {
-			return fmt.Errorf("load member group permissions: %w", err)
+			return fmt.Errorf("load member group subtree permissions: %w", err)
 		}
 		if len(grants) > 0 {
 			grantIDs := make([]string, 0, len(grants))
@@ -1213,18 +1186,24 @@ func (s *GroupService) RemoveGroupMember(ctx context.Context, userID, tenantID, 
 				grantIDs = append(grantIDs, grant.ID)
 			}
 			if err := tx.Model(&entity.Permission{}).Where("id IN ?", grantIDs).Update("status", string(entity.StatusInvalid)).Error; err != nil {
-				return fmt.Errorf("revoke member group permissions: %w", err)
+				return fmt.Errorf("revoke member group subtree permissions: %w", err)
 			}
 		}
-		if err := recordTenantPermissionChange(ctx, tx, permission.TenantIDFromContext(ctx), "group.member.removed", "user", targetUserID,
-			groupPermissionResourceType, groupID, "revoke", 0, 0,
-			map[string]interface{}{"group_member_id": groupMember.ID, "status": beforeStatus},
-			map[string]interface{}{"group_member_id": groupMember.ID, "status": entity.GroupMemberStatusRemoved}); err != nil {
-			return err
+		eventType, actionType := "group.member.removed", "revoke"
+		if isSelfLeave {
+			eventType, actionType = "group.member.left", "leave"
+		}
+		for _, groupMember := range groupMembers {
+			if err := recordTenantPermissionChange(ctx, tx, permission.TenantIDFromContext(ctx), eventType, "user", targetUserID,
+				groupPermissionResourceType, groupMember.GroupID, actionType, 0, 0,
+				map[string]interface{}{"group_member_id": groupMember.ID, "status": groupMember.Status},
+				map[string]interface{}{"group_member_id": groupMember.ID, "status": entity.GroupMemberStatusRemoved}); err != nil {
+				return err
+			}
 		}
 		for _, grant := range grants {
 			if err := recordTenantPermissionChange(ctx, tx, permission.TenantIDFromContext(ctx), "group.member.permissions.revoked", "user", targetUserID,
-				groupPermissionResourceType, groupID, "revoke", grant.Permission, 0,
+				groupPermissionResourceType, groupStringValue(grant.ResourceID), "revoke", grant.Permission, 0,
 				map[string]interface{}{"permission_id": grant.ID, "permission": grant.Permission},
 				map[string]interface{}{"permission_id": grant.ID, "permission": 0, "status": entity.StatusInvalid}); err != nil {
 				return err
@@ -1288,10 +1267,11 @@ func (s *GroupService) groupMemberItem(ctx context.Context, tenantID, groupID, m
 	db := dao.DB.WithContext(ctx)
 	var row groupMemberDetails
 	if err := db.Table("group_member").
-		Select("group_member.member_id, user_tenant.user_id, user.nickname, user.email, user.avatar, group_member.status").
+		Select("group_member.member_id, user_tenant.user_id, user.nickname, user.email, user.avatar, group_member.status, user_tenant.status AS tenant_status").
 		Joins("JOIN user_tenant ON user_tenant.id = group_member.member_id").
 		Joins("JOIN user ON user.id = user_tenant.user_id").
-		Where("group_member.group_id = ? AND group_member.member_id = ? AND user_tenant.status = ?", groupID, memberID, string(entity.StatusValid)).
+		Where("group_member.group_id = ? AND group_member.member_id = ? AND (user_tenant.status = ? OR (user_tenant.status = ? AND user_tenant.role <> ''))", groupID, memberID,
+			entity.TenantMembershipStatusJoined, entity.TenantMembershipStatusLeft).
 		Order("group_member.create_time DESC").Take(&row).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, common.NewCodedError(common.CodeNotFound, "Group member not found")
@@ -1312,7 +1292,7 @@ func (s *GroupService) groupMemberItem(ctx context.Context, tenantID, groupID, m
 	}
 	return &GroupMemberItem{
 		MemberID: row.MemberID, UserID: row.UserID, Nickname: row.Nickname, Email: row.Email,
-		Avatar: row.Avatar, Status: row.Status, IsOwner: isOwner, Permission: mask,
+		Avatar: row.Avatar, Status: row.Status, TenantStatus: row.TenantStatus, IsOwner: isOwner, Permission: mask,
 		Permissions: groupPermissionNames(mask),
 	}, nil
 }

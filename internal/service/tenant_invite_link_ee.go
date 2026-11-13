@@ -34,6 +34,7 @@ import (
 	"ragflow/internal/dao"
 	"ragflow/internal/entity"
 	"ragflow/internal/permission"
+	"ragflow/internal/service/billing"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -67,6 +68,10 @@ type TenantInviteLinkInfo struct {
 	TenantName string    `json:"tenant_name"`
 	Inviter    string    `json:"inviter"`
 	ExpiresAt  time.Time `json:"expires_at"`
+}
+
+type TenantInviteLinkMembership struct {
+	Status string `json:"status"`
 }
 
 func (s *TenantService) CreateTenantInviteLinkEE(ctx context.Context, userID, tenantID string, store tenantInviteLinkStore) (*TenantInviteLink, error) {
@@ -155,7 +160,23 @@ func (s *TenantService) GetTenantInviteLinkInfoEE(ctx context.Context, token str
 	}, nil
 }
 
-func (s *TenantService) AcceptTenantInviteLinkEE(ctx context.Context, userID, token string, store tenantInviteLinkStore) error {
+func (s *TenantService) GetTenantInviteLinkMembershipEE(ctx context.Context, userID, token string, store tenantInviteLinkStore) (*TenantInviteLinkMembership, error) {
+	payload, err := loadTenantInviteLink(ctx, token, store)
+	if err != nil {
+		return nil, err
+	}
+	var membership entity.UserTenant
+	if err := dao.DB.WithContext(ctx).Select("status").
+		Where("user_id = ? AND tenant_id = ?", userID, payload.TenantID).Take(&membership).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return &TenantInviteLinkMembership{}, nil
+		}
+		return nil, fmt.Errorf("load Tenant invitation membership: %w", err)
+	}
+	return &TenantInviteLinkMembership{Status: tenantMembershipStatus(membership.Status)}, nil
+}
+
+func (s *TenantService) RequestTenantInviteLinkEE(ctx context.Context, userID, token string, store tenantInviteLinkStore) error {
 	payload, err := loadTenantInviteLink(ctx, token, store)
 	if err != nil {
 		return err
@@ -163,11 +184,11 @@ func (s *TenantService) AcceptTenantInviteLinkEE(ctx context.Context, userID, to
 	err = dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var tenant entity.Tenant
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			Select("id", "role_id", "default_role_id").Where("id = ?", payload.TenantID).Take(&tenant).Error; err != nil {
+			Select("id", "role_id").Where("id = ?", payload.TenantID).Take(&tenant).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return common.NewCodedError(common.CodeNotFound, "Tenant invitation link is invalid or expired")
 			}
-			return fmt.Errorf("load Tenant for invitation acceptance: %w", err)
+			return fmt.Errorf("load Tenant for invitation request: %w", err)
 		}
 		enabled, err := tenantInvitationsEnabled(tx, &tenant)
 		if err != nil {
@@ -176,19 +197,17 @@ func (s *TenantService) AcceptTenantInviteLinkEE(ctx context.Context, userID, to
 		if !enabled {
 			return common.NewCodedError(common.CodeForbidden, "Tenant system role does not enable invitations")
 		}
-		role, _, err := resolveTenantInviteRoleEE(tx, payload.TenantID)
-		if err != nil {
-			return err
-		}
-
 		var membership entity.UserTenant
 		memberErr := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("user_id = ? AND tenant_id = ?", userID, payload.TenantID).Take(&membership).Error
 		if memberErr != nil && !errors.Is(memberErr, gorm.ErrRecordNotFound) {
 			return fmt.Errorf("load existing Tenant membership: %w", memberErr)
 		}
-		if memberErr == nil && tenantMembershipStatus(membership.Status) == entity.TenantMembershipStatusJoined {
-			return nil
+		if memberErr == nil {
+			switch tenantMembershipStatus(membership.Status) {
+			case entity.TenantMembershipStatusJoined, entity.TenantMembershipStatusRequested:
+				return nil
+			}
 		}
 
 		before := interface{}(nil)
@@ -198,20 +217,18 @@ func (s *TenantService) AcceptTenantInviteLinkEE(ctx context.Context, userID, to
 				"status": tenantMembershipStatus(membership.Status), "invited_by": membership.InvitedBy,
 			}
 			switch tenantMembershipStatus(membership.Status) {
-			case entity.TenantMembershipStatusInvited, entity.TenantMembershipStatusRequested,
-				entity.TenantMembershipStatusRejected, entity.TenantMembershipStatusLeft,
-				entity.TenantMembershipStatusRemoved:
+			case entity.TenantMembershipStatusInvited,
+				entity.TenantMembershipStatusRejected, entity.TenantMembershipStatusRemoved:
 			default:
 				return common.NewCodedError(common.CodeConflict, "Tenant membership has an unsupported status")
 			}
 		}
-		status := entity.TenantMembershipStatusJoined
+		status := entity.TenantMembershipStatusRequested
 		if errors.Is(memberErr, gorm.ErrRecordNotFound) {
 			membership = entity.UserTenant{
 				ID:        common.GenerateUUID(),
 				UserID:    userID,
 				TenantID:  payload.TenantID,
-				Role:      role.value,
 				InvitedBy: payload.InviterID,
 				Status:    &status,
 			}
@@ -220,14 +237,69 @@ func (s *TenantService) AcceptTenantInviteLinkEE(ctx context.Context, userID, to
 			}
 		} else {
 			if err := tx.Model(&entity.UserTenant{}).Where("id = ?", membership.ID).Updates(map[string]interface{}{
-				"role": role.value, "invited_by": payload.InviterID, "status": status,
+				"role": "", "invited_by": payload.InviterID, "status": status,
 			}).Error; err != nil {
-				return fmt.Errorf("join Tenant from invitation link: %w", err)
+				return fmt.Errorf("create Tenant membership request from invitation link: %w", err)
 			}
 		}
 		after := map[string]interface{}{
-			"user_id": userID, "role": role.value, "status": status, "invited_by": payload.InviterID,
+			"user_id": userID, "status": status, "invited_by": payload.InviterID,
 			"invitation_link": hashTenantInviteToken(token),
+		}
+		return recordTenantPermissionChange(ctx, tx, payload.TenantID,
+			"tenant.invitation_link.requested", "user", userID,
+			"tenant_membership", membership.ID, "request", 0, 0, before, after)
+	})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *TenantService) ApproveTenantMember(ctx context.Context, tenantID, targetUserID string) error {
+	db := dao.DB.WithContext(ctx)
+	err := db.Transaction(func(tx *gorm.DB) error {
+		if _, _, err := tenantMemberPermission(ctx, tx, permission.TenantIDFromContext(ctx), entity.TenantPermissionManageMembers); err != nil {
+			return err
+		}
+		var membership entity.UserTenant
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("tenant_id = ? AND user_id = ?", tenantID, targetUserID).Take(&membership).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return common.NewCodedError(common.CodeNotFound, "Tenant member not found")
+			}
+			return fmt.Errorf("load Tenant membership request: %w", err)
+		}
+		statusBefore := tenantMembershipStatus(membership.Status)
+		if statusBefore == entity.TenantMembershipStatusJoined {
+			return nil
+		}
+		if statusBefore != entity.TenantMembershipStatusRequested {
+			return common.NewCodedError(common.CodeConflict, "Tenant member has no pending join request")
+		}
+		role, _, err := resolveTenantInviteRoleEE(tx, tenantID)
+		if err != nil {
+			return err
+		}
+		if billingService := billing.Get(); billingService != nil && billingService.Enabled() {
+			if quotaErr := billingService.CheckResources(ctx, tenantID, billing.ResourceDelta{Members: 1}); quotaErr != nil {
+				if _, ok := quotaErr.(*billing.InsufficientResourceError); ok {
+					return common.NewCodedError(common.CodeBillingSeatsInsufficient, quotaErr.Error())
+				}
+				return fmt.Errorf("check Tenant seat quota: %w", quotaErr)
+			}
+		}
+
+		status := entity.TenantMembershipStatusJoined
+		if err := tx.Model(&entity.UserTenant{}).Where("id = ? AND tenant_id = ?", membership.ID, tenantID).
+			Updates(map[string]interface{}{"role": role.value, "status": status}).Error; err != nil {
+			return fmt.Errorf("approve Tenant membership request: %w", err)
+		}
+		before := map[string]interface{}{
+			"user_id": targetUserID, "role": membership.Role, "status": statusBefore,
+		}
+		after := map[string]interface{}{
+			"user_id": targetUserID, "role": role.value, "status": status,
 		}
 		if role.roleID != nil {
 			after["role_id"] = *role.roleID
@@ -235,9 +307,8 @@ func (s *TenantService) AcceptTenantInviteLinkEE(ctx context.Context, userID, to
 		if role.roleName != "" {
 			after["role_name"] = role.roleName
 		}
-		return recordTenantPermissionChange(ctx, tx, permission.TenantIDFromContext(ctx),
-			"tenant.invitation_link.accepted", "user", userID,
-			"tenant_membership", membership.ID, "join", 0, 0, before, after)
+		return recordTenantPermissionChange(ctx, tx, tenantID, "tenant.member.request_approved", "user", targetUserID,
+			"tenant_membership", membership.ID, "approve", 0, 0, before, after)
 	})
 	if err != nil {
 		return err

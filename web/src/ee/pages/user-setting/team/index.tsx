@@ -7,18 +7,25 @@ import {
   useListTenantUser,
 } from '@/hooks/use-user-setting-request';
 import { cn } from '@/lib/utils';
-import { UserGroup, UserPlus, Users } from 'lucide-react';
+import { ShieldCheck, UserGroup, UserPlus, Users } from 'lucide-react';
 import { useAddUser } from '@/pages/user-setting/setting-team/hooks';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { GroupFormDialog } from './group-form-dialog';
 import { GroupTable } from './group-table';
 import { MemberTable } from './member-table';
+import { RoleTable } from './role-table';
+import { TenantRoleFormDialog } from './tenant-role-form-dialog';
+import {
+  useTenantMyPermissions,
+  useTenantRoles,
+} from './use-member-role-query';
 import { useTenantGroups } from './use-group-query';
 
 const enum TeamTab {
   Member = 'member',
   Group = 'group',
+  Role = 'role',
 }
 
 const TabTriggerClassName = cn(
@@ -32,16 +39,23 @@ const TabCountClassName =
   'rounded-full bg-accent-primary/10 px-2 py-0.5 text-xs leading-4 text-accent-primary';
 
 /**
- * Enterprise team page: member and group lists following the new team design.
+ * Enterprise Team page for members, groups, and tenant roles.
  */
 export default function TeamPage() {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<string>(TeamTab.Member);
   const [keyword, setKeyword] = useState('');
   const [createGroupModalVisible, setCreateGroupModalVisible] = useState(false);
+  const [createRoleModalVisible, setCreateRoleModalVisible] = useState(false);
   const { data: tenantInfo } = useFetchTenantInfo();
   const { data: members } = useListTenantUser(tenantInfo.tenant_id);
   const { data: groups } = useTenantGroups();
+  const { data: myPermissions } = useTenantMyPermissions(tenantInfo.tenant_id);
+  const canManageMembers = !!myPermissions?.tenant_permissions.manage_members;
+  const canManageRoles = !!myPermissions?.tenant_permissions.manage_roles;
+  const { data: roles } = useTenantRoles(tenantInfo.tenant_id, canManageRoles);
+  const visibleTab =
+    activeTab === TeamTab.Role && !canManageRoles ? TeamTab.Member : activeTab;
   const {
     addingTenantModalVisible,
     hideAddingTenantModal,
@@ -68,12 +82,20 @@ export default function TeamPage() {
     setCreateGroupModalVisible(false);
   }, []);
 
+  const showCreateRoleModal = useCallback(() => {
+    setCreateRoleModalVisible(true);
+  }, []);
+
+  const hideCreateRoleModal = useCallback(() => {
+    setCreateRoleModalVisible(false);
+  }, []);
+
   return (
     <section className="size-full flex flex-col min-w-0">
       <h1 className="pb-6 text-2xl font-semibold text-text-primary">
         {t('permission.myTeam')}
       </h1>
-      <Tabs value={activeTab} onValueChange={handleTabChange}>
+      <Tabs value={visibleTab} onValueChange={handleTabChange}>
         <div className="flex items-center justify-between gap-4 pb-4">
           <TabsList className="h-auto gap-2 bg-transparent p-0">
             <TabsTrigger value={TeamTab.Member} className={TabTriggerClassName}>
@@ -86,6 +108,13 @@ export default function TeamPage() {
               {t('permission.group')}
               <span className={TabCountClassName}>{groups.length}</span>
             </TabsTrigger>
+            {canManageRoles && (
+              <TabsTrigger value={TeamTab.Role} className={TabTriggerClassName}>
+                <ShieldCheck className="size-4" />
+                {t('permission.role')}
+                <span className={TabCountClassName}>{roles.length}</span>
+              </TabsTrigger>
+            )}
           </TabsList>
 
           <div className="flex items-center gap-2">
@@ -94,17 +123,22 @@ export default function TeamPage() {
               onChange={handleSearchChange}
               rootClassName="w-[200px]"
             />
-            {activeTab === TeamTab.Member ? (
+            {activeTab === TeamTab.Member && canManageMembers ? (
               <Button onClick={showAddingTenantModal}>
                 <UserPlus />
                 {t('setting.invite')}
               </Button>
-            ) : (
+            ) : activeTab === TeamTab.Group ? (
               <Button className="rounded-lg" onClick={showCreateGroupModal}>
                 <UserPlus />
                 {t('permission.createGroup')}
               </Button>
-            )}
+            ) : activeTab === TeamTab.Role && canManageRoles ? (
+              <Button className="rounded-lg" onClick={showCreateRoleModal}>
+                <UserPlus />
+                {t('permission.createRole')}
+              </Button>
+            ) : null}
           </div>
         </div>
 
@@ -114,16 +148,33 @@ export default function TeamPage() {
         <TabsContent value={TeamTab.Group} className="mt-0">
           <GroupTable keyword={keyword} />
         </TabsContent>
+        {canManageRoles && (
+          <TabsContent value={TeamTab.Role} className="mt-0">
+            <RoleTable
+              keyword={keyword}
+              tenantId={tenantInfo.tenant_id}
+              members={members}
+              canManageRoles={canManageRoles}
+            />
+          </TabsContent>
+        )}
       </Tabs>
 
-      {addingTenantModalVisible && (
+      {canManageMembers && addingTenantModalVisible && (
         <InviteDialog
+          tenantId={tenantInfo.tenant_id}
           hideModal={hideAddingTenantModal}
           onOk={handleAddUserOk}
         />
       )}
       {createGroupModalVisible && (
         <GroupFormDialog hideModal={hideCreateGroupModal} />
+      )}
+      {canManageRoles && createRoleModalVisible && (
+        <TenantRoleFormDialog
+          tenantId={tenantInfo.tenant_id}
+          onClose={hideCreateRoleModal}
+        />
       )}
     </section>
   );

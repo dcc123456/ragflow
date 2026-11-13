@@ -6,52 +6,35 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { SelectWithSearch } from '@/components/originui/select-with-search';
-import { ITenantGroup } from '@/ee/interfaces/database/team';
+import { RAGFlowAvatar } from '@/components/ragflow-avatar';
 import {
-  useFetchTenantInfo,
-  useListTenantUser,
-} from '@/hooks/use-user-setting-request';
+  ITenantGroup,
+  ITenantGroupMember,
+} from '@/ee/interfaces/database/team';
 import { IModalProps } from '@/interfaces/common';
-import { TenantMembershipStatus } from '@/pages/user-setting/constants';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useTransferTenantGroupOwner } from './use-group-query';
 
 export function TransferOwnerDialog({
   group,
+  member,
   hideModal,
-}: IModalProps<unknown> & { group: ITenantGroup }) {
+}: IModalProps<unknown> & {
+  group: ITenantGroup;
+  member: ITenantGroupMember;
+}) {
   const { t } = useTranslation();
-  const { data: tenantInfo } = useFetchTenantInfo();
-  const { data: tenantUsers } = useListTenantUser(tenantInfo.tenant_id, true);
   const { loading, transferOwner } = useTransferTenantGroupOwner(group.id);
-  const [selectedUserId, setSelectedUserId] = useState('');
-
-  const candidates = useMemo(() => {
-    return tenantUsers.filter(
-      (user) =>
-        user.user_id &&
-        user.status === TenantMembershipStatus.Joined &&
-        user.user_id !== group.owner_user_id,
-    );
-  }, [group.owner_user_id, tenantUsers]);
-
-  const handleSelectedUserChange = useCallback((value: string) => {
-    setSelectedUserId(value);
-  }, []);
+  const displayName = member.nickname || member.email;
 
   const handleConfirm = useCallback(async () => {
-    if (!selectedUserId) {
-      return;
-    }
-
-    const code = await transferOwner(selectedUserId);
+    const code = await transferOwner(member.user_id);
 
     if (code === 0) {
       hideModal?.();
     }
-  }, [hideModal, selectedUserId, transferOwner]);
+  }, [hideModal, member.user_id, transferOwner]);
 
   return (
     <Dialog open onOpenChange={hideModal}>
@@ -63,25 +46,27 @@ export function TransferOwnerDialog({
         <p className="text-sm text-text-secondary">
           {t('permission.transferOwnerHint')}
         </p>
-        <SelectWithSearch
-          value={selectedUserId}
-          onChange={handleSelectedUserChange}
-          options={candidates.map((user) => ({
-            label: user.nickname || user.email,
-            value: user.user_id,
-          }))}
-          placeholder={t('permission.selectMember')}
-          disabled={candidates.length === 0}
-        />
+        <div className="flex items-center gap-3 rounded-lg bg-bg-card p-3">
+          <RAGFlowAvatar
+            isPerson
+            className="size-8"
+            name={displayName}
+            avatar={member.avatar}
+          />
+          <div className="min-w-0">
+            <div className="truncate text-sm text-text-primary">
+              {displayName}
+            </div>
+            <div className="truncate text-xs text-text-secondary">
+              {member.email}
+            </div>
+          </div>
+        </div>
         <DialogFooter className="gap-2">
           <Button variant="outline" onClick={hideModal}>
             {t('common.cancel')}
           </Button>
-          <ButtonLoading
-            loading={loading}
-            disabled={!selectedUserId}
-            onClick={handleConfirm}
-          >
+          <ButtonLoading loading={loading} onClick={handleConfirm}>
             {t('common.confirm')}
           </ButtonLoading>
         </DialogFooter>

@@ -66,7 +66,7 @@ func (h *TenantHandler) GetTenantInviteLinkInfo(c *gin.Context) {
 	common.RespondSuccess(c, info, "success")
 }
 
-func (h *TenantHandler) AcceptTenantInviteLink(c *gin.Context) {
+func (h *TenantHandler) GetTenantInviteLinkMembership(c *gin.Context) {
 	user, code, message := GetUser(c)
 	if code != common.CodeSuccess {
 		common.RespondError(c, code, message)
@@ -81,7 +81,47 @@ func (h *TenantHandler) AcceptTenantInviteLink(c *gin.Context) {
 	if store == nil {
 		return
 	}
-	if err := h.tenantService.AcceptTenantInviteLinkEE(c.Request.Context(), user.ID, token, store); err != nil {
+	membership, err := h.tenantService.GetTenantInviteLinkMembershipEE(c.Request.Context(), user.ID, token, store)
+	if err != nil {
+		writeTenantRoleError(c, err)
+		return
+	}
+	common.RespondSuccess(c, membership, "success")
+}
+
+func (h *TenantHandler) RequestTenantInviteLink(c *gin.Context) {
+	user, code, message := GetUser(c)
+	if code != common.CodeSuccess {
+		common.RespondError(c, code, message)
+		return
+	}
+	token := strings.TrimSpace(c.Param("token"))
+	if token == "" {
+		common.RespondError(c, common.CodeBadRequest, "invitation token is required")
+		return
+	}
+	store := tenantInviteLinkStore(c)
+	if store == nil {
+		return
+	}
+	if err := h.tenantService.RequestTenantInviteLinkEE(c.Request.Context(), user.ID, token, store); err != nil {
+		writeTenantRoleError(c, err)
+		return
+	}
+	common.RespondSuccess(c, true, "success")
+}
+
+func (h *TenantHandler) ApproveTenantMember(c *gin.Context) {
+	_, tenantID, ok := tenantRoleRequestContext(c)
+	if !ok {
+		return
+	}
+	targetUserID := strings.TrimSpace(c.Param("user_id"))
+	if targetUserID == "" {
+		common.RespondError(c, common.CodeBadRequest, "user_id is required")
+		return
+	}
+	if err := h.tenantService.ApproveTenantMember(c.Request.Context(), tenantID, targetUserID); err != nil {
 		writeTenantRoleError(c, err)
 		return
 	}

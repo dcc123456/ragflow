@@ -17,6 +17,7 @@ export enum PrivateRoutes {
   AdminModelProviders = '/admin/model-providers',
   Team = '/team',
   AdminTenants = '/admin/tenants',
+  TenantInvitation = '/tenant-invitations/:token',
 }
 
 export type PrivateRoute = {
@@ -91,6 +92,10 @@ export const privateRoutes: PrivateRoute[] = [
     Component: () => import('@/ee/pages/evaluation'),
     children: [{}],
     errorElement: <FallbackComponent />,
+  },
+  {
+    path: PrivateRoutes.TenantInvitation,
+    Component: () => import('@/ee/pages/tenant-invitation'),
   },
   {
     path: PrivateRoutes.Tickets,

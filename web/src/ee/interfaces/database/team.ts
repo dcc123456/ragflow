@@ -36,6 +36,7 @@ export interface ITenantGroup {
   formatted_path?: string;
   status: string;
   is_owner: boolean;
+  is_member: boolean;
   permission: number;
   permissions: string[];
   member_count: number;
@@ -48,6 +49,7 @@ export interface ITenantGroupMember {
   email: string;
   avatar?: string;
   status: string;
+  tenant_status: string;
   is_owner: boolean;
   permission: number;
   permissions: string[];
@@ -75,6 +77,21 @@ export interface ITenantRole {
   is_default: boolean;
 }
 
+export interface ITenantRoleResource {
+  resource_type: string;
+  actions: string[];
+}
+
+export type ITenantRolePermissionMatrix = Record<
+  string,
+  Record<string, boolean>
+>;
+
+export interface ITenantRolePermissions {
+  role: ITenantRole;
+  permissions: ITenantRolePermissionMatrix;
+}
+
 export interface ITenantMemberRole {
   user_id: string;
   role: string;
@@ -95,6 +112,32 @@ export interface ITenantPermissions {
     manage_roles: boolean;
     owner: boolean;
   };
+}
+
+export interface ITenantManagementGrant {
+  subject_type: 'user' | 'group';
+  user_id?: string;
+  group_id?: string;
+  group_name?: string;
+  permission: number;
+  permissions: Array<'manage_members' | 'manage_roles'>;
+}
+
+export interface ITenantInviteLink {
+  token: string;
+  tenant_id: string;
+  expires_at: string;
+}
+
+export interface ITenantInviteLinkInfo {
+  tenant_id: string;
+  tenant_name: string;
+  inviter: string;
+  expires_at: string;
+}
+
+export interface ITenantInviteLinkMembership {
+  status: string;
 }
 
 export interface IPermission {

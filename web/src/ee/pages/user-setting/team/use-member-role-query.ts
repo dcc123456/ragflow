@@ -5,6 +5,7 @@ import {
   ITenantRole,
 } from '@/ee/interfaces/database/team';
 import {
+  approveTenantMember,
   getTenantMemberRole,
   getTenantMyPermissions,
   listTenantRoles,
@@ -17,27 +18,50 @@ import { useTranslation } from 'react-i18next';
 
 export const MemberRoleKeys = {
   all: ['tenantMemberRole'] as const,
-  roles: (tenantId: string) =>
-    [...MemberRoleKeys.all, 'roles', tenantId] as const,
   permissions: (tenantId: string) =>
     [...MemberRoleKeys.all, 'permissions', tenantId] as const,
   member: (tenantId: string, userId: string) =>
     [...MemberRoleKeys.all, 'member', tenantId, userId] as const,
 };
 
+export const TenantRoleKeys = {
+  all: ['tenantRole'] as const,
+  list: (tenantId: string) =>
+    [...TenantRoleKeys.all, 'list', tenantId] as const,
+  resources: (tenantId: string) =>
+    [...TenantRoleKeys.all, 'resources', tenantId] as const,
+  permissions: (tenantId: string, roleId: number) =>
+    [...TenantRoleKeys.all, 'permissions', tenantId, roleId] as const,
+};
+
 const firstFetchLoading = (isFetching: boolean, isFetched: boolean) =>
   isFetching && !isFetched;
 
-export const useTenantRoles = (tenantId: string) => {
+export const useTenantRoles = (tenantId: string, enabled = true) => {
   const { data, isFetching, isFetched } = useQuery<ITenantRole[]>({
-    queryKey: MemberRoleKeys.roles(tenantId),
+    queryKey: TenantRoleKeys.list(tenantId),
     initialData: [],
-    enabled: !!tenantId,
+    enabled: enabled && !!tenantId,
     queryFn: async () => {
-      const { data } = await listTenantRoles();
-      const roles = data?.data?.roles;
+      const roles: ITenantRole[] = [];
+      let page = 1;
 
-      return Array.isArray(roles) ? roles : [];
+      while (true) {
+        const { data } = await listTenantRoles(page);
+        const result = data?.data;
+        const pageRoles = result?.roles;
+
+        if (!Array.isArray(pageRoles)) {
+          return roles;
+        }
+
+        roles.push(...pageRoles);
+        if (roles.length >= result.total || pageRoles.length === 0) {
+          return roles;
+        }
+
+        page += 1;
+      }
     },
   });
 
@@ -110,4 +134,32 @@ export const useSetTenantMemberRole = (tenantId: string, userId: string) => {
   );
 
   return { loading, setMemberRole };
+};
+
+export const useApproveTenantMember = (tenantId: string, userId: string) => {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const { isPending: loading, mutateAsync } = useMutation({
+    mutationKey: [...MemberRoleKeys.member(tenantId, userId), 'approve'],
+    mutationFn: async () => {
+      const { data } = await approveTenantMember(userId);
+
+      return data?.code;
+    },
+  });
+
+  const approveMember = useCallback(async () => {
+    const code = await mutateAsync();
+
+    if (code === 0) {
+      message.success(t('permission.memberApproved'));
+      queryClient.invalidateQueries({
+        queryKey: [UserSettingApiAction.ListTenantUser],
+      });
+    }
+
+    return code;
+  }, [mutateAsync, queryClient, t]);
+
+  return { loading, approveMember };
 };

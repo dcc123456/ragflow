@@ -62,7 +62,9 @@ import {
   useRoleResourceTypes,
 } from '@/ee/pages/admin/hooks/useRole';
 import { PERMISSION_TYPES } from '@/pages/admin/utils';
-import rolePermissions from '@/ee/pages/admin/roles/role-permissions';
+import rolePermissions, {
+  type PermissionType,
+} from '@/ee/pages/admin/roles/role-permissions';
 
 const editFormSchema = z.object({
   description: z.string().optional(),
@@ -118,9 +120,28 @@ function RoleCard({
   const handleModelProviderAccessChange = (value: boolean) => {
     updatePermission({
       resourceName: 'model_provider',
-      permissionType: 'enable',
-      value,
+      permissions: { enable: value },
     });
+  };
+
+  const handlePermissionChange = (
+    resourceName: string,
+    permissionType: PermissionType,
+    value: boolean,
+    permissionTypes: readonly PermissionType[],
+  ) => {
+    const permissions: Partial<Record<PermissionType, boolean>> = {
+      [permissionType]: value,
+    };
+    if (permissionType === 'enable') {
+      permissionTypes.forEach((action) => {
+        if (action !== 'enable') {
+          permissions[action] = false;
+        }
+      });
+    }
+
+    updatePermission({ resourceName, permissions });
   };
 
   return (
@@ -206,6 +227,7 @@ function RoleCard({
               const permissionTypes =
                 rolePermissions.getRolePermissionTypes?.(resourceName) ??
                 PERMISSION_TYPES;
+              const resourceEnabled = !!permission?.enable;
 
               return (
                 <TabsContent key={resourceName} value={resourceName}>
@@ -219,14 +241,23 @@ function RoleCard({
                           {t(`admin.${permissionType}`)}
 
                           <Switch
-                            disabled={isUpdatingPermission}
-                            checked={!!permission?.[permissionType]}
+                            disabled={
+                              isUpdatingPermission ||
+                              (permissionType !== 'enable' && !resourceEnabled)
+                            }
+                            checked={
+                              permissionType === 'enable'
+                                ? !!permission?.[permissionType]
+                                : resourceEnabled &&
+                                  !!permission?.[permissionType]
+                            }
                             onCheckedChange={(value) =>
-                              updatePermission({
+                              handlePermissionChange(
                                 resourceName,
                                 permissionType,
                                 value,
-                              })
+                                permissionTypes,
+                              )
                             }
                           />
                         </Label>

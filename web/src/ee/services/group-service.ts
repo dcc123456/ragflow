@@ -48,7 +48,7 @@ export const moveTenantGroup = (groupId: string, parentId: string | null) =>
 export const deleteTenantGroup = (groupId: string) =>
   request.delete<Result<{ success: boolean }>>(api.tenantGroup(groupId));
 
-export const inviteTenantGroupMember = (groupId: string, userId: string) =>
+export const addTenantGroupMember = (groupId: string, userId: string) =>
   request.post<Result<ITenantGroupMember>>(api.tenantGroupMembers(groupId), {
     user_id: userId,
   });

@@ -48,6 +48,22 @@ export default {
 
   // tenant roles
   tenantRoles: `${restAPIv1}/tenant/roles`,
+  tenantRole: (roleId: number) => `${restAPIv1}/tenant/roles/${roleId}`,
+  tenantRolePermissions: (roleId: number) =>
+    `${restAPIv1}/tenant/roles/${roleId}/permissions`,
+  tenantRoleResources: `${restAPIv1}/tenant/role-resources`,
+  tenantDefaultRole: `${restAPIv1}/tenant/default-role`,
+  tenantManagementPermissions: `${restAPIv1}/tenant/management-permissions`,
+  tenantInviteLinks: (tenantId: string) =>
+    `${restAPIv1}/tenants/${encodeURIComponent(tenantId)}/invitation-links`,
+  tenantInviteLinkInfo: (token: string) =>
+    `${restAPIv1}/tenant-invitations/${encodeURIComponent(token)}`,
+  tenantInviteLinkMembership: (token: string) =>
+    `${restAPIv1}/tenant-invitations/${encodeURIComponent(token)}/status`,
+  requestTenantInviteLink: (token: string) =>
+    `${restAPIv1}/tenant-invitations/${encodeURIComponent(token)}/request`,
+  approveTenantMember: (userId: string) =>
+    `${restAPIv1}/tenant/members/${encodeURIComponent(userId)}/approve`,
   tenantMemberRole: (userId: string) =>
     `${restAPIv1}/tenant/members/${userId}/role`,
   tenantMyPermissions: `${restAPIv1}/tenant/me/permissions`,

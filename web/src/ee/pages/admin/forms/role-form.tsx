@@ -45,6 +45,7 @@ export const CreateRoleForm = ({
   const { t } = useTranslation();
 
   const { resourceTypes } = useRoleResourceTypes();
+  const permissionValues = form.watch('permissions');
 
   return (
     <Form {...form}>
@@ -118,6 +119,8 @@ export const CreateRoleForm = ({
               const permissionTypes =
                 rolePermissions.getRolePermissionTypes?.(resourceType) ??
                 PERMISSION_TYPES;
+              const resourceEnabled =
+                !!permissionValues?.[resourceType]?.enable;
 
               return (
                 <TabsContent
@@ -140,8 +143,29 @@ export const CreateRoleForm = ({
                                 <FormControl>
                                   <Switch
                                     {...field}
-                                    checked={!!field.value}
-                                    onCheckedChange={field.onChange}
+                                    checked={
+                                      permissionType === 'enable'
+                                        ? !!field.value
+                                        : resourceEnabled && !!field.value
+                                    }
+                                    disabled={
+                                      permissionType !== 'enable' &&
+                                      !resourceEnabled
+                                    }
+                                    onCheckedChange={(checked) => {
+                                      field.onChange(checked);
+                                      if (permissionType === 'enable') {
+                                        permissionTypes.forEach((action) => {
+                                          if (action !== 'enable') {
+                                            form.setValue(
+                                              `permissions.${resourceType}.${action}`,
+                                              false,
+                                              { shouldDirty: true },
+                                            );
+                                          }
+                                        });
+                                      }
+                                    }}
                                   />
                                 </FormControl>
                               </FormItem>

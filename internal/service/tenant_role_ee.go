@@ -804,12 +804,22 @@ func tenantMemberPermissionEE(ctx context.Context, db *gorm.DB, _ string, requir
 
 func (s *TenantService) listTenantMembersEE(ctx context.Context, tenantID string) ([]*dao.TenantMemberItem, common.ErrorCode, bool, error) {
 	db := dao.DB.WithContext(ctx)
-	if _, _, err := tenantMemberPermission(ctx, db, tenantID, 0); err != nil {
+	_, mask, err := tenantMemberPermission(ctx, db, tenantID, 0)
+	if err != nil {
 		return nil, tenantRoleErrorCode(err), true, err
 	}
 	rows, err := s.userTenantDAO.GetMembersByTenantIDIncludingOwner(ctx, db, tenantID)
 	if err != nil {
 		return nil, common.CodeServerError, true, err
+	}
+	if mask&entity.TenantPermissionManageMembers == 0 {
+		joinedRows := make([]*dao.TenantMemberItem, 0, len(rows))
+		for _, row := range rows {
+			if row.Status == entity.TenantMembershipStatusJoined {
+				joinedRows = append(joinedRows, row)
+			}
+		}
+		rows = joinedRows
 	}
 	return rows, common.CodeSuccess, true, nil
 }

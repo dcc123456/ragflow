@@ -49,6 +49,8 @@ export default function BasicRegister() {
   const id = useId();
   const navigate = useNavigate();
   const location = useLocation();
+  const redirectTo = (location.state as { redirectTo?: string } | null)
+    ?.redirectTo;
   const { t: translate } = useTranslate('login');
   const { register: registerUser, loading: registerLoading } = useRegister();
   const { config } = useSystemConfig();
@@ -126,7 +128,11 @@ export default function BasicRegister() {
             });
             if (code === 0) {
               navigate('/login', {
-                state: { email: trimmedEmail, password: data.password },
+                state: {
+                  email: trimmedEmail,
+                  password: data.password,
+                  redirectTo,
+                },
               });
             }
           } catch (error) {
@@ -143,6 +149,7 @@ export default function BasicRegister() {
       config?.emailVerificationEnabled,
       registerUser,
       navigate,
+      redirectTo,
     ],
   );
 
@@ -168,6 +175,7 @@ export default function BasicRegister() {
               state: {
                 email: formData.email.trim(),
                 password: formData.password,
+                redirectTo,
               },
             });
           }
@@ -176,7 +184,7 @@ export default function BasicRegister() {
         }
       }
     },
-    [formData, verifyEmail, registerUser, navigate],
+    [formData, verifyEmail, registerUser, navigate, redirectTo],
   );
 
   const registerFormContent = () => {
