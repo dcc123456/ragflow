@@ -30,13 +30,15 @@ const (
 )
 
 // TaskSubjectHigh / TaskSubjectMedium are the enterprise priority-lane subjects.
-// TierDefault reuses the shared TaskSubject (tasks.RAGFLOW) so an OSS split
-// needs no rename and OSS and EE can share one NATS server.
+// They are namespaced as "<tier>.tasks.RAGFLOW" (tier prefix first) instead of
+// "tasks.RAGFLOW.<tier>", so a single wildcard ("*.tasks.RAGFLOW") can match all
+// priority lanes. TierDefault reuses the shared TaskSubject (tasks.RAGFLOW) so an
+// OSS split needs no rename and OSS and EE can share one NATS server.
 const (
 	// TaskSubjectHigh is the JetStream subject of the high-priority lane.
-	TaskSubjectHigh = "tasks.RAGFLOW.high"
+	TaskSubjectHigh = "high.tasks.RAGFLOW"
 	// TaskSubjectMedium is the JetStream subject of the medium-priority lane.
-	TaskSubjectMedium = "tasks.RAGFLOW.medium"
+	TaskSubjectMedium = "medium.tasks.RAGFLOW"
 )
 
 // DefaultTier is the lane the shared admin / memory-wake-up paths publish to in

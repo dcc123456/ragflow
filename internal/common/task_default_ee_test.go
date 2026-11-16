@@ -47,7 +47,7 @@ func TestEnterpriseTierConstants(t *testing.T) {
 	if TierHigh != "high" || TierMedium != "medium" || TierDefault != "default" {
 		t.Fatalf("tier constant values drifted: high=%q medium=%q default=%q", TierHigh, TierMedium, TierDefault)
 	}
-	if TaskSubjectHigh != "tasks.RAGFLOW.high" || TaskSubjectMedium != "tasks.RAGFLOW.medium" {
+	if TaskSubjectHigh != "high.tasks.RAGFLOW" || TaskSubjectMedium != "medium.tasks.RAGFLOW" {
 		t.Fatalf("tier subject constants drifted: high=%q medium=%q", TaskSubjectHigh, TaskSubjectMedium)
 	}
 }
