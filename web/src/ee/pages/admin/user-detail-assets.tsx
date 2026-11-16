@@ -1,17 +1,18 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import {
+  ColumnDef,
   createColumnHelper,
   flexRender,
   getCoreRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table';
 
 import { RAGFlowAvatar } from '@/components/ragflow-avatar';
+import { TableEmpty, TableSkeleton } from '@/components/table-skeleton';
+import { TruncatedText } from '@/components/truncated-text';
 import { CardContent } from '@/components/ui/card';
 import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -19,313 +20,380 @@ import {
   Table,
   TableBody,
   TableCell,
-  // TableHead,
-  // TableHeader,
+  TableHead,
+  TableHeader,
   TableRow,
 } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-
 import { listUserAgents, listUserDatasets } from '@/ee/services/admin-service';
+import { formatFileSize } from '@/utils/common-util';
+import { formatDateToLocal } from '@/utils/date';
 
-import { TableEmpty } from '@/components/table-skeleton';
+type AssetPagination = { page: number; pageSize: number };
+type UserAssetPage<T> = { items: T[]; total: number };
+type IdentifiedAsset = { id: string };
 
-const ASSET_NAMES = ['dataset', 'flow'];
+const DefaultPagination: AssetPagination = { page: 1, pageSize: 10 };
+const AssetTabs = [
+  { value: 'dataset', labelKey: 'header.dataset' },
+  { value: 'workflow', labelKey: 'admin.workflow' },
+  { value: 'pipeline', labelKey: 'admin.pipeline' },
+] as const;
+
+const UserAssetKeys = {
+  dataset: (userId: string, pagination: AssetPagination) =>
+    [
+      'admin/userAssets',
+      'dataset',
+      userId,
+      pagination.page,
+      pagination.pageSize,
+    ] as const,
+  canvas: (
+    userId: string,
+    category: AdminServiceEe.CanvasCategory,
+    pagination: AssetPagination,
+  ) =>
+    [
+      'admin/userAssets',
+      category,
+      userId,
+      pagination.page,
+      pagination.pageSize,
+    ] as const,
+};
 
 const datasetColumnHelper =
   createColumnHelper<AdminServiceEe.ListUserDatasetItem>();
-const agentColumnHelper =
+const canvasColumnHelper =
   createColumnHelper<AdminServiceEe.ListUserAgentItem>();
 
-function UserDatasetTable(props: {
-  data?: AdminServiceEe.ListUserDatasetItem[];
+function AssetText({ value }: { value: string }) {
+  return (
+    <TruncatedText as="span" className="block min-w-0 truncate" tooltip={value}>
+      {value}
+    </TruncatedText>
+  );
+}
+
+function formatAssetDate(value?: string) {
+  return value ? formatDateToLocal(value) : '-';
+}
+
+function UserAssetTable<T extends IdentifiedAsset>({
+  columns,
+  data,
+  total,
+  pagination,
+  isLoading,
+  isError,
+  minTableWidth,
+  onPaginationChange,
+}: {
+  columns: ColumnDef<T, any>[];
+  data: T[];
+  total: number;
+  pagination: AssetPagination;
+  isLoading: boolean;
+  isError: boolean;
+  minTableWidth: string;
+  onPaginationChange: (page: number, pageSize: number) => void;
 }) {
   const { t } = useTranslation();
+  const table = useReactTable({
+    data,
+    columns,
+    getRowId: (row) => row.id,
+    getCoreRowModel: getCoreRowModel(),
+    enableSorting: false,
+  });
 
-  const columnDefs = useMemo(
+  return (
+    <section className="space-y-4">
+      <Table className={`table-fixed ${minTableWidth}`}>
+        <colgroup>
+          {table.getVisibleLeafColumns().map((column) => (
+            <col
+              key={column.id}
+              className={column.columnDef.meta?.colClassName}
+            />
+          ))}
+        </colgroup>
+        <TableHeader>
+          {table.getHeaderGroups().map((headerGroup) => (
+            <TableRow key={headerGroup.id}>
+              {headerGroup.headers.map((header) => (
+                <TableHead key={header.id}>
+                  <TruncatedText
+                    as="span"
+                    className="block truncate"
+                    tooltip={
+                      typeof header.column.columnDef.header === 'string'
+                        ? header.column.columnDef.header
+                        : undefined
+                    }
+                  >
+                    {header.isPlaceholder
+                      ? null
+                      : flexRender(
+                          header.column.columnDef.header,
+                          header.getContext(),
+                        )}
+                  </TruncatedText>
+                </TableHead>
+              ))}
+            </TableRow>
+          ))}
+        </TableHeader>
+        <TableBody>
+          {isLoading ? (
+            <TableSkeleton columnsLength={columns.length} />
+          ) : isError ? (
+            <TableRow>
+              <TableCell
+                colSpan={columns.length}
+                className="h-24 text-center text-text-secondary"
+              >
+                {t('admin.assetLoadFailed')}
+              </TableCell>
+            </TableRow>
+          ) : table.getRowModel().rows.length ? (
+            table.getRowModel().rows.map((row) => (
+              <TableRow key={row.id}>
+                {row.getVisibleCells().map((cell) => (
+                  <TableCell key={cell.id}>
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))
+          ) : (
+            <TableEmpty columnsLength={columns.length} />
+          )}
+        </TableBody>
+      </Table>
+
+      {isLoading || isError ? null : (
+        <RAGFlowPagination
+          total={total}
+          current={pagination.page}
+          pageSize={pagination.pageSize}
+          onChange={onPaginationChange}
+        />
+      )}
+    </section>
+  );
+}
+
+function UserDatasetAssets({ userId }: { userId: string }) {
+  const { t } = useTranslation();
+  const [pagination, setPagination] = useState(DefaultPagination);
+  const columns = useMemo<ColumnDef<AdminServiceEe.ListUserDatasetItem, any>[]>(
     () => [
       datasetColumnHelper.accessor('name', {
         header: t('admin.name'),
-        cell: ({ row, cell }) => (
-          <div className="flex items-center gap-2">
+        meta: { colClassName: 'w-[20%]' },
+        cell: ({ row }) => (
+          <div className="flex min-w-0 items-center gap-2">
             <RAGFlowAvatar
-              avatar={row.original.avatar}
-              name={cell.getValue()}
+              avatar={row.original.avatar ?? undefined}
+              name={row.original.name}
             />
-            <span>{cell.getValue()}</span>
+            <AssetText value={row.original.name} />
           </div>
         ),
       }),
-      // #region
-      /*
-      datasetColumnHelper.accessor('name', {
-        header: t('admin.name'),
-        enableSorting: false,
-      }),
-      datasetColumnHelper.accessor('status', {
-        header: t('admin.status'),
-        cell: ({ cell }) => {
-          return (
-            <Badge
-              variant={parseBooleanish(cell.getValue()) ? 'success' : 'destructive'}
-              className="pl-[.35em]"
-            >
-              <LucideDot className="size-[1em] stroke-[8] mr-1" />
-              {t(
-                parseBooleanish(cell.getValue())
-                  ? 'admin.active'
-                  : 'admin.inactive',
-              )}"
-            </Badge>
-          );
-        },
-        enableSorting: false,
-      }),
-      datasetColumnHelper.accessor('chunk_num', {
-        header: t('admin.chunkNum'),
+      datasetColumnHelper.accessor('tenant_name', {
+        header: t('admin.assetColumns.team'),
+        meta: { colClassName: 'w-[14%]' },
+        cell: ({ cell }) => <AssetText value={cell.getValue()} />,
       }),
       datasetColumnHelper.accessor('doc_num', {
-        header: t('admin.docNum'),
+        header: t('admin.assetColumns.documentNum'),
+        meta: { colClassName: 'w-[10%]' },
       }),
-      datasetColumnHelper.accessor('token_num', {
-        header: t('admin.tokenNum'),
+      datasetColumnHelper.accessor('file_size', {
+        header: t('admin.assetColumns.fileSize'),
+        meta: { colClassName: 'w-[10%]' },
+        cell: ({ cell }) => formatFileSize(cell.getValue(), false),
       }),
-      datasetColumnHelper.accessor('language', {
-        header: t('admin.language'),
-        enableSorting: false,
+      datasetColumnHelper.accessor('chunk_num', {
+        header: t('admin.assetColumns.chunkNum'),
+        meta: { colClassName: 'w-[10%]' },
       }),
       datasetColumnHelper.accessor('create_date', {
-        header: t('admin.createDate'),
+        header: t('admin.assetColumns.createAt'),
+        meta: { colClassName: 'w-[18%]' },
+        cell: ({ cell }) => (
+          <AssetText value={formatAssetDate(cell.getValue())} />
+        ),
       }),
       datasetColumnHelper.accessor('update_date', {
-        header: t('admin.updateDate'),
+        header: t('admin.assetColumns.lastSaveAt'),
+        meta: { colClassName: 'w-[18%]' },
+        cell: ({ cell }) => (
+          <AssetText value={formatAssetDate(cell.getValue())} />
+        ),
       }),
-      datasetColumnHelper.accessor('permission', {
-        header: t('admin.permission'),
-        enableSorting: false,
-      }),
-      */
-      // #endregion
     ],
     [t],
   );
 
-  const table = useReactTable({
-    data: props.data ?? [],
-    columns: columnDefs,
-
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-
-    enableSorting: false,
+  const { data, isLoading, isError } = useQuery({
+    queryKey: UserAssetKeys.dataset(userId, pagination),
+    queryFn: async (): Promise<
+      UserAssetPage<AdminServiceEe.ListUserDatasetItem>
+    > => {
+      const response = await listUserDatasets(userId, {
+        page: pagination.page,
+        page_size: pagination.pageSize,
+      });
+      return {
+        items: response.data.data,
+        total: response.data.total ?? 0,
+      };
+    },
+    placeholderData: keepPreviousData,
+    retry: false,
   });
 
+  const handlePaginationChange = (page: number, pageSize: number) => {
+    setPagination({ page, pageSize });
+  };
+
   return (
-    <section className="space-y-4">
-      <Table>
-        {/* <TableHeader>
-          {table.getHeaderGroups().map((headerGroup) => (
-            <TableRow key={headerGroup.id}>
-              {headerGroup.headers.map((header) => (
-                <TableHead key={header.id}>
-                  {header.isPlaceholder ? null : header.column.getCanSort() ? (
-                    <Button
-                      variant="ghost"
-                      onClick={header.column.getToggleSortingHandler()}
-                    >
-                      {flexRender(
-                        header.column.columnDef.header,
-                        header.getContext(),
-                      )}
-                      {getSortIcon(header.column.getIsSorted())}
-                    </Button>
-                  ) : (
-                    flexRender(
-                      header.column.columnDef.header,
-                      header.getContext(),
-                    )
-                  )}
-                </TableHead>
-              ))}
-            </TableRow>
-          ))}
-        </TableHeader> */}
-
-        <TableBody>
-          {table.getRowModel().rows?.length ? (
-            table.getRowModel().rows.map((row) => (
-              <TableRow key={row.id}>
-                {row.getVisibleCells().map((cell) => (
-                  <TableCell key={cell.id}>
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </TableCell>
-                ))}
-              </TableRow>
-            ))
-          ) : (
-            <TableEmpty columnsLength={columnDefs.length} />
-          )}
-        </TableBody>
-      </Table>
-
-      <RAGFlowPagination
-        total={props.data?.length}
-        current={table.getState().pagination.pageIndex + 1}
-        pageSize={table.getState().pagination.pageSize}
-        onChange={(page, pageSize) => {
-          table.setPagination({
-            pageIndex: page - 1,
-            pageSize,
-          });
-        }}
-      />
-    </section>
+    <UserAssetTable
+      columns={columns}
+      data={data?.items ?? []}
+      total={data?.total ?? 0}
+      pagination={pagination}
+      isLoading={isLoading}
+      isError={isError}
+      minTableWidth="min-w-[1200px]"
+      onPaginationChange={handlePaginationChange}
+    />
   );
 }
 
-function UserAgentTable(props: { data?: AdminServiceEe.ListUserAgentItem[] }) {
+function UserCanvasAssets({
+  userId,
+  category,
+}: {
+  userId: string;
+  category: AdminServiceEe.CanvasCategory;
+}) {
   const { t } = useTranslation();
-
-  const columnDefs = useMemo(
+  const [pagination, setPagination] = useState(DefaultPagination);
+  const columns = useMemo<ColumnDef<AdminServiceEe.ListUserAgentItem, any>[]>(
     () => [
-      agentColumnHelper.accessor('title', {
-        header: t('admin.agentTitle'),
-        cell: ({ row, cell }) => (
-          <div className="flex items-center gap-2">
+      canvasColumnHelper.accessor('title', {
+        header: t('admin.name'),
+        meta: { colClassName: 'w-[28%]' },
+        cell: ({ row }) => (
+          <div className="flex min-w-0 items-center gap-2">
             <RAGFlowAvatar
-              avatar={row.original.avatar}
-              name={cell.getValue()}
+              avatar={row.original.avatar ?? undefined}
+              name={row.original.title}
             />
-            <span>{cell.getValue()}</span>
+            <AssetText value={row.original.title} />
           </div>
         ),
       }),
-      // #region
-      /*
-      agentColumnHelper.accessor('title', {
-        header: t('admin.agentTitle'),
+      canvasColumnHelper.accessor('tenant_name', {
+        header: t('admin.assetColumns.team'),
+        meta: { colClassName: 'w-[20%]' },
+        cell: ({ cell }) => <AssetText value={cell.getValue()} />,
       }),
-      agentColumnHelper.accessor('permission', {
-        header: t('admin.permission'),
+      canvasColumnHelper.accessor('create_date', {
+        header: t('admin.assetColumns.createAt'),
+        meta: { colClassName: 'w-[26%]' },
+        cell: ({ cell }) => (
+          <AssetText value={formatAssetDate(cell.getValue())} />
+        ),
       }),
-      agentColumnHelper.accessor('canvas_category', {
-        header: t('admin.canvasCategory'),
+      canvasColumnHelper.accessor('update_date', {
+        header: t('admin.assetColumns.lastSaveAt'),
+        meta: { colClassName: 'w-[26%]' },
+        cell: ({ cell }) => (
+          <AssetText value={formatAssetDate(cell.getValue())} />
+        ),
       }),
-      */
-      // #endregion
     ],
     [t],
   );
 
-  const table = useReactTable({
-    data: props.data ?? [],
-    columns: columnDefs,
-
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-
-    enableSorting: false,
+  const { data, isLoading, isError } = useQuery({
+    queryKey: UserAssetKeys.canvas(userId, category, pagination),
+    queryFn: async (): Promise<
+      UserAssetPage<AdminServiceEe.ListUserAgentItem>
+    > => {
+      const response = await listUserAgents(userId, {
+        canvas_category: category,
+        page: pagination.page,
+        page_size: pagination.pageSize,
+      });
+      return {
+        items: response.data.data,
+        total: response.data.total ?? 0,
+      };
+    },
+    placeholderData: keepPreviousData,
+    retry: false,
   });
 
+  const handlePaginationChange = (page: number, pageSize: number) => {
+    setPagination({ page, pageSize });
+  };
+
   return (
-    <section className="space-y-4">
-      <Table>
-        {/* <TableHeader>
-          {table.getHeaderGroups().map((headerGroup) => (
-            <TableRow key={headerGroup.id}>
-              {headerGroup.headers.map((header) => (
-                <TableHead key={header.id}>
-                  {header.isPlaceholder ? null : (
-                    <>
-                      {flexRender(
-                        header.column.columnDef.header,
-                        header.getContext(),
-                      )}
-                    </>
-                  )}
-                </TableHead>
-              ))}
-            </TableRow>
-          ))}
-        </TableHeader> */}
-
-        <TableBody>
-          {table.getRowModel().rows?.length ? (
-            table.getRowModel().rows.map((row) => (
-              <TableRow key={row.id}>
-                {row.getVisibleCells().map((cell) => (
-                  <TableCell key={cell.id}>
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </TableCell>
-                ))}
-              </TableRow>
-            ))
-          ) : (
-            <TableEmpty columnsLength={columnDefs.length} />
-          )}
-        </TableBody>
-      </Table>
-
-      <RAGFlowPagination
-        total={props.data?.length}
-        current={table.getState().pagination.pageIndex + 1}
-        pageSize={table.getState().pagination.pageSize}
-        onChange={(page, pageSize) => {
-          table.setPagination({
-            pageIndex: page - 1,
-            pageSize,
-          });
-        }}
-      />
-    </section>
+    <UserAssetTable
+      columns={columns}
+      data={data?.items ?? []}
+      total={data?.total ?? 0}
+      pagination={pagination}
+      isLoading={isLoading}
+      isError={isError}
+      minTableWidth="min-w-[760px]"
+      onPaginationChange={handlePaginationChange}
+    />
   );
 }
 
-export default function UserDetailAssets(props: { userId?: string }) {
+export default function UserDetailAssets({ userId }: { userId?: string }) {
   const { t } = useTranslation();
 
-  const { data: { datasets, agents } = {} } = useQuery({
-    queryKey: ['admin/userAssets', props.userId],
-    queryFn: async () => {
-      const [userDatasets, userAgents] = await Promise.all([
-        listUserDatasets(props.userId!),
-        listUserAgents(props.userId!),
-      ]);
-
-      return {
-        datasets: userDatasets.data.data,
-        agents: userAgents.data.data,
-      };
-    },
-    enabled: !!props.userId,
-    retry: false,
-  });
+  if (!userId) {
+    return null;
+  }
 
   return (
     <CardContent className="h-0 basis-0 grow pt-6">
       <Tabs className="h-full flex flex-col" defaultValue="dataset">
         <TabsList className="p-0 mb-2 gap-4 bg-transparent justify-start">
-          {ASSET_NAMES.map((name) => (
+          {AssetTabs.map(({ value, labelKey }) => (
             <TabsTrigger
-              key={name}
+              key={value}
               className="text-text-secondary border-0.5 border-border-button data-[state=active]:bg-bg-card"
-              value={name}
+              value={value}
             >
-              {t(`header.${name}`)}
+              {t(labelKey)}
             </TabsTrigger>
           ))}
         </TabsList>
 
         <TabsContent value="dataset" className="h-0 basis-0 grow">
           <ScrollArea className="h-full">
-            <UserDatasetTable data={datasets} />
+            <UserDatasetAssets userId={userId} />
           </ScrollArea>
         </TabsContent>
-
-        <TabsContent value="flow" className="h-0 basis-0 grow">
+        <TabsContent value="workflow" className="h-0 basis-0 grow">
           <ScrollArea className="h-full">
-            <UserAgentTable data={agents} />
+            <UserCanvasAssets userId={userId} category="agent_canvas" />
+          </ScrollArea>
+        </TabsContent>
+        <TabsContent value="pipeline" className="h-0 basis-0 grow">
+          <ScrollArea className="h-full">
+            <UserCanvasAssets userId={userId} category="dataflow_canvas" />
           </ScrollArea>
         </TabsContent>
       </Tabs>

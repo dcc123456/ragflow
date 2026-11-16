@@ -212,14 +212,22 @@ export const getUserDetails = (email: string) =>
     API.adminGetUserDetails(email),
   );
 
-export const listUserDatasets = (email: string) =>
+export const listUserDatasets = (
+  email: string,
+  params: AdminServiceEe.ListUserAssetsParams,
+) =>
   request.get<ResponseData<AdminServiceEe.ListUserDatasetItem[]>>(
     API.adminListUserDatasets(email),
+    { params },
   );
 
-export const listUserAgents = (email: string) =>
+export const listUserAgents = (
+  email: string,
+  params: AdminServiceEe.ListUserAgentsParams,
+) =>
   request.get<ResponseData<AdminServiceEe.ListUserAgentItem[]>>(
     API.adminListUserAgents(email),
+    { params },
   );
 
 export const updateUserStatus = (email: string, status: 'on' | 'off') =>

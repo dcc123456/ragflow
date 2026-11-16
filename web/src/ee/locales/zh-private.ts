@@ -424,6 +424,17 @@ export default {
       },
     },
     admin: {
+      workflow: '工作流',
+      pipeline: '数据管道',
+      assetLoadFailed: '资产加载失败',
+      assetColumns: {
+        team: '团队',
+        documentNum: '文档数量',
+        fileSize: '文件大小',
+        chunkNum: '分块数量',
+        createAt: '创建时间',
+        lastSaveAt: '最后保存时间',
+      },
       resourceType: { group: '群组', mcp: 'MCP', invitation: '邀请' },
       settingsForm: {
         sensitiveWordFilter: {

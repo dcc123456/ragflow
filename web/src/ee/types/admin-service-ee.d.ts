@@ -64,24 +64,44 @@ declare namespace AdminServiceEe {
     role: string;
   };
 
+  export type CanvasCategory = 'agent_canvas' | 'dataflow_canvas';
+
+  export type ListUserAssetsParams = {
+    page?: number;
+    page_size?: number;
+    order_by?: 'create_time' | 'update_time';
+    desc?: boolean;
+  };
+
+  export type ListUserAgentsParams = ListUserAssetsParams & {
+    canvas_category: CanvasCategory;
+  };
+
   export type ListUserDatasetItem = {
-    avatar?: string;
+    id: string;
+    avatar?: string | null;
     chunk_num: number;
     create_date: string;
     doc_num: number;
+    file_size: number;
     language: string;
     name: string;
-    permission: string;
     status: '0' | '1';
+    tenant_id: string;
+    tenant_name: string;
     token_num: number;
     update_date: string;
   };
 
   export type ListUserAgentItem = {
-    avatar?: string;
-    canvas_category: 'agent';
-    permission: 'string';
+    id: string;
+    avatar?: string | null;
+    canvas_category: CanvasCategory;
     title: string;
+    tenant_id: string;
+    tenant_name: string;
+    create_date?: string;
+    update_date?: string;
   };
 
   export type TaskExecutorHeartbeatItem = {

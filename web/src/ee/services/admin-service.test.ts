@@ -1,4 +1,9 @@
-import { createUser, deleteUser } from './admin-service';
+import {
+  createUser,
+  deleteUser,
+  listUserAgents,
+  listUserDatasets,
+} from './admin-service';
 
 jest.mock('axios', () => {
   const request = {
@@ -81,4 +86,44 @@ describe('deleteUser', () => {
       'deletion failed',
     );
   });
+});
+
+describe('user asset lists', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockRequest.get.mockResolvedValue({
+      data: { code: 0, data: [], total: 0 },
+    });
+  });
+
+  it('passes Dataset pagination to the admin API', async () => {
+    await listUserDatasets('user@example.com', { page: 2, page_size: 20 });
+
+    expect(mockRequest.get).toHaveBeenCalledWith(
+      '/api/v1/admin/users/user@example.com/datasets',
+      { params: { page: 2, page_size: 20 } },
+    );
+  });
+
+  it.each(['agent_canvas', 'dataflow_canvas'] as const)(
+    'passes %s filtering and pagination to the admin API',
+    async (canvasCategory) => {
+      await listUserAgents('user@example.com', {
+        canvas_category: canvasCategory,
+        page: 3,
+        page_size: 50,
+      });
+
+      expect(mockRequest.get).toHaveBeenCalledWith(
+        '/api/v1/admin/users/user@example.com/agents',
+        {
+          params: {
+            canvas_category: canvasCategory,
+            page: 3,
+            page_size: 50,
+          },
+        },
+      );
+    },
+  );
 });

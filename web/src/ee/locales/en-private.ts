@@ -217,6 +217,17 @@ export default {
       configuration: 'Configuration',
     },
     admin: {
+      workflow: 'Workflow',
+      pipeline: 'Pipeline',
+      assetLoadFailed: 'Failed to load assets',
+      assetColumns: {
+        team: 'Team',
+        documentNum: 'Document Num',
+        fileSize: 'File Size',
+        chunkNum: 'Chunk Num',
+        createAt: 'Create at',
+        lastSaveAt: 'Last save at',
+      },
       resourceType: {
         model_provider: 'Model provider',
         group: 'Group',
