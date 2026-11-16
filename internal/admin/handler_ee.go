@@ -1987,50 +1987,6 @@ func (h *Handler) ListUserAPIKeys(c *gin.Context) {
 	common.RespondSuccess(c, result, "API keys listed successfully")
 }
 
-// DownloadSensitiveWords handle download sensitive words
-func (h *Handler) DownloadSensitiveWords(c *gin.Context) {
-	ctx := c.Request.Context()
-	result, err := h.service.DownloadSensitiveWords(ctx)
-	if err != nil {
-		common.RespondError(c, common.CodeServerError, err.Error())
-		return
-	}
-
-	common.RespondSuccess(c, result, "Sensitive words downloaded successfully")
-}
-
-// UploadSensitiveWords handle upload sensitive words
-func (h *Handler) UploadSensitiveWords(c *gin.Context) {
-	common.StartOperationLog(c, "upload_admin_sensitive_words")
-	defer common.FinishOperationLog(c)
-
-	form, err := c.MultipartForm()
-	if err != nil || form == nil || len(form.File["file"]) == 0 {
-		common.RespondError(c, common.CodeArgumentError, "No file part!")
-		return
-	}
-	files := form.File["file"]
-	for _, fh := range files {
-		if fh == nil || fh.Filename == "" {
-			common.RespondError(c, common.CodeArgumentError, "No file or filename is empty")
-			return
-		}
-	}
-	if len(files) != 1 {
-		common.RespondError(c, common.CodeArgumentError, "Only one file is allowed")
-		return
-	}
-	file := files[0]
-	ctx := c.Request.Context()
-	result, err := h.service.UploadSensitiveWords(ctx, file)
-	if err != nil {
-		common.RespondError(c, common.CodeServerError, err.Error())
-		return
-	}
-
-	common.RespondSuccess(c, result, "Sensitive words uploaded successfully")
-}
-
 type BindVerificationEmailRequest struct {
 	Email    string `json:"email"`
 	Host     string `json:"host"`

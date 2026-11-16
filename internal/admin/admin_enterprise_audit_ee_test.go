@@ -27,8 +27,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"ragflow/internal/common"
+	"ragflow/internal/compliance"
 	"ragflow/internal/entity"
 	"ragflow/internal/ingestion/testutil"
+	"ragflow/internal/storage"
 )
 
 func TestAdminEnterpriseAuditRequests(t *testing.T) {
@@ -73,7 +75,7 @@ func TestAdminEnterpriseAuditRequests(t *testing.T) {
 		{"DELETE", "/users/data", "request_admin_users_data_purge", `{"preview":true}`, "response_success"},
 		{"POST", "/users/missing/keys", "create_admin_user_api_key", "", "response_error"},
 		{"DELETE", "/users/missing/keys/private-audit-sentinel", "delete_admin_user_api_key", "", "response_error"},
-		{"POST", "/sensitive-words", "upload_admin_sensitive_words", "{", "response_error"},
+		{"POST", "/sensitive-words-file", "upload_admin_sensitive_words", "{", "response_error"},
 		{"POST", "/email/verification", "bind_admin_verification_email", `{"password":"private-audit-sentinel"}`, "response_error"},
 		{"PUT", "/tenants/target-tenant/role", "update_admin_tenant_role", "{", "response_error"},
 		{"PUT", "/tenants/target-tenant/status", "update_admin_tenant_status", "{", "response_error"},
@@ -113,6 +115,82 @@ func TestAdminEnterpriseAuditRequests(t *testing.T) {
 			}
 			if strings.Contains(tc.path, "/tenants/") && log.Resources["target_tenant_id"] != "target-tenant" {
 				t.Fatalf("target tenant lost: %+v", log.Resources)
+			}
+		})
+	}
+}
+
+func TestDownloadSensitiveWordsAudit(t *testing.T) {
+	db := testutil.SetupTestDB(t, &entity.SystemSettings{})
+	t.Cleanup(testutil.ReplaceDBForTest(t, db))
+	if err := db.Create(&entity.SystemSettings{
+		Name: compliance.FileNameSetting, Source: "variable", DataType: "string", Value: "private-audit-sentinel.txt",
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	mode := gin.Mode()
+	gin.SetMode(gin.TestMode)
+	t.Cleanup(func() { gin.SetMode(mode) })
+	factory := storage.GetStorageFactory()
+	previous := factory.GetStorage()
+	t.Cleanup(func() { factory.SetStorage(previous) })
+	t.Cleanup(func() { common.SetAuditLogSink(nil) })
+	engine := gin.New()
+	engine.Use(func(c *gin.Context) {
+		c.Set("user_id", "audit-admin")
+		c.Set("tenant_id", "actor-tenant")
+	})
+	RegisterEERouter(engine.Group("/api/v1/admin"), NewRouter(NewHandler(NewService())))
+	content := "private-audit-sentinel\nrestricted\n"
+	for _, tc := range []struct {
+		name      string
+		available bool
+		exists    bool
+		status    int
+		code      common.ErrorCode
+		outcome   string
+	}{
+		{name: "success", available: true, exists: true, status: http.StatusOK, code: common.CodeSuccess, outcome: "unknown"},
+		{name: "missing file", available: true, status: http.StatusNotFound, code: common.CodeNotFound, outcome: "response_error"},
+		{name: "unavailable storage", status: http.StatusInternalServerError, code: common.CodeServerError, outcome: "response_error"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			factory.SetStorage(nil)
+			if tc.available {
+				store := storage.NewMemoryStorage()
+				if tc.exists {
+					if err := store.Put(t.Context(), compliance.Bucket, compliance.ObjectKey, []byte(content)); err != nil {
+						t.Fatal(err)
+					}
+				}
+				factory.SetStorage(store)
+			}
+			var logs []*common.OperationLog
+			common.SetAuditLogSink(func(log *common.OperationLog) error { logs = append(logs, log); return nil })
+			response := httptest.NewRecorder()
+			engine.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/admin/sensitive-words-file?private=private-audit-sentinel", nil))
+			if response.Code != tc.status {
+				t.Fatalf("status = %d, want %d: %s", response.Code, tc.status, response.Body.String())
+			}
+			if tc.exists && response.Body.String() != content {
+				t.Fatalf("download body = %q, want %q", response.Body.String(), content)
+			}
+			if len(logs) != 1 {
+				t.Fatalf("got %d audit logs, want one", len(logs))
+			}
+			log := logs[0]
+			if log.Operation != "download_admin_sensitive_words" || log.UserID != "audit-admin" || log.HTTPMethod != http.MethodGet || log.APIPath != "/api/v1/admin/sensitive-words-file" || log.Code != int(tc.code) {
+				t.Fatalf("unexpected log: %+v", log)
+			}
+			if log.Resources["tenant_id"] != "actor-tenant" || log.Resources["event_kind"] != "action_request" || log.Resources["http_status"] != tc.status || log.Resources["outcome"] != tc.outcome {
+				t.Fatalf("unexpected resources: %+v", log.Resources)
+			}
+			encoded, err := json.Marshal(log)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if log.RequestParams != "" || log.Error != nil || strings.Contains(string(encoded), "private-audit-sentinel") {
+				t.Fatalf("private download data leaked: %s", encoded)
 			}
 		})
 	}

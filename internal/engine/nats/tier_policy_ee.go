@@ -18,7 +18,11 @@
 
 package nats
 
-import "ragflow/internal/common"
+import (
+	"fmt"
+
+	"ragflow/internal/common"
+)
 
 // tierOrder is the strict drain priority. PullMessage always tries high first,
 // then medium, then the legacy default lane; a full default lane can never block
@@ -44,3 +48,21 @@ var tierStreams = map[common.Tier]tierStreamSpec{
 // build designates the medium lane as primary; the community build
 // (tier_policy_community.go) uses the single default lane.
 func defaultTier() common.Tier { return common.TierMedium }
+
+// ingestorLanes returns the ordered subset of tierOrder an ingestor of the
+// given tier is allowed to consume, in priority (drain) order. A high ingestor
+// owns only the high lane; a medium ingestor drains high then medium; a low
+// ingestor drains all three lanes. An unknown tier is an error rather than a
+// silent fallback, so a misconfigured tier cannot consume unintended lanes.
+func ingestorLanes(tier common.Tier) ([]common.Tier, error) {
+	switch tier {
+	case common.TierHigh:
+		return []common.Tier{common.TierHigh}, nil
+	case common.TierMedium:
+		return []common.Tier{common.TierHigh, common.TierMedium}, nil
+	case common.TierDefault:
+		return []common.Tier{common.TierHigh, common.TierMedium, common.TierDefault}, nil
+	default:
+		return nil, fmt.Errorf("unknown ingestor tier %q", tier)
+	}
+}

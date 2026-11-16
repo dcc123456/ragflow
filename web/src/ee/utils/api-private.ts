@@ -70,9 +70,8 @@ export default {
   adminAddLlmFactory: '/api/v1/admin/llm/add_llm',
   adminDeleteLlmFactory: '/api/v1/admin/llm/delete_factory',
   adminVariables: '/api/v1/admin/variables',
-  adminUploadSensitiveWordFilter: '/api/v1/admin/sensitive_word_filter/upload',
-  adminDownloadSensitiveWordFilter:
-    '/api/v1/admin/sensitive_word_filter/download',
+  adminUploadSensitiveWordFilter: '/api/v1/admin/sensitive-words-file',
+  adminDownloadSensitiveWordFilter: '/api/v1/admin/sensitive-words-file',
   adminTestSMTPConnection: '/api/v1/admin/validate_mail',
   listEvaluationDetailFile: (id: string) =>
     `${restAPIv1}/evaluations/collections/${id}/cases`,

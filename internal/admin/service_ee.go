@@ -23,7 +23,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"mime/multipart"
 	"ragflow/internal/common"
 	"ragflow/internal/dao"
 	"ragflow/internal/engine/clickhouse"
@@ -2017,29 +2016,6 @@ func CheckClientStatus(serverName string, status *common.BaseMessage) error {
 
 func CheckLicense() (common.ErrorCode, map[string]interface{}, string) {
 	return common.CodeLicenseValid, map[string]interface{}{}, ""
-}
-
-// DownloadSensitiveWords download sensitive words
-func (s *Service) DownloadSensitiveWords(ctx context.Context) ([]map[string]interface{}, error) {
-	result := []map[string]interface{}{
-		{
-			"command": "download_sensitive_words",
-			"error":   "'Download sensitive words' is not supported",
-		},
-	}
-	return result, nil
-}
-
-// UploadSensitiveWords upload sensitive words
-func (s *Service) UploadSensitiveWords(ctx context.Context, file *multipart.FileHeader) ([]map[string]interface{}, error) {
-	result := []map[string]interface{}{
-		{
-			"command":  "upload_sensitive_words",
-			"filename": file.Filename,
-			"error":    "'Upload sensitive words' is not supported",
-		},
-	}
-	return result, nil
 }
 
 // BindVerificationEmail bind verification email
