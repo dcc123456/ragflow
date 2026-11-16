@@ -158,8 +158,8 @@ func RegisterEERouter(protected *gin.RouterGroup, r *Router) {
 	protected.DELETE("/users/:username/tokens/:token", r.handler.DeleteUserAPIToken)
 
 	// Sensitive words, EE
-	protected.GET("/sensitive-words", r.handler.DownloadSensitiveWords)
-	protected.POST("/sensitive-words", r.handler.UploadSensitiveWords)
+	protected.GET("/sensitive-words-file", r.handler.DownloadSensitiveWords)
+	protected.POST("/sensitive-words-file", r.handler.UploadSensitiveWords)
 
 	// Verification email, EE
 	protected.POST("/email/verification", r.handler.BindVerificationEmail)
