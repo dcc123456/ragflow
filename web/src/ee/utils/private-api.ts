@@ -70,6 +70,7 @@ export default {
 
   // permission
   updatePermission: `${restAPIv1}/permission/update`,
+  transferResourceOwner: `${restAPIv1}/permission/transfer_owner`,
   listPermission: `${restAPIv1}/permission/list`,
   listPermissionByTarget: `${restAPIv1}/permission/list_by_target`,
 

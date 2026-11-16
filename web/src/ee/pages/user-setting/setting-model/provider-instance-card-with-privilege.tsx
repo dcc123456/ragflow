@@ -44,8 +44,14 @@ export function ProviderInstanceCardWithPrivilege({
       tenant_id: tenantId,
       name: instance.instance_name,
       resourceType: PermissionResourceType.ModelInstance,
+      operator_permission: instance.operator_permission,
     });
-  }, [tenantInfo?.tenant_id, instance.id, instance.instance_name]);
+  }, [
+    tenantInfo?.tenant_id,
+    instance.id,
+    instance.instance_name,
+    instance.operator_permission,
+  ]);
 
   const operatorPermission = instance.operator_permission ?? 0;
   const canManagePermissions =

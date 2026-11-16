@@ -273,7 +273,7 @@ func (s *TenantService) UpdateTenantRole(ctx context.Context, userID, tenantID s
 	return tenantRoleItem(&updated, tenant.DefaultRoleID), nil
 }
 
-// DeleteTenantRole deletes an unused role and its permission rows.
+// DeleteTenantRole reassigns members to the default role and deletes the role.
 func (s *TenantService) DeleteTenantRole(ctx context.Context, userID, tenantID string, roleID int32) error {
 	return dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if _, _, err := tenantMemberPermission(ctx, tx, permission.TenantIDFromContext(ctx), entity.TenantPermissionManageRoles); err != nil {
@@ -295,8 +295,23 @@ func (s *TenantService) DeleteTenantRole(ctx context.Context, userID, tenantID s
 		if err := tx.Model(&entity.UserTenant{}).Where("tenant_id = ? AND role = ?", tenantID, roleValue).Count(&assignmentCount).Error; err != nil {
 			return fmt.Errorf("check Tenant role assignments: %w", err)
 		}
+		var reassignedMemberCount int64
 		if assignmentCount > 0 {
-			return common.NewCodedError(common.CodeConflict, "Role is assigned to Tenant members and cannot be deleted")
+			if tenant.DefaultRoleID == nil {
+				return common.NewCodedError(common.CodeConflict, "Tenant default role must be configured before deleting an assigned role")
+			}
+			defaultRole, err := findTenantRole(tx, tenantID, *tenant.DefaultRoleID, true)
+			if err != nil {
+				return fmt.Errorf("load Tenant default role before deleting role: %w", err)
+			}
+			defaultRoleValue := strconv.FormatInt(int64(defaultRole.ID), 10)
+			result := tx.Model(&entity.UserTenant{}).
+				Where("tenant_id = ? AND role = ?", tenantID, roleValue).
+				Update("role", defaultRoleValue)
+			if result.Error != nil {
+				return fmt.Errorf("reassign Tenant members to default role: %w", result.Error)
+			}
+			reassignedMemberCount = result.RowsAffected
 		}
 		if err := tx.Where("role_id = ?", roleID).Delete(&entity.RoleResource{}).Error; err != nil {
 			return fmt.Errorf("delete Tenant role permissions: %w", err)
@@ -307,7 +322,7 @@ func (s *TenantService) DeleteTenantRole(ctx context.Context, userID, tenantID s
 		if err := tx.Where("id = ? AND tenant_id = ?", roleID, tenantID).Delete(&entity.Role{}).Error; err != nil {
 			return fmt.Errorf("delete Tenant role: %w", err)
 		}
-		return recordTenantPermissionChange(ctx, tx, permission.TenantIDFromContext(ctx), "role.deleted", "role", roleValue, "role", roleValue, "delete", 0, 0, tenantRoleAuditValue(role), map[string]interface{}{"deleted": true})
+		return recordTenantPermissionChange(ctx, tx, permission.TenantIDFromContext(ctx), "role.deleted", "role", roleValue, "role", roleValue, "delete", 0, 0, tenantRoleAuditValue(role), map[string]interface{}{"deleted": true, "reassigned_member_count": reassignedMemberCount})
 	})
 }
 

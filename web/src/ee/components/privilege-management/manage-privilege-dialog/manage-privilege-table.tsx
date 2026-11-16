@@ -11,24 +11,12 @@ import {
   getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table';
-import {
-  Check,
-  Eye,
-  Minus,
-  ShieldCheck,
-  SquarePen,
-  Trash2,
-} from 'lucide-react';
+import { Crown, Trash2 } from 'lucide-react';
 import * as React from 'react';
 
+import { RAGFlowAvatar } from '@/components/ragflow-avatar';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import {
   Table,
   TableBody,
@@ -38,17 +26,14 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import {
-  Permission,
   PermissionResourceType,
+  TeamRole,
   hasResourceOwnerPermission,
-  hasResourcePermission,
 } from '@/ee/constants/team';
 import { UseRowSelectionType } from '@/hooks/logic-hooks/use-row-selection';
 import { IPermission } from '@/ee/interfaces/database/team';
-import { cn } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
 import { IPrivilegeManagementInitialValues } from '@/ee/components/privilege-management/interface';
-import { PrivilegeAvatar } from '@/ee/components/privilege-management/privilege-avatar';
 import { UserTypeLabel } from '@/ee/components/privilege-management/privilege-label';
 import { PermissionCell } from '@/ee/components/privilege-management/manage-privilege-dialog/permission-cell';
 import { useOperatePermission } from '@/ee/components/privilege-management/manage-privilege-dialog/use-operate-permission';
@@ -60,6 +45,11 @@ type ManagePrivilegeTableProps = Pick<
   initialValues: IPrivilegeManagementInitialValues;
   data: IPermission[];
   resourceType: PermissionResourceType;
+  canGrantManage: boolean;
+  canTransferOwner: boolean;
+  transferOwnerLoading: boolean;
+  tenantMemberUserIds: ReadonlyMap<string, string>;
+  onTransferOwner: (record: IPermission) => void;
 };
 
 function checkOwner(permissions: IPermission['permissions']) {
@@ -72,6 +62,11 @@ export function ManagePrivilegeTable({
   setRowSelection,
   data,
   resourceType,
+  canGrantManage,
+  canTransferOwner,
+  transferOwnerLoading,
+  tenantMemberUserIds,
+  onTransferOwner,
 }: ManagePrivilegeTableProps) {
   const { t } = useTranslation();
   const [sorting, setSorting] = React.useState<SortingState>([]);
@@ -81,9 +76,21 @@ export function ManagePrivilegeTable({
   const [columnVisibility, setColumnVisibility] =
     React.useState<VisibilityState>({});
 
-  const { handleDelete, togglePermission } = useOperatePermission({
+  const { handleDelete, setPermission } = useOperatePermission({
     initialValues,
   });
+  const resourceIds = React.useMemo(
+    () =>
+      resourceType === PermissionResourceType.Document
+        ? initialValues.documents || []
+        : [initialValues.id],
+    [initialValues.documents, initialValues.id, resourceType],
+  );
+  const handleChangePermission = React.useCallback(
+    (record: IPermission) => (permission: number) =>
+      setPermission(permission, [record]),
+    [setPermission],
+  );
 
   const columns = React.useMemo(() => {
     const columns: ColumnDef<IPermission>[] = [
@@ -121,7 +128,12 @@ export function ManagePrivilegeTable({
         header: t('common.name'),
         cell: ({ row }) => (
           <div className="flex items-center justify-center gap-3">
-            <PrivilegeAvatar className="size-8 ring-1 ring-black/5" />
+            <RAGFlowAvatar
+              isPerson
+              className="size-7"
+              name={row.original.name}
+              avatar={row.original.avatar}
+            />
             <div className="min-w-0 text-center">
               <div className="truncate text-sm font-medium text-text-primary">
                 {row.getValue('name')}
@@ -134,12 +146,13 @@ export function ManagePrivilegeTable({
         accessorKey: 'permissions',
         header: t('permission.permission'),
         cell: ({ row }) => {
-          const permissions: Record<string, number> =
-            row.getValue('permissions');
           return (
             <PermissionCell
-              permissions={permissions}
-              resourceType={resourceType}
+              permissions={row.original.permissions}
+              resourceIds={resourceIds}
+              editable={!checkOwner(row.original.permissions)}
+              canGrantManage={canGrantManage}
+              onChange={handleChangePermission(row.original)}
             ></PermissionCell>
           );
         },
@@ -159,61 +172,25 @@ export function ManagePrivilegeTable({
           if (checkOwner(row.original.permissions)) {
             return;
           }
-          const resourceIds =
-            resourceType === PermissionResourceType.Document
-              ? initialValues.documents || []
-              : [initialValues.id];
-          const onTogglePermission = (permission: Permission) =>
-            togglePermission(permission, [row.original]);
+          const canTransferOwnerToMember =
+            canTransferOwner &&
+            row.original.role === TeamRole.Member &&
+            tenantMemberUserIds.has(row.original.id);
+
           return (
             <div className="flex items-center justify-center gap-1">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="h-8 w-8 p-0">
-                    <span className="sr-only">Open menu</span>
-                    <SquarePen />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="min-w-48 p-1.5">
-                  {(
-                    [
-                      [Permission.Read, Eye, 'readPermission'],
-                      [Permission.Write, SquarePen, 'writePermission'],
-                      [Permission.Manage, ShieldCheck, 'managePermission'],
-                    ] as const
-                  ).map(([permission, Icon, label]) => {
-                    const selectedCount = resourceIds.filter((resourceId) =>
-                      hasResourcePermission(
-                        row.original.permissions[resourceId] ?? 0,
-                        permission,
-                      ),
-                    ).length;
-                    const checked =
-                      resourceIds.length > 0 &&
-                      selectedCount === resourceIds.length;
-                    const partiallyChecked = selectedCount > 0 && !checked;
-                    return (
-                      <DropdownMenuItem
-                        key={permission}
-                        role="menuitemcheckbox"
-                        aria-checked={partiallyChecked ? 'mixed' : checked}
-                        className={cn(
-                          'rounded-md py-2 text-sm',
-                          checked && 'bg-bg-card text-text-primary',
-                        )}
-                        onClick={() => onTogglePermission(permission)}
-                      >
-                        <Icon className="mr-2 size-4" />
-                        {t(`permission.${label}`)}
-                        {checked && <Check className="ml-auto size-4" />}
-                        {partiallyChecked && (
-                          <Minus className="ml-auto size-4" />
-                        )}
-                      </DropdownMenuItem>
-                    );
-                  })}
-                </DropdownMenuContent>
-              </DropdownMenu>
+              {canTransferOwnerToMember && (
+                <Button
+                  variant="ghost"
+                  className="h-8 w-8 p-0 text-accent-primary"
+                  disabled={transferOwnerLoading}
+                  onClick={() => void onTransferOwner(row.original)}
+                  aria-label={t('permission.transferOwner')}
+                  title={t('permission.transferOwner')}
+                >
+                  <Crown />
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 className="h-8 w-8 p-0 text-state-error hover:text-state-error"
@@ -229,7 +206,17 @@ export function ManagePrivilegeTable({
     ];
 
     return columns;
-  }, [handleDelete, initialValues, resourceType, t, togglePermission]);
+  }, [
+    canGrantManage,
+    canTransferOwner,
+    handleChangePermission,
+    handleDelete,
+    onTransferOwner,
+    resourceIds,
+    t,
+    tenantMemberUserIds,
+    transferOwnerLoading,
+  ]);
 
   const table = useReactTable({
     data,

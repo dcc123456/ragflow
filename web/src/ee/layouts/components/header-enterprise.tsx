@@ -3,13 +3,13 @@ import type { MouseEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router';
 
-import { Button } from '@/components/ui/button';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
-  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
 } from '@/components/ui/dropdown-menu';
 import { RAGFlowTooltip } from '@/components/ui/tooltip';
 import { EeIcon } from '@/ee/components/icons';
@@ -25,22 +25,17 @@ import {
 import { ITenant } from '@/interfaces/database/user-setting';
 import { cn } from '@/lib/utils';
 import { TenantMembershipStatus } from '@/pages/user-setting/constants';
-import { Building2, LucideChevronDown } from 'lucide-react';
+import { Building2 } from 'lucide-react';
 
 const getTenantLabel = (tenant?: ITenant) =>
   tenant ? tenant.nickname || tenant.email || tenant.tenant_id : '';
 
-export function EnterpriseHeaderTenantSwitcher({
-  isCompact = false,
-}: {
-  isCompact?: boolean;
-}) {
+export function EnterpriseSidebarTenantSwitcher() {
   const { t } = useTranslation();
   const { data: tenants } = useListTenant();
   const { data: tenantInfo } = useFetchTenantInfo();
   const { switching, switchToTenant } = useSwitchTenant();
 
-  const currentTenantId = tenantInfo.tenant_id;
   const joinedTenants = useMemo(
     () =>
       tenants.filter(
@@ -48,59 +43,39 @@ export function EnterpriseHeaderTenantSwitcher({
       ),
     [tenants],
   );
-  const currentLabel = useMemo(() => {
-    const currentTenant = joinedTenants.find(
-      (tenant) => tenant.tenant_id === currentTenantId,
-    );
 
-    return getTenantLabel(currentTenant) || currentTenantId;
-  }, [currentTenantId, joinedTenants]);
-
-  if (joinedTenants.length === 0) {
+  if (joinedTenants.length < 2) {
     return null;
   }
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          className={cn(
-            'h-10 shrink-0 text-text-primary',
-            isCompact ? 'size-10 px-0' : 'ms-2 max-w-[220px] gap-1 px-2',
-          )}
-          aria-label={t('permission.switchTenant')}
-          title={isCompact ? t('permission.switchTenant') : currentLabel}
-          disabled={switching}
-        >
-          {isCompact ? (
-            <Building2 className="size-5" />
-          ) : (
-            <>
-              <span className="truncate">{currentLabel}</span>
-              <LucideChevronDown className="size-[1em] shrink-0" />
-            </>
-          )}
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="max-w-[280px]">
-        <DropdownMenuRadioGroup
-          value={currentTenantId}
-          onValueChange={switchToTenant}
-        >
-          {joinedTenants.map((tenant) => (
-            <DropdownMenuRadioItem
-              key={tenant.tenant_id}
-              value={tenant.tenant_id}
-              textValue={getTenantLabel(tenant)}
-              className="max-w-[260px]"
-            >
-              <span className="truncate">{getTenantLabel(tenant)}</span>
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <>
+      <DropdownMenuSeparator />
+      <DropdownMenuSub>
+        <DropdownMenuSubTrigger disabled={switching}>
+          <Building2 />
+          {t('permission.switchTenant')}
+        </DropdownMenuSubTrigger>
+        <DropdownMenuSubContent alignOffset={-4} className="max-w-[280px]">
+          <DropdownMenuRadioGroup
+            value={tenantInfo.tenant_id}
+            onValueChange={switchToTenant}
+          >
+            {joinedTenants.map((tenant) => (
+              <DropdownMenuRadioItem
+                key={tenant.tenant_id}
+                value={tenant.tenant_id}
+                textValue={getTenantLabel(tenant)}
+                disabled={switching}
+                className="max-w-[260px]"
+              >
+                <span className="truncate">{getTenantLabel(tenant)}</span>
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+        </DropdownMenuSubContent>
+      </DropdownMenuSub>
+    </>
   );
 }
 

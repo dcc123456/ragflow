@@ -17,10 +17,15 @@ describe('resource permission masks', () => {
     });
   });
 
-  test('returns all actions enabled by a combined mask', () => {
+  test('displays a combined write grant as one permission level', () => {
     expect(
       getResourcePermissionActions(Permission.Read | Permission.Write),
-    ).toEqual([Permission.Read, Permission.Write]);
+    ).toEqual([Permission.Write]);
+    expect(
+      getResourcePermissionActions(
+        Permission.Read | Permission.Write | Permission.Manage,
+      ),
+    ).toEqual([Permission.Manage]);
   });
 
   test('treats owner as its own permission and detects it in a grant map', () => {

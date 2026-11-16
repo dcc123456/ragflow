@@ -44,7 +44,7 @@ export function PrivilegeLabel({ permissions }: PrivilegeLabelProps) {
               action === Permission.Owner,
           })}
         >
-          {t(`permission.${LabelMap[action]}Permission`)}
+          {t(`permission.${LabelMap[action]}`)}
         </Badge>
       ))}
     </div>

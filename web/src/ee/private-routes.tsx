@@ -195,6 +195,17 @@ export const privateRoutes: PrivateRoute[] = [
         errorElement: <FallbackComponent />,
       },
       {
+        // `/team` lives under the third pathless page-layout route.
+        matchIndex: 3,
+        children: [
+          {
+            // Use the enterprise member/group/role UI for the sidebar route.
+            path: Routes.Team,
+            override: () => import('@/ee/pages/user-setting/team'),
+          },
+        ],
+      },
+      {
         path: Routes.UserSetting,
         Component: () => import('@/pages/user-setting'),
         children: [

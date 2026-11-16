@@ -32,7 +32,7 @@ import {
 } from '@/hooks/use-user-setting-request';
 import { IModalProps } from '@/interfaces/common';
 import { TenantMembershipStatus } from '@/pages/user-setting/constants';
-import { ArrowLeftRight, ShieldCheck, Trash2 } from 'lucide-react';
+import { Crown, ShieldCheck, Trash2 } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -193,11 +193,12 @@ function MemberRow({
             <Button
               variant="ghost"
               size="icon-sm"
+              className="text-accent-primary"
               onClick={handleTransferOwner}
               aria-label={t('permission.transferOwner')}
               title={t('permission.transferOwner')}
             >
-              <ArrowLeftRight />
+              <Crown />
             </Button>
           )}
           {showRemoveButton && (

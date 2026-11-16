@@ -14,7 +14,7 @@ import {
 } from '@/ee/services/tenant-role-service';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
-import { TenantRoleKeys } from './use-member-role-query';
+import { TenantMemberKeys, TenantRoleKeys } from './use-member-role-query';
 
 type RolePayload = {
   role_name: string;
@@ -123,6 +123,13 @@ export const useUpdateTenantRole = (tenantId: string, roleId: number) => {
 
 export const useDeleteTenantRole = (tenantId: string) => {
   const invalidate = useInvalidateTenantRoles(tenantId);
+  const queryClient = useQueryClient();
+  const invalidateAfterDelete = useCallback(() => {
+    invalidate();
+    void queryClient.invalidateQueries({
+      queryKey: TenantMemberKeys.list(tenantId),
+    });
+  }, [invalidate, queryClient, tenantId]);
   const { loading, run } = useRoleMutation(
     [...TenantRoleKeys.all, 'delete'],
     async (roleId: number) => {
@@ -130,7 +137,7 @@ export const useDeleteTenantRole = (tenantId: string) => {
 
       return data?.code;
     },
-    invalidate,
+    invalidateAfterDelete,
   );
 
   return { loading, deleteRole: run };

@@ -13,6 +13,7 @@ import {
   IListPermissionByTargetRequest,
   IMoveDepartmentRequestBody,
   ITransferGroupOwnerRequestBody,
+  ITransferResourceOwnershipRequest,
   IUpdateDepartmentRequestBody,
   IUpdateGroupRequestBody,
   IUpdatePermission,
@@ -52,6 +53,7 @@ export const enum TeamApiAction {
   ListDepartmentMember = 'listDepartmentMember',
   ListGroupMember = 'listGroupMember',
   TransferGroupOwner = 'transferGroupOwner',
+  TransferResourceOwnership = 'transferResourceOwnership',
   UpdatePermission = 'updatePermission',
   ListPermission = 'listPermission',
   ListPermissionByTarget = 'listPermissionByTarget',
@@ -407,6 +409,33 @@ export const useUpdatePermission = () => {
   });
 
   return { data, loading, updatePermission: mutateAsync };
+};
+
+export const useTransferResourceOwnership = () => {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const {
+    data,
+    isPending: loading,
+    mutateAsync,
+  } = useMutation({
+    mutationKey: [TeamApiAction.TransferResourceOwnership],
+    mutationFn: async (params: ITransferResourceOwnershipRequest) => {
+      const { data } = await teamService.transferResourceOwner(params);
+      if (data.code === 0) {
+        message.success(t('message.operated'));
+        queryClient.invalidateQueries({
+          queryKey: [TeamApiAction.ListPermission],
+        });
+        queryClient.invalidateQueries({
+          queryKey: [TeamApiAction.ListPermissionByTarget],
+        });
+      }
+      return data.code;
+    },
+  });
+
+  return { data, loading, transferResourceOwner: mutateAsync };
 };
 
 export const useFetchPermissionList = (

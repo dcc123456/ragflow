@@ -1,105 +1,96 @@
-import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   LabelMap,
   Permission,
-  PermissionResourceType,
+  PermissionLevelOptions,
   getResourcePermissionActions,
 } from '@/ee/constants/team';
-import { IPermission } from '@/ee/interfaces/database/team';
-import { cn } from '@/lib/utils';
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
-type PermissionCellProps = Pick<IPermission, 'permissions'> & {
-  resourceType: PermissionResourceType;
+type PermissionCellProps = {
+  permissions: Record<string, number>;
+  resourceIds: string[];
+  editable: boolean;
+  canGrantManage: boolean;
+  onChange: (permission: number) => void;
 };
 
-function buildDocumentPermissions(permissions: IPermission['permissions']) {
-  return Object.entries(permissions).reduce<Record<number, string[]>>(
-    (pre, [resourceId, permission]) => {
-      if (permission in pre) {
-        pre[permission].push(resourceId);
-      } else {
-        pre[permission] = [resourceId];
-      }
-
-      return pre;
-    },
-    {},
-  );
-}
-
 export function PermissionCell({
-  resourceType,
   permissions,
+  resourceIds,
+  editable,
+  canGrantManage,
+  onChange,
 }: PermissionCellProps) {
   const { t } = useTranslation();
 
-  const getPermissionClassName = useCallback((p: number) => {
-    if (p === Permission.Read) {
-      return 'bg-sky-500/10 text-sky-700 dark:text-sky-300';
-    }
-    if (p === Permission.Write) {
-      return 'bg-amber-500/10 text-amber-700 dark:text-amber-300';
-    }
-    if (p === Permission.Manage) {
-      return 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300';
-    }
-    if (p === Permission.Owner) {
-      return 'bg-violet-500/10 text-violet-700 dark:text-violet-300';
-    }
-    return 'bg-bg-card text-text-secondary';
-  }, []);
+  const permissionActions = useMemo(
+    () =>
+      resourceIds.map(
+        (resourceId) =>
+          getResourcePermissionActions(permissions[resourceId] ?? 0)[0],
+      ),
+    [permissions, resourceIds],
+  );
+  const uniqueActions = useMemo(
+    () => [...new Set(permissionActions)],
+    [permissionActions],
+  );
+  const selectedAction = uniqueActions.length === 1 ? uniqueActions[0] : null;
+  const label = selectedAction
+    ? t(`permission.${LabelMap[selectedAction]}`)
+    : t('permission.mixedPermission');
 
-  const renderLabels = useCallback(
-    (permission: number) => {
-      const actions = getResourcePermissionActions(permission);
-      if (actions.length === 0) {
-        return (
-          <Badge variant="secondary" className="h-7 rounded-full border-0 px-3">
-            {t('permission.unknownPermission', { value: permission })}
-          </Badge>
-        );
-      }
-      return actions.map((action) => (
-        <Badge
-          key={action}
-          variant="secondary"
-          className={cn(
-            'h-7 rounded-full border-0 px-3 font-medium shadow-none',
-            getPermissionClassName(action),
-          )}
-        >
-          {t(`permission.${LabelMap[action]}Permission`)}
-        </Badge>
-      ));
-    },
-    [getPermissionClassName, t],
+  const handleSelectPermission = useCallback(
+    (permission: number) => () => onChange(permission),
+    [onChange],
   );
 
-  if (resourceType === PermissionResourceType.Document) {
+  if (!editable) {
     return (
-      <section className="flex w-full flex-wrap items-center justify-center gap-2 text-center">
-        {Object.entries(buildDocumentPermissions(permissions)).map(
-          ([permission, resourceIds]) => (
-            <div key={permission} className="flex items-center gap-2">
-              <div className="flex flex-wrap gap-1">
-                {renderLabels(Number(permission))}
-              </div>
-              <span className="inline-flex min-w-6 items-center justify-center rounded-full bg-bg-card px-2 py-1 text-xs font-medium text-text-secondary">
-                {resourceIds.length}
-              </span>
-            </div>
-          ),
-        )}
-      </section>
+      <Button
+        type="button"
+        variant="ghost"
+        className="h-8 w-fit max-w-[140px] justify-start truncate px-2"
+        disabled
+      >
+        {label}
+      </Button>
     );
   }
 
-  const permissionMasks = [...new Set(Object.values(permissions))];
-  return permissionMasks.length ? (
-    <section className="flex w-full flex-wrap items-center justify-center gap-2 text-center">
-      {permissionMasks.flatMap((permission) => renderLabels(permission))}
-    </section>
-  ) : null;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          className="h-8 w-fit max-w-[140px] justify-start truncate px-2"
+        >
+          {label}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent>
+        {PermissionLevelOptions.filter(
+          ({ action }) => canGrantManage || action !== Permission.Manage,
+        ).map(({ action, value }) => {
+          return (
+            <DropdownMenuItem
+              key={action}
+              onClick={handleSelectPermission(value)}
+            >
+              {t(`permission.${LabelMap[action]}`)}
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 }

@@ -96,6 +96,7 @@ export const FilesManager = {
         resourceType: isFolderType(record.type)
           ? PermissionResourceType.Folder
           : PermissionResourceType.File,
+        operator_permission: record.operator_permission,
       });
     }, []);
 

@@ -93,10 +93,10 @@ export function useFilteredPermissions(
             );
             break;
           case 'read':
-            matchesPermission = hasResourcePermission(
-              item.permission,
-              Permission.Read,
-            );
+            matchesPermission =
+              hasResourcePermission(item.permission, Permission.Read) &&
+              !hasResourcePermission(item.permission, Permission.Write) &&
+              !hasResourcePermission(item.permission, Permission.Manage);
             break;
           case 'invisible':
             matchesPermission = item.permission === 0;
