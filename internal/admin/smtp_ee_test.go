@@ -3,7 +3,9 @@
 package admin
 
 import (
+	"bufio"
 	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -38,7 +40,50 @@ func postSMTPTest(t *testing.T, engine *gin.Engine, body string) (int, common.Er
 	if result.Code == common.CodeSuccess && string(result.Data) != "true" {
 		t.Fatalf("SMTP success response must contain data=true: %s", response.Body.String())
 	}
+	if result.Code == common.CodeBadRequest {
+		var message string
+		if err := json.Unmarshal(result.Data, &message); err != nil || message == "" {
+			t.Fatalf("SMTP error response must retain data message: %s", response.Body.String())
+		}
+	}
 	return response.Code, result.Code
+}
+
+func TestSMTPTestAuditsSuccessfulConnection(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { listener.Close() })
+	go func() {
+		conn, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		conn.SetDeadline(time.Now().Add(3 * time.Second))
+		fmt.Fprint(conn, "220 localhost SMTP\r\n")
+		scanner := bufio.NewScanner(conn)
+		for scanner.Scan() {
+			if strings.HasPrefix(scanner.Text(), "QUIT") {
+				fmt.Fprint(conn, "221 bye\r\n")
+				return
+			}
+			fmt.Fprint(conn, "250 localhost\r\n")
+		}
+	}()
+	var logs []*common.OperationLog
+	common.SetAuditLogSink(func(log *common.OperationLog) error { logs = append(logs, log); return nil })
+	t.Cleanup(func() { common.SetAuditLogSink(nil) })
+	engine := gin.New()
+	engine.Use(func(c *gin.Context) { c.Set("user_id", "audit-admin") })
+	RegisterEERouter(engine.Group("/api/v1/admin"), NewRouter(NewHandler(NewService())))
+	body, _ := json.Marshal(map[string]any{"host": "127.0.0.1", "port": listener.Addr().(*net.TCPAddr).Port})
+	status, code := postSMTPTest(t, engine, string(body))
+	if status != http.StatusOK || code != common.CodeSuccess || len(logs) != 1 ||
+		logs[0].Operation != "test_admin_smtp_connection" || logs[0].Resources["outcome"] != "response_success" {
+		t.Fatalf("status=%d code=%d logs=%+v", status, code, logs)
+	}
 }
 
 func TestSMTPTestRejectsInvalidSettings(t *testing.T) {

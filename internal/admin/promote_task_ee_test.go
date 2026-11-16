@@ -14,6 +14,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/gin-gonic/gin"
+
 	"ragflow/internal/common"
 	"ragflow/internal/entity"
 	servicepkg "ragflow/internal/service"
@@ -42,7 +44,12 @@ func TestAdminPromoteIngestionTask_PublishesToHigh(t *testing.T) {
 	pub := &promoteTaskFakePublisher{}
 	svc := servicepkg.NewIngestionTaskService()
 	svc.SetTaskPublisher(pub)
-	engine := adminIngestionTaskTestRouter(&Handler{service: &Service{ingestionTaskSvc: svc}})
+	engine := gin.New()
+	engine.Use(func(c *gin.Context) { c.Set("user_id", "audit-admin") })
+	RegisterEERouter(engine.Group("/api/v1/admin"), NewRouter(&Handler{service: &Service{ingestionTaskSvc: svc}}))
+	var logs []*common.OperationLog
+	common.SetAuditLogSink(func(log *common.OperationLog) error { logs = append(logs, log); return nil })
+	t.Cleanup(func() { common.SetAuditLogSink(nil) })
 
 	resp := httptest.NewRecorder()
 	engine.ServeHTTP(resp, httptest.NewRequest(http.MethodPost, "/api/v1/admin/ingestion/tasks/t1/promote", nil))
@@ -60,6 +67,10 @@ func TestAdminPromoteIngestionTask_PublishesToHigh(t *testing.T) {
 	}
 	if len(pub.calls) != 1 || pub.calls[0] != common.TaskSubjectHigh {
 		t.Fatalf("want exactly one high-lane publish, got %v", pub.calls)
+	}
+	if len(logs) != 1 || logs[0].Operation != "promote_admin_ingestion_task" ||
+		logs[0].Resources["task_id"] != "t1" || logs[0].Resources["outcome"] != "response_success" {
+		t.Fatalf("unexpected promotion audit: %+v", logs)
 	}
 }
 

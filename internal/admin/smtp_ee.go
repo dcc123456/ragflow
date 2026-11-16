@@ -95,9 +95,11 @@ func (h *Handler) validateMail(c *gin.Context) {
 		respondSMTPTestError(c, err.Error())
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"code": common.CodeSuccess, "data": true, "message": "SMTP connection succeeded"})
+	common.Respond(c, http.StatusOK, common.CodeSuccess, json.RawMessage(`true`), "SMTP connection succeeded")
 }
 
 func respondSMTPTestError(c *gin.Context, message string) {
-	c.JSON(http.StatusBadRequest, gin.H{"code": common.CodeBadRequest, "data": message, "message": message})
+	// The admin UI reads the error from data; retain that response shape.
+	data, _ := json.Marshal(message)
+	common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, json.RawMessage(data), message)
 }

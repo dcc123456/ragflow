@@ -32,7 +32,7 @@ import (
 )
 
 func TestAdminEnterpriseAuditRequests(t *testing.T) {
-	db := testutil.SetupTestDB(t, &entity.Role{}, &entity.User{}, &entity.Tenant{}, &entity.SystemSettings{}, &entity.WhiteList{})
+	db := testutil.SetupTestDB(t, &entity.Role{}, &entity.User{}, &entity.Tenant{}, &entity.SystemSettings{}, &entity.WhiteList{}, &entity.IngestionTask{})
 	t.Cleanup(testutil.ReplaceDBForTest(t, db))
 	gin.SetMode(gin.TestMode)
 	h := NewHandler(NewService())
@@ -67,6 +67,7 @@ func TestAdminEnterpriseAuditRequests(t *testing.T) {
 		{"GET", "/system/license?license=private-audit-sentinel", "test_admin_license", "", "response_error"},
 		{"DELETE", "/ingestion/tasks", "request_admin_ingestion_tasks_remove", "", "response_success"},
 		{"PUT", "/ingestion/tasks", "request_admin_ingestion_tasks_stop", "", "response_success"},
+		{"POST", "/ingestion/tasks/missing/promote", "promote_admin_ingestion_task", "", "response_error"},
 		{"DELETE", "/data/orphan", "request_admin_orphan_data_purge", `{"preview":true}`, "response_success"},
 		{"DELETE", "/users/missing/data", "request_admin_user_data_purge", "{", "response_error"},
 		{"DELETE", "/users/data", "request_admin_users_data_purge", `{"preview":true}`, "response_success"},
@@ -82,7 +83,7 @@ func TestAdminEnterpriseAuditRequests(t *testing.T) {
 		{"PUT", "/whitelist/invalid", "update_admin_whitelist", `{"email":"private-audit-sentinel@example.com"}`, "response_error"},
 		{"DELETE", "/whitelist/invalid", "delete_admin_whitelist", "", "response_success"},
 		{"DELETE", "/whitelist/batch", "delete_admin_whitelist_batch", "{", "response_error"},
-		{"POST", "/validate_mail", "test_admin_smtp_connection", `{"password":"private-audit-sentinel"}`, "unknown"},
+		{"POST", "/validate_mail", "test_admin_smtp_connection", `{"password":"private-audit-sentinel"}`, "response_error"},
 	} {
 		t.Run(tc.action, func(t *testing.T) {
 			logs = nil
@@ -94,6 +95,9 @@ func TestAdminEnterpriseAuditRequests(t *testing.T) {
 				t.Fatalf("got %d logs, response %s", len(logs), response.Body.String())
 			}
 			log := logs[0]
+			if tc.action == "promote_admin_ingestion_task" && log.Resources["task_id"] != "missing" {
+				t.Fatalf("task identifier lost: %+v", log.Resources)
+			}
 			if log.Operation != tc.action || log.HTTPMethod != tc.method || log.UserID != "audit-admin" || log.Resources["tenant_id"] != "actor-tenant" || log.Resources["outcome"] != tc.outcome {
 				t.Fatalf("unexpected log: %+v resources=%+v", log, log.Resources)
 			}

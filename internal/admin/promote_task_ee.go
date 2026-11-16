@@ -27,6 +27,10 @@ import (
 //   - 404 task not found
 //   - 409 task is currently RUNNING
 func (h *Handler) PromoteIngestionTask(c *gin.Context) {
+	common.StartOperationLog(c, "promote_admin_ingestion_task")
+	defer common.FinishOperationLog(c)
+	common.SetOperationResource(c, "task_id", c.Param("task_id"))
+
 	taskID := c.Param("task_id")
 	ctx := c.Request.Context()
 
