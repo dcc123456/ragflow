@@ -50,6 +50,9 @@ func (h *Handler) ShowDefaultTenantSystemRole(c *gin.Context) {
 
 // UpdateDefaultTenantSystemRole changes the system role applied to new tenants.
 func (h *Handler) UpdateDefaultTenantSystemRole(c *gin.Context) {
+	common.StartOperationLog(c, "set_admin_default_tenant_role")
+	defer common.FinishOperationLog(c)
+
 	if _, ok := requireAdminActorID(c); !ok {
 		return
 	}
@@ -67,6 +70,7 @@ func (h *Handler) UpdateDefaultTenantSystemRole(c *gin.Context) {
 		common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, nil, "a positive system role ID is required")
 		return
 	}
+	common.SetOperationResource(c, "role_id", value)
 	selectedRoleID := &value
 	role, err := h.service.SetDefaultTenantSystemRole(c.Request.Context(), selectedRoleID)
 	if err != nil {

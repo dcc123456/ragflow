@@ -91,6 +91,10 @@ type updateTenantRoleRequest struct {
 }
 
 func (h *Handler) UpdateTenantRole(c *gin.Context) {
+	common.StartOperationLog(c, "update_admin_tenant_role")
+	defer common.FinishOperationLog(c)
+	common.SetOperationResource(c, "target_tenant_id", c.Param("tenant_id"))
+
 	tenantID := strings.TrimSpace(c.Param("tenant_id"))
 	if tenantID == "" {
 		common.RespondError(c, common.CodeBadRequest, "tenant_id is required")
@@ -105,6 +109,7 @@ func (h *Handler) UpdateTenantRole(c *gin.Context) {
 	if !ok {
 		return
 	}
+	common.SetOperationResource(c, "role_id", *request.RoleID)
 	result, err := h.service.UpdateTenantRole(c.Request.Context(), tenantID, request.RoleID, actorID)
 	if err != nil {
 		writeRoleError(c, err)
@@ -118,6 +123,10 @@ type updateTenantStatusRequest struct {
 }
 
 func (h *Handler) UpdateTenantStatus(c *gin.Context) {
+	common.StartOperationLog(c, "update_admin_tenant_status")
+	defer common.FinishOperationLog(c)
+	common.SetOperationResource(c, "target_tenant_id", c.Param("tenant_id"))
+
 	tenantID := strings.TrimSpace(c.Param("tenant_id"))
 	if tenantID == "" {
 		common.RespondError(c, common.CodeBadRequest, "tenant_id is required")

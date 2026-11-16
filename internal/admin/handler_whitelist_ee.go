@@ -83,6 +83,9 @@ func (h *Handler) ShowWhiteList(c *gin.Context) {
 }
 
 func (h *Handler) AddWhiteList(c *gin.Context) {
+	common.StartOperationLog(c, "add_admin_whitelist")
+	defer common.FinishOperationLog(c)
+
 	var request whitelistEmailRequest
 	if !bindWhitelistJSON(c, &request) {
 		return
@@ -96,6 +99,9 @@ func (h *Handler) AddWhiteList(c *gin.Context) {
 }
 
 func (h *Handler) UpdateWhiteList(c *gin.Context) {
+	common.StartOperationLog(c, "update_admin_whitelist")
+	defer common.FinishOperationLog(c)
+
 	var request whitelistEmailRequest
 	if !bindWhitelistJSON(c, &request) {
 		return
@@ -105,6 +111,7 @@ func (h *Handler) UpdateWhiteList(c *gin.Context) {
 		writeWhitelistError(c, common.NewCodedError(common.CodeBadRequest, "Invalid whitelist ID"))
 		return
 	}
+	common.SetOperationResource(c, "whitelist_id", id)
 	message, err := h.service.UpdateWhiteList(c.Request.Context(), id, request.Email)
 	if err != nil {
 		writeWhitelistError(c, err)
@@ -114,6 +121,9 @@ func (h *Handler) UpdateWhiteList(c *gin.Context) {
 }
 
 func (h *Handler) DeleteWhiteList(c *gin.Context) {
+	common.StartOperationLog(c, "delete_admin_whitelist")
+	defer common.FinishOperationLog(c)
+
 	deleted, err := h.service.DeleteWhiteList(c.Request.Context(), c.Param("email"))
 	if err != nil {
 		writeWhitelistError(c, err)
@@ -123,12 +133,16 @@ func (h *Handler) DeleteWhiteList(c *gin.Context) {
 }
 
 func (h *Handler) BatchDeleteWhiteList(c *gin.Context) {
+	common.StartOperationLog(c, "delete_admin_whitelist_batch")
+	defer common.FinishOperationLog(c)
+
 	var request struct {
 		IDs []int64 `json:"ids" binding:"required"`
 	}
 	if !bindWhitelistJSON(c, &request) {
 		return
 	}
+	common.SetOperationResource(c, "whitelist_ids", request.IDs)
 	deleted, err := h.service.BatchDeleteWhiteList(c.Request.Context(), request.IDs)
 	if err != nil {
 		writeWhitelistError(c, err)
@@ -138,6 +152,9 @@ func (h *Handler) BatchDeleteWhiteList(c *gin.Context) {
 }
 
 func (h *Handler) BatchAddWhiteList(c *gin.Context) {
+	common.StartOperationLog(c, "import_admin_whitelist")
+	defer common.FinishOperationLog(c)
+
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxWhitelistFileBytes+(64<<10))
 	if err := c.Request.ParseMultipartForm(1 << 20); err != nil {
 		var limitError *http.MaxBytesError

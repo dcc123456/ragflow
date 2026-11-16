@@ -58,11 +58,16 @@ type CreateRoleHTTPRequest struct {
 
 // CreateRole handle create role
 func (h *Handler) CreateRole(c *gin.Context) {
+	common.StartOperationLog(c, "create_admin_role")
+	defer common.FinishOperationLog(c)
+
 	var req CreateRoleHTTPRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		common.RespondError(c, common.CodeBadRequest, "Role name is required")
 		return
 	}
+
+	common.SetOperationResource(c, "role_name", req.RoleName)
 
 	ctx := c.Request.Context()
 	role, err := h.service.CreateRole(ctx, req.RoleName, req.Description)
@@ -99,6 +104,10 @@ type UpdateRoleHTTPRequest struct {
 
 // UpdateRole handle update role
 func (h *Handler) UpdateRole(c *gin.Context) {
+	common.StartOperationLog(c, "update_admin_role")
+	defer common.FinishOperationLog(c)
+	common.SetOperationResource(c, "role_name", c.Param("role_name"))
+
 	roleName := c.Param("role_name")
 	if roleName == "" {
 		common.RespondError(c, common.CodeBadRequest, "Role name is required")
@@ -123,6 +132,10 @@ func (h *Handler) UpdateRole(c *gin.Context) {
 
 // DropRole handle drop role
 func (h *Handler) DropRole(c *gin.Context) {
+	common.StartOperationLog(c, "delete_admin_role")
+	defer common.FinishOperationLog(c)
+	common.SetOperationResource(c, "role_name", c.Param("role_name"))
+
 	roleName := c.Param("role_name")
 	if roleName == "" {
 		common.RespondError(c, common.CodeBadRequest, "Role name is required")
@@ -165,6 +178,10 @@ type GrantRolePermissionHTTPRequest struct {
 
 // GrantRolePermission handle grant role permission
 func (h *Handler) GrantRolePermission(c *gin.Context) {
+	common.StartOperationLog(c, "grant_admin_role_permission")
+	defer common.FinishOperationLog(c)
+	common.SetOperationResource(c, "role_name", c.Param("role_name"))
+
 	roleName := c.Param("role_name")
 	if roleName == "" {
 		common.RespondError(c, common.CodeBadRequest, "Role name is required")
@@ -199,6 +216,10 @@ type RevokeRolePermissionHTTPRequest struct {
 
 // RevokeRolePermission handle revoke role permission
 func (h *Handler) RevokeRolePermission(c *gin.Context) {
+	common.StartOperationLog(c, "revoke_admin_role_permission")
+	defer common.FinishOperationLog(c)
+	common.SetOperationResource(c, "role_name", c.Param("role_name"))
+
 	roleName := c.Param("role_name")
 	if roleName == "" {
 		common.RespondError(c, common.CodeBadRequest, "Role name is required")
@@ -275,6 +296,10 @@ type SetRoleDefaultModelRequest struct {
 }
 
 func (h *Handler) SetRoleDefaultModel(c *gin.Context) {
+	common.StartOperationLog(c, "set_admin_role_default_model")
+	defer common.FinishOperationLog(c)
+	common.SetOperationResource(c, "role_name", c.Param("role_name"))
+
 	roleName := c.Param("role_name")
 	if roleName == "" {
 		common.RespondError(c, common.CodeBadRequest, "Role name is required")
@@ -286,6 +311,9 @@ func (h *Handler) SetRoleDefaultModel(c *gin.Context) {
 		common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Invalid request body: "+err.Error())
 		return
 	}
+
+	common.SetOperationResource(c, "model_id", request.ModelID)
+	common.SetOperationResource(c, "model_type", request.ModelType)
 
 	ctx := c.Request.Context()
 	result, err := h.service.SetRoleDefaultModel(ctx, roleName, request.ModelID, request.ModelType)
@@ -301,6 +329,10 @@ type ResetRoleDefaultModelRequest struct {
 }
 
 func (h *Handler) ResetRoleDefaultModel(c *gin.Context) {
+	common.StartOperationLog(c, "reset_admin_role_default_model")
+	defer common.FinishOperationLog(c)
+	common.SetOperationResource(c, "role_name", c.Param("role_name"))
+
 	roleName := c.Param("role_name")
 	if roleName == "" {
 		common.RespondError(c, common.CodeBadRequest, "Role name is required")
@@ -312,6 +344,8 @@ func (h *Handler) ResetRoleDefaultModel(c *gin.Context) {
 		common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Invalid request body: "+err.Error())
 		return
 	}
+
+	common.SetOperationResource(c, "model_type", request.ModelType)
 
 	ctx := c.Request.Context()
 	result, err := h.service.ResetRoleDefaultModel(ctx, roleName, request.ModelType)
@@ -366,11 +400,16 @@ type AddProviderRequest struct {
 }
 
 func (h *Handler) AddModelProvider(c *gin.Context) {
+	common.StartOperationLog(c, "create_admin_model_provider")
+	defer common.FinishOperationLog(c)
+
 	var req AddProviderRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		common.RespondError(c, common.CodeBadRequest, err.Error())
 		return
 	}
+
+	common.SetOperationResource(c, "provider_name", req.ProviderName)
 
 	ctx := c.Request.Context()
 	result, err := h.service.AddModelProvider(ctx, req.ProviderName)
@@ -398,6 +437,10 @@ func (h *Handler) ShowProvider(c *gin.Context) {
 }
 
 func (h *Handler) DeleteModelProvider(c *gin.Context) {
+	common.StartOperationLog(c, "delete_admin_model_provider")
+	defer common.FinishOperationLog(c)
+	common.SetOperationResource(c, "provider_name", c.Param("provider_name"))
+
 	providerName := strings.TrimSpace(c.Param("provider_name"))
 	if providerName == "" {
 		common.Respond(c, http.StatusBadRequest, 400, nil, "Provider name is required")
@@ -508,6 +551,11 @@ func (h *Handler) ShowProviderInstanceBalance(c *gin.Context) {
 }
 
 func (h *Handler) CheckInstanceConnection(c *gin.Context) {
+	common.StartOperationLog(c, "test_admin_model_instance_connection")
+	defer common.FinishOperationLog(c)
+	common.SetOperationResource(c, "provider_name", c.Param("provider_name"))
+	common.SetOperationResource(c, "instance_name", c.Param("instance_name"))
+
 	providerName := c.Param("provider_name")
 	if providerName == "" {
 		common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
@@ -529,6 +577,10 @@ func (h *Handler) CheckInstanceConnection(c *gin.Context) {
 }
 
 func (h *Handler) CheckProviderConnection(c *gin.Context) {
+	common.StartOperationLog(c, "test_admin_model_provider_connection")
+	defer common.FinishOperationLog(c)
+	common.SetOperationResource(c, "provider_name", c.Param("provider_name"))
+
 	providerName := c.Param("provider_name")
 	if providerName == "" {
 		common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
@@ -552,6 +604,11 @@ func (h *Handler) CheckProviderConnection(c *gin.Context) {
 }
 
 func (h *Handler) AlterProviderInstance(c *gin.Context) {
+	common.StartOperationLog(c, "update_admin_model_instance")
+	defer common.FinishOperationLog(c)
+	common.SetOperationResource(c, "provider_name", c.Param("provider_name"))
+	common.SetOperationResource(c, "instance_name", c.Param("instance_name"))
+
 	providerName := c.Param("provider_name")
 	if providerName == "" {
 		common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
@@ -581,6 +638,10 @@ func (h *Handler) AlterProviderInstance(c *gin.Context) {
 }
 
 func (h *Handler) AddModelInstance(c *gin.Context) {
+	common.StartOperationLog(c, "create_admin_model_instance")
+	defer common.FinishOperationLog(c)
+	common.SetOperationResource(c, "provider_name", c.Param("provider_name"))
+
 	providerName := c.Param("provider_name")
 	if providerName == "" {
 		common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
@@ -591,6 +652,8 @@ func (h *Handler) AddModelInstance(c *gin.Context) {
 		common.RespondError(c, common.CodeBadRequest, err.Error())
 		return
 	}
+
+	common.SetOperationResource(c, "instance_name", req.InstanceName)
 
 	ctx := c.Request.Context()
 	_, err := h.service.AddModelInstance(ctx, providerName, &req)
@@ -603,6 +666,10 @@ func (h *Handler) AddModelInstance(c *gin.Context) {
 }
 
 func (h *Handler) DeleteModelInstance(c *gin.Context) {
+	common.StartOperationLog(c, "delete_admin_model_instance")
+	defer common.FinishOperationLog(c)
+	common.SetOperationResource(c, "provider_name", c.Param("provider_name"))
+
 	providerName := c.Param("provider_name")
 	if providerName == "" {
 		common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
@@ -614,6 +681,8 @@ func (h *Handler) DeleteModelInstance(c *gin.Context) {
 		common.RespondError(c, common.CodeBadRequest, err.Error())
 		return
 	}
+
+	common.SetOperationResource(c, "instance_names", req.Instances)
 
 	ctx := c.Request.Context()
 	_, err := h.service.DeleteModelInstances(ctx, providerName, req.Instances)
@@ -649,6 +718,11 @@ func (h *Handler) ListInstanceModels(c *gin.Context) {
 }
 
 func (h *Handler) AlterModel(c *gin.Context) {
+	common.StartOperationLog(c, "update_admin_model")
+	defer common.FinishOperationLog(c)
+	common.SetOperationResource(c, "provider_name", c.Param("provider_name"))
+	common.SetOperationResource(c, "instance_name", c.Param("instance_name"))
+
 	providerName := c.Param("provider_name")
 	if providerName == "" {
 		common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
@@ -674,6 +748,9 @@ func (h *Handler) AlterModel(c *gin.Context) {
 		return
 	}
 
+	common.SetOperationResource(c, "model_name", modelName)
+	common.SetOperationResource(c, "model_id", req.ModelID)
+
 	ctx := c.Request.Context()
 	_, err := h.service.AlterModel(ctx, providerName, instanceName, modelName, &req)
 	if err != nil {
@@ -685,6 +762,11 @@ func (h *Handler) AlterModel(c *gin.Context) {
 }
 
 func (h *Handler) AddModel(c *gin.Context) {
+	common.StartOperationLog(c, "create_admin_model")
+	defer common.FinishOperationLog(c)
+	common.SetOperationResource(c, "provider_name", c.Param("provider_name"))
+	common.SetOperationResource(c, "instance_name", c.Param("instance_name"))
+
 	var req servicepkg.AddModelRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		common.RespondError(c, common.CodeBadRequest, err.Error())
@@ -707,6 +789,8 @@ func (h *Handler) AddModel(c *gin.Context) {
 		return
 	}
 
+	common.SetOperationResource(c, "model_name", req.ModelName)
+
 	ctx := c.Request.Context()
 	if err := h.service.AddModel(ctx, &req); err != nil {
 		writeAdminModelError(c, err)
@@ -717,6 +801,11 @@ func (h *Handler) AddModel(c *gin.Context) {
 }
 
 func (h *Handler) DeleteModels(c *gin.Context) {
+	common.StartOperationLog(c, "delete_admin_models")
+	defer common.FinishOperationLog(c)
+	common.SetOperationResource(c, "provider_name", c.Param("provider_name"))
+	common.SetOperationResource(c, "instance_name", c.Param("instance_name"))
+
 	providerName := c.Param("provider_name")
 	if providerName == "" {
 		common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
@@ -738,6 +827,8 @@ func (h *Handler) DeleteModels(c *gin.Context) {
 		common.Respond(c, http.StatusBadRequest, common.CodeBadRequest, nil, "model_name is required")
 		return
 	}
+
+	common.SetOperationResource(c, "model_names", req.ModelNames)
 
 	ctx := c.Request.Context()
 	_, err := h.service.DeleteModels(ctx, providerName, instanceName, req.ModelNames)
@@ -767,6 +858,9 @@ type SetSystemLicenseRequest struct {
 
 // SetSystemLicense to set system license
 func (h *Handler) SetSystemLicense(c *gin.Context) {
+	common.StartOperationLog(c, "set_admin_license")
+	defer common.FinishOperationLog(c)
+
 	var req SetSystemLicenseRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		println("JSON bind error: %v (type: %T)", err, err)
@@ -807,6 +901,8 @@ func (h *Handler) ShowSystemLicense(c *gin.Context) {
 		var license string
 		license, ok = c.GetQuery("license")
 		if ok {
+			common.StartOperationLog(c, "test_admin_license")
+			defer common.FinishOperationLog(c)
 			// Verify license
 			result, err = h.service.VerifyLicense(ctx, license)
 			if err != nil {
@@ -831,6 +927,9 @@ type SetSystemLicenseConfigRequest struct {
 }
 
 func (h *Handler) UpdateSystemLicenseConfig(c *gin.Context) {
+	common.StartOperationLog(c, "update_admin_license_config")
+	defer common.FinishOperationLog(c)
+
 	var req SetSystemLicenseConfigRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		println("JSON bind error: %v (type: %T)", err, err)
@@ -851,6 +950,9 @@ type SetSoftFingerprintRequest struct {
 }
 
 func (h *Handler) SetSoftFingerprint(c *gin.Context) {
+	common.StartOperationLog(c, "set_admin_soft_fingerprint")
+	defer common.FinishOperationLog(c)
+
 	var req SetSoftFingerprintRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		println("JSON bind error: %v (type: %T)", err, err)
@@ -881,6 +983,9 @@ func (h *Handler) ShowSoftFingerprint(c *gin.Context) {
 }
 
 func (h *Handler) DeleteSoftFingerprint(c *gin.Context) {
+	common.StartOperationLog(c, "delete_admin_soft_fingerprint")
+	defer common.FinishOperationLog(c)
+
 	ctx := c.Request.Context()
 
 	err := h.service.DeleteSoftFingerprint(ctx)
@@ -1646,6 +1751,9 @@ func parseAdminIngestionTaskFilter(query url.Values) (dao.AdminIngestionTaskFilt
 
 // RemoveIngestionTasks requires the enterprise edition.
 func (h *Handler) RemoveIngestionTasks(c *gin.Context) {
+	common.StartOperationLog(c, "request_admin_ingestion_tasks_remove")
+	defer common.FinishOperationLog(c)
+
 	result, err := h.service.RemoveIngestionTasks(c.Request.Context())
 	if err != nil {
 		common.RespondError(c, common.CodeServerError, err.Error())
@@ -1656,6 +1764,9 @@ func (h *Handler) RemoveIngestionTasks(c *gin.Context) {
 
 // StopIngestionTasks requires the enterprise edition.
 func (h *Handler) StopIngestionTasks(c *gin.Context) {
+	common.StartOperationLog(c, "request_admin_ingestion_tasks_stop")
+	defer common.FinishOperationLog(c)
+
 	result, err := h.service.StopIngestionTasks(c.Request.Context())
 	if err != nil {
 		common.RespondError(c, common.CodeServerError, err.Error())
@@ -1718,12 +1829,17 @@ type PurgeOrphanDataRequest struct {
 
 // PurgeOrphanData handle purge orphan data
 func (h *Handler) PurgeOrphanData(c *gin.Context) {
+	common.StartOperationLog(c, "request_admin_orphan_data_purge")
+	defer common.FinishOperationLog(c)
+
 	var request PurgeOrphanDataRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
 		println("JSON bind error: %v (type: %T)", err, err)
 		common.RespondError(c, common.CodeBadRequest, err.Error())
 		return
 	}
+	common.SetOperationResource(c, "preview", request.Preview)
+
 	ctx := c.Request.Context()
 	result, err := h.service.PurgeOrphanData(ctx, request.Preview)
 	if err != nil {
@@ -1740,6 +1856,10 @@ type PurgeUserDataRequest struct {
 
 // PurgeUserData handle purge user data
 func (h *Handler) PurgeUserData(c *gin.Context) {
+	common.StartOperationLog(c, "request_admin_user_data_purge")
+	defer common.FinishOperationLog(c)
+	common.SetOperationResource(c, "target_username", c.Param("username"))
+
 	var request PurgeUserDataRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
 		println("JSON bind error: %v (type: %T)", err, err)
@@ -1750,6 +1870,8 @@ func (h *Handler) PurgeUserData(c *gin.Context) {
 	if err != nil {
 		return
 	}
+	common.SetOperationResource(c, "preview", request.Preview)
+
 	ctx := c.Request.Context()
 	result, err := h.service.PurgeUserData(ctx, username, request.Preview)
 	if err != nil {
@@ -1773,12 +1895,17 @@ type PurgeUsersDataRequest struct {
 
 // PurgeUsersData handle purge users data
 func (h *Handler) PurgeUsersData(c *gin.Context) {
+	common.StartOperationLog(c, "request_admin_users_data_purge")
+	defer common.FinishOperationLog(c)
+
 	var request PurgeUsersDataRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
 		println("JSON bind error: %v (type: %T)", err, err)
 		common.RespondError(c, common.CodeBadRequest, err.Error())
 		return
 	}
+	common.SetOperationResource(c, "preview", request.Preview)
+
 	ctx := c.Request.Context()
 	result, err := h.service.PurgeUsersData(ctx, request.Preview, request.Days, request.Plan, request.UserStatus)
 	if err != nil {
@@ -1795,6 +1922,10 @@ func (h *Handler) PurgeUsersData(c *gin.Context) {
 
 // GenerateUserAPIKey handle create tenant API key
 func (h *Handler) GenerateUserAPIKey(c *gin.Context) {
+	common.StartOperationLog(c, "create_admin_user_api_key")
+	defer common.FinishOperationLog(c)
+	common.SetOperationResource(c, "target_username", c.Param("username"))
+
 	username, err := getUserName(c)
 	if err != nil {
 		return
@@ -1813,6 +1944,10 @@ func (h *Handler) GenerateUserAPIKey(c *gin.Context) {
 
 // DeleteUserAPIKey handle delete user API key
 func (h *Handler) DeleteUserAPIKey(c *gin.Context) {
+	common.StartOperationLog(c, "delete_admin_user_api_key")
+	defer common.FinishOperationLog(c)
+	common.SetOperationResource(c, "target_username", c.Param("username"))
+
 	username, err := getUserName(c)
 	if err != nil {
 		return
@@ -1866,6 +2001,9 @@ func (h *Handler) DownloadSensitiveWords(c *gin.Context) {
 
 // UploadSensitiveWords handle upload sensitive words
 func (h *Handler) UploadSensitiveWords(c *gin.Context) {
+	common.StartOperationLog(c, "upload_admin_sensitive_words")
+	defer common.FinishOperationLog(c)
+
 	form, err := c.MultipartForm()
 	if err != nil || form == nil || len(form.File["file"]) == 0 {
 		common.RespondError(c, common.CodeArgumentError, "No file part!")
@@ -1905,6 +2043,9 @@ type BindVerificationEmailRequest struct {
 
 // BindVerificationEmail handle bind verification email
 func (h *Handler) BindVerificationEmail(c *gin.Context) {
+	common.StartOperationLog(c, "bind_admin_verification_email")
+	defer common.FinishOperationLog(c)
+
 	var request BindVerificationEmailRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
 		println("JSON bind error: %v (type: %T)", err, err)

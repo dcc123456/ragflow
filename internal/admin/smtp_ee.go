@@ -78,6 +78,9 @@ func (r smtpTestRequest) settings() (common.SMTPConfig, time.Duration, error) {
 }
 
 func (h *Handler) validateMail(c *gin.Context) {
+	common.StartOperationLog(c, "test_admin_smtp_connection")
+	defer common.FinishOperationLog(c)
+
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 64<<10)
 	var request smtpTestRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
