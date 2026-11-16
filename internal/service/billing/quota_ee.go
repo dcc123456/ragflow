@@ -20,6 +20,7 @@ package billing
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -130,6 +131,9 @@ func (s *Service) APIAuthAllowed(ctx context.Context, tenantID string) (bool, er
 	if s == nil || !s.cfg.Enabled {
 		return true, nil
 	}
+	if tenantID == "" {
+		return false, errors.New("tenant ID is required for API key plan check")
+	}
 	subscription, err := s.Subscription(ctx, tenantID)
 	if err != nil {
 		return false, err
@@ -144,8 +148,9 @@ func (s *Service) APIAuthAllowed(ctx context.Context, tenantID string) (bool, er
 	}
 	switch strings.ToLower(strings.TrimSpace(planName)) {
 	case "starter", "pro":
-		return status == "" || SubscriptionEntitled(status), nil
-	default:
-		return false, nil
+		if SubscriptionEntitled(status) {
+			return true, nil
+		}
 	}
+	return false, errors.New("You need to upgrade to a Starter or Pro plan to use this feature.")
 }
