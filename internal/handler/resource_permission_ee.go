@@ -28,6 +28,9 @@ import (
 )
 
 func (h *TenantHandler) UpdateResourcePermissions(c *gin.Context) {
+	common.StartOperationLog(c, "update_resource_permissions")
+	defer common.FinishOperationLog(c)
+
 	userID, tenantID, ok := tenantRoleRequestContext(c)
 	if !ok {
 		return
@@ -37,6 +40,9 @@ func (h *TenantHandler) UpdateResourcePermissions(c *gin.Context) {
 		common.RespondError(c, common.CodeBadRequest, "Invalid resource permission request")
 		return
 	}
+	common.SetOperationResource(c, "resource_type", request.ResourceType)
+	common.SetOperationResource(c, "resource_id", request.ResourceID)
+	common.SetOperationResource(c, "resource_ids", request.ResourceIDs)
 	if err := h.tenantService.UpdateResourcePermissions(c.Request.Context(), userID, tenantID, request); err != nil {
 		writeResourcePermissionError(c, err)
 		return
@@ -45,6 +51,9 @@ func (h *TenantHandler) UpdateResourcePermissions(c *gin.Context) {
 }
 
 func (h *TenantHandler) TransferResourceOwnership(c *gin.Context) {
+	common.StartOperationLog(c, "transfer_resource_ownership")
+	defer common.FinishOperationLog(c)
+
 	userID, tenantID, ok := tenantRoleRequestContext(c)
 	if !ok {
 		return
@@ -54,6 +63,9 @@ func (h *TenantHandler) TransferResourceOwnership(c *gin.Context) {
 		common.RespondError(c, common.CodeBadRequest, "Invalid resource ownership transfer request")
 		return
 	}
+	common.SetOperationResource(c, "resource_type", request.ResourceType)
+	common.SetOperationResource(c, "resource_id", request.ResourceID)
+	common.SetOperationResource(c, "target_user_id", request.UserID)
 	if err := h.tenantService.TransferResourceOwnership(c.Request.Context(), userID, tenantID, request); err != nil {
 		writeResourcePermissionError(c, err)
 		return

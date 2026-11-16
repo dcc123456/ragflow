@@ -50,6 +50,9 @@ func (h *TenantHandler) ListTenantRoles(c *gin.Context) {
 }
 
 func (h *TenantHandler) CreateTenantRole(c *gin.Context) {
+	common.StartOperationLog(c, "create_tenant_role")
+	defer common.FinishOperationLog(c)
+
 	userID, tenantID, ok := tenantRoleRequestContext(c)
 	if !ok {
 		return
@@ -67,6 +70,7 @@ func (h *TenantHandler) CreateTenantRole(c *gin.Context) {
 		writeTenantRoleError(c, err)
 		return
 	}
+	common.SetOperationResource(c, "role_id", result.ID)
 	common.RespondSuccess(c, result, "")
 }
 
@@ -84,6 +88,10 @@ func (h *TenantHandler) GetTenantRole(c *gin.Context) {
 }
 
 func (h *TenantHandler) UpdateTenantRole(c *gin.Context) {
+	common.StartOperationLog(c, "update_tenant_role")
+	defer common.FinishOperationLog(c)
+	common.SetOperationResource(c, "role_id", c.Param("role_id"))
+
 	userID, tenantID, roleID, ok := tenantRolePathContext(c)
 	if !ok {
 		return
@@ -105,6 +113,10 @@ func (h *TenantHandler) UpdateTenantRole(c *gin.Context) {
 }
 
 func (h *TenantHandler) DeleteTenantRole(c *gin.Context) {
+	common.StartOperationLog(c, "delete_tenant_role")
+	defer common.FinishOperationLog(c)
+	common.SetOperationResource(c, "role_id", c.Param("role_id"))
+
 	userID, tenantID, roleID, ok := tenantRolePathContext(c)
 	if !ok {
 		return
@@ -143,6 +155,10 @@ func (h *TenantHandler) GetTenantRolePermissions(c *gin.Context) {
 }
 
 func (h *TenantHandler) SetTenantRolePermissions(c *gin.Context) {
+	common.StartOperationLog(c, "update_tenant_role_permissions")
+	defer common.FinishOperationLog(c)
+	common.SetOperationResource(c, "role_id", c.Param("role_id"))
+
 	userID, tenantID, roleID, ok := tenantRolePathContext(c)
 	if !ok {
 		return
@@ -176,6 +192,9 @@ func (h *TenantHandler) GetTenantDefaultRole(c *gin.Context) {
 }
 
 func (h *TenantHandler) SetTenantDefaultRole(c *gin.Context) {
+	common.StartOperationLog(c, "update_tenant_default_role")
+	defer common.FinishOperationLog(c)
+
 	userID, tenantID, ok := tenantRoleRequestContext(c)
 	if !ok {
 		return
@@ -196,6 +215,9 @@ func (h *TenantHandler) SetTenantDefaultRole(c *gin.Context) {
 		}
 		value := int32(parsed)
 		roleID = &value
+	}
+	if roleID != nil {
+		common.SetOperationResource(c, "role_id", *roleID)
 	}
 	result, err := h.tenantService.SetTenantDefaultRole(c.Request.Context(), userID, tenantID, roleID)
 	if err != nil {
@@ -219,6 +241,9 @@ func (h *TenantHandler) ListTenantManagementPermissions(c *gin.Context) {
 }
 
 func (h *TenantHandler) SetTenantManagementPermissions(c *gin.Context) {
+	common.StartOperationLog(c, "update_tenant_management_permissions")
+	defer common.FinishOperationLog(c)
+
 	userID, tenantID, ok := tenantRoleRequestContext(c)
 	if !ok {
 		return
@@ -232,6 +257,8 @@ func (h *TenantHandler) SetTenantManagementPermissions(c *gin.Context) {
 		common.RespondError(c, common.CodeBadRequest, "permissions must be an array; use an empty array to revoke the grant")
 		return
 	}
+	common.SetOperationResource(c, "target_user_id", request.UserID)
+	common.SetOperationResource(c, "group_id", request.GroupID)
 	result, err := h.tenantService.SetTenantManagementPermissions(c.Request.Context(), userID, tenantID, request.UserID, request.GroupID, *request.Permissions)
 	if err != nil {
 		writeTenantRoleError(c, err)
@@ -259,6 +286,10 @@ func (h *TenantHandler) GetTenantMemberRole(c *gin.Context) {
 }
 
 func (h *TenantHandler) SetTenantMemberRole(c *gin.Context) {
+	common.StartOperationLog(c, "update_tenant_member_role")
+	defer common.FinishOperationLog(c)
+	common.SetOperationResource(c, "target_user_id", c.Param("user_id"))
+
 	userID, tenantID, ok := tenantRoleRequestContext(c)
 	if !ok {
 		return
@@ -275,6 +306,7 @@ func (h *TenantHandler) SetTenantMemberRole(c *gin.Context) {
 		common.RespondError(c, common.CodeBadRequest, "role_id must be a positive integer")
 		return
 	}
+	common.SetOperationResource(c, "role_id", request.RoleID)
 	result, err := h.tenantService.SetTenantMemberRole(c.Request.Context(), userID, tenantID, targetUserID, request.RoleID)
 	if err != nil {
 		writeTenantRoleError(c, err)

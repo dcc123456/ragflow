@@ -30,6 +30,10 @@ import (
 )
 
 func (h *TenantHandler) SwitchTenant(c *gin.Context) {
+	common.StartOperationLog(c, "switch_tenant")
+	defer common.FinishOperationLog(c)
+	common.SetOperationResource(c, "target_tenant_id", c.Param("tenant_id"))
+
 	user, code, message := GetUser(c)
 	if code != common.CodeSuccess {
 		common.Respond(c, http.StatusUnauthorized, code, nil, message)

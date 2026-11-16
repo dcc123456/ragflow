@@ -28,6 +28,10 @@ import (
 )
 
 func (h *TenantHandler) CreateTenantInviteLink(c *gin.Context) {
+	common.StartOperationLog(c, "create_tenant_invitation_link")
+	defer common.FinishOperationLog(c)
+	common.SetOperationResource(c, "target_tenant_id", c.Param("tenant_id"))
+
 	store := tenantInviteLinkStore(c)
 	if store == nil {
 		return
@@ -90,6 +94,9 @@ func (h *TenantHandler) GetTenantInviteLinkMembership(c *gin.Context) {
 }
 
 func (h *TenantHandler) RequestTenantInviteLink(c *gin.Context) {
+	common.StartOperationLog(c, "request_tenant_membership")
+	defer common.FinishOperationLog(c)
+
 	user, code, message := GetUser(c)
 	if code != common.CodeSuccess {
 		common.RespondError(c, code, message)
@@ -112,6 +119,10 @@ func (h *TenantHandler) RequestTenantInviteLink(c *gin.Context) {
 }
 
 func (h *TenantHandler) ApproveTenantMember(c *gin.Context) {
+	common.StartOperationLog(c, "approve_tenant_member")
+	defer common.FinishOperationLog(c)
+	common.SetOperationResource(c, "target_user_id", c.Param("user_id"))
+
 	_, tenantID, ok := tenantRoleRequestContext(c)
 	if !ok {
 		return

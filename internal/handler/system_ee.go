@@ -55,6 +55,8 @@ func (h *SystemHandler) GetCores(c *gin.Context) {
 
 // SetCores /api/v1/system/cores [PUT]
 func (h *SystemHandler) SetCores(c *gin.Context) {
+	common.StartOperationLog(c, "set_system_cores")
+	defer common.FinishOperationLog(c)
 	common.RespondError(c, common.CodeNotImplemented, "Set cores not implemented")
 }
 
@@ -65,6 +67,8 @@ func (h *SystemHandler) GetMemory(c *gin.Context) {
 
 // SetMemory /api/v1/system/memory [PUT]
 func (h *SystemHandler) SetMemory(c *gin.Context) {
+	common.StartOperationLog(c, "set_system_memory")
+	defer common.FinishOperationLog(c)
 	common.RespondError(c, common.CodeNotImplemented, "Set memory not implemented")
 }
 
@@ -75,6 +79,8 @@ func (h *SystemHandler) GetConcurrency(c *gin.Context) {
 
 // SetConcurrency /api/v1/system/concurrency [PUT]
 func (h *SystemHandler) SetConcurrency(c *gin.Context) {
+	common.StartOperationLog(c, "set_system_concurrency")
+	defer common.FinishOperationLog(c)
 	common.RespondError(c, common.CodeNotImplemented, "Set concurrency not implemented")
 }
 

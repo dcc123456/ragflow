@@ -32,12 +32,16 @@ type CreateModelGroupRequest struct {
 }
 
 func (h *ProviderHandler) CreateModelGroup(c *gin.Context) {
+	common.StartOperationLog(c, "create_model_group")
+	defer common.FinishOperationLog(c)
+
 	var req CreateModelGroupRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		common.RespondError(c, common.CodeBadRequest, "Group name is required")
 		return
 	}
 
+	common.SetOperationResource(c, "group_name", req.Name)
 	userID := c.GetString("user_id")
 
 	ctx := c.Request.Context()
@@ -52,6 +56,12 @@ func (h *ProviderHandler) CreateModelGroup(c *gin.Context) {
 }
 
 func (h *ProviderHandler) DeleteModelGroup(c *gin.Context) {
+	common.StartOperationLog(c, "delete_model_group")
+	defer common.FinishOperationLog(c)
+	if id := c.Param("group_name"); id != "" {
+		common.SetOperationResource(c, "group_name", id)
+	}
+
 	groupName := c.Param("group_name")
 
 	ctx := c.Request.Context()
@@ -98,6 +108,12 @@ type AddModelToGroupRequest struct {
 }
 
 func (h *ProviderHandler) AddModelToGroup(c *gin.Context) {
+	common.StartOperationLog(c, "add_model_to_group")
+	defer common.FinishOperationLog(c)
+	if id := c.Param("group_name"); id != "" {
+		common.SetOperationResource(c, "group_name", id)
+	}
+
 	var req AddModelToGroupRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		common.RespondError(c, common.CodeBadRequest, "Group name is required")
@@ -109,6 +125,7 @@ func (h *ProviderHandler) AddModelToGroup(c *gin.Context) {
 	groupName := c.Param("group_name")
 
 	if req.CompositeModelName == "" {
+		common.SetOperationResource(c, "model_id", req.ModelID)
 		err := h.modelProviderService.AddModelToGroupByID(ctx, req.ModelID, groupName)
 		if err != nil {
 			common.RespondError(c, common.CodeDataError, err.Error())
@@ -120,6 +137,9 @@ func (h *ProviderHandler) AddModelToGroup(c *gin.Context) {
 			common.RespondError(c, common.CodeBadRequest, err.Error())
 			return
 		}
+		common.SetOperationResource(c, "provider_id_or_name", providerName)
+		common.SetOperationResource(c, "instance_id_or_name", instanceName)
+		common.SetOperationResource(c, "model_name", modelName)
 		err = h.modelProviderService.AddModelToGroupByName(ctx, userID, providerName, instanceName, modelName, groupName)
 		if err != nil {
 			common.RespondError(c, common.CodeDataError, err.Error())
@@ -139,6 +159,12 @@ type DeleteModelToGroupRequest struct {
 // scoped to a group and a tenant-checked model; a bare mapping-row ID would
 // let any authenticated user delete rows belonging to other users.
 func (h *ProviderHandler) RemoveModelFromGroup(c *gin.Context) {
+	common.StartOperationLog(c, "remove_model_from_group")
+	defer common.FinishOperationLog(c)
+	if id := c.Param("group_name"); id != "" {
+		common.SetOperationResource(c, "group_name", id)
+	}
+
 	var req DeleteModelToGroupRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		common.RespondError(c, common.CodeBadRequest, "Composite model name is required")
@@ -154,6 +180,9 @@ func (h *ProviderHandler) RemoveModelFromGroup(c *gin.Context) {
 		common.RespondError(c, common.CodeBadRequest, err.Error())
 		return
 	}
+	common.SetOperationResource(c, "provider_id_or_name", providerName)
+	common.SetOperationResource(c, "instance_id_or_name", instanceName)
+	common.SetOperationResource(c, "model_name", modelName)
 	err = h.modelProviderService.RemoveModelFromGroupByName(ctx, userID, providerName, instanceName, modelName, groupName)
 	if err != nil {
 		common.RespondError(c, common.CodeDataError, err.Error())

@@ -42,6 +42,9 @@ func (h *TenantHandler) ListGroups(c *gin.Context) {
 }
 
 func (h *TenantHandler) CreateGroup(c *gin.Context) {
+	common.StartOperationLog(c, "create_tenant_group")
+	defer common.FinishOperationLog(c)
+
 	userID, tenantID, ok := tenantRoleRequestContext(c)
 	if !ok {
 		return
@@ -56,6 +59,7 @@ func (h *TenantHandler) CreateGroup(c *gin.Context) {
 		writeGroupError(c, err)
 		return
 	}
+	common.SetOperationResource(c, "group_id", group.ID)
 	common.RespondSuccess(c, group, "")
 }
 
@@ -73,6 +77,10 @@ func (h *TenantHandler) GetGroup(c *gin.Context) {
 }
 
 func (h *TenantHandler) UpdateGroup(c *gin.Context) {
+	common.StartOperationLog(c, "update_tenant_group")
+	defer common.FinishOperationLog(c)
+	common.SetOperationResource(c, "group_id", c.Param("group_id"))
+
 	userID, tenantID, ok := tenantRoleRequestContext(c)
 	if !ok {
 		return
@@ -91,6 +99,10 @@ func (h *TenantHandler) UpdateGroup(c *gin.Context) {
 }
 
 func (h *TenantHandler) MoveGroup(c *gin.Context) {
+	common.StartOperationLog(c, "move_tenant_group")
+	defer common.FinishOperationLog(c)
+	common.SetOperationResource(c, "group_id", c.Param("group_id"))
+
 	userID, tenantID, ok := tenantRoleRequestContext(c)
 	if !ok {
 		return
@@ -111,6 +123,10 @@ func (h *TenantHandler) MoveGroup(c *gin.Context) {
 }
 
 func (h *TenantHandler) DeleteGroup(c *gin.Context) {
+	common.StartOperationLog(c, "delete_tenant_group")
+	defer common.FinishOperationLog(c)
+	common.SetOperationResource(c, "group_id", c.Param("group_id"))
+
 	userID, tenantID, ok := tenantRoleRequestContext(c)
 	if !ok {
 		return
@@ -136,6 +152,10 @@ func (h *TenantHandler) ListGroupMembers(c *gin.Context) {
 }
 
 func (h *TenantHandler) AddGroupMember(c *gin.Context) {
+	common.StartOperationLog(c, "add_tenant_group_member")
+	defer common.FinishOperationLog(c)
+	common.SetOperationResource(c, "group_id", c.Param("group_id"))
+
 	userID, tenantID, ok := tenantRoleRequestContext(c)
 	if !ok {
 		return
@@ -147,6 +167,7 @@ func (h *TenantHandler) AddGroupMember(c *gin.Context) {
 		common.RespondError(c, common.CodeBadRequest, "user_id is required")
 		return
 	}
+	common.SetOperationResource(c, "target_user_id", request.UserID)
 	member, err := service.NewGroupService().AddGroupMember(c.Request.Context(), userID, tenantID, strings.TrimSpace(c.Param("group_id")), request.UserID)
 	if err != nil {
 		writeGroupError(c, err)
@@ -156,6 +177,11 @@ func (h *TenantHandler) AddGroupMember(c *gin.Context) {
 }
 
 func (h *TenantHandler) RemoveGroupMember(c *gin.Context) {
+	common.StartOperationLog(c, "remove_tenant_group_member")
+	defer common.FinishOperationLog(c)
+	common.SetOperationResource(c, "group_id", c.Param("group_id"))
+	common.SetOperationResource(c, "target_user_id", c.Param("user_id"))
+
 	userID, tenantID, ok := tenantRoleRequestContext(c)
 	if !ok {
 		return
@@ -168,6 +194,11 @@ func (h *TenantHandler) RemoveGroupMember(c *gin.Context) {
 }
 
 func (h *TenantHandler) SetGroupMemberPermissions(c *gin.Context) {
+	common.StartOperationLog(c, "update_tenant_group_member_permissions")
+	defer common.FinishOperationLog(c)
+	common.SetOperationResource(c, "group_id", c.Param("group_id"))
+	common.SetOperationResource(c, "target_user_id", c.Param("user_id"))
+
 	userID, tenantID, ok := tenantRoleRequestContext(c)
 	if !ok {
 		return
@@ -187,6 +218,10 @@ func (h *TenantHandler) SetGroupMemberPermissions(c *gin.Context) {
 }
 
 func (h *TenantHandler) TransferGroupOwnership(c *gin.Context) {
+	common.StartOperationLog(c, "transfer_tenant_group_ownership")
+	defer common.FinishOperationLog(c)
+	common.SetOperationResource(c, "group_id", c.Param("group_id"))
+
 	userID, tenantID, ok := tenantRoleRequestContext(c)
 	if !ok {
 		return
@@ -198,6 +233,7 @@ func (h *TenantHandler) TransferGroupOwnership(c *gin.Context) {
 		common.RespondError(c, common.CodeBadRequest, "user_id is required")
 		return
 	}
+	common.SetOperationResource(c, "target_user_id", request.UserID)
 	group, err := service.NewGroupService().TransferGroupOwnership(c.Request.Context(), userID, tenantID,
 		strings.TrimSpace(c.Param("group_id")), request.UserID)
 	if err != nil {

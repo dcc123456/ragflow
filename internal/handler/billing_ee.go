@@ -444,6 +444,8 @@ type billingCheckoutRequest struct {
 
 // CheckoutSubscription handles POST/PATCH /billing/subscription.
 func (h *BillingHandler) CheckoutSubscription(c *gin.Context) {
+	common.StartOperationLog(c, "request_billing_subscription_checkout")
+	defer common.FinishOperationLog(c)
 	service, ok := billingServiceOrDisabled(c)
 	if !ok {
 		return
@@ -504,6 +506,8 @@ func (h *BillingHandler) CheckoutSubscription(c *gin.Context) {
 
 // AddonCheckout handles POST /billing/addon-purchases.
 func (h *BillingHandler) AddonCheckout(c *gin.Context) {
+	common.StartOperationLog(c, "request_billing_addon_checkout")
+	defer common.FinishOperationLog(c)
 	service, ok := billingServiceOrDisabled(c)
 	if !ok {
 		return
@@ -557,6 +561,8 @@ func (h *BillingHandler) PreviewSubscription(c *gin.Context) {
 
 // SetStorageTarget handles PATCH /billing/storage.
 func (h *BillingHandler) SetStorageTarget(c *gin.Context) {
+	common.StartOperationLog(c, "update_billing_storage_target")
+	defer common.FinishOperationLog(c)
 	service, ok := billingServiceOrDisabled(c)
 	if !ok {
 		return
@@ -586,6 +592,8 @@ func (h *BillingHandler) SetStorageTarget(c *gin.Context) {
 
 // SetupIntent handles POST /billing/setup-intents.
 func (h *BillingHandler) SetupIntent(c *gin.Context) {
+	common.StartOperationLog(c, "request_billing_setup_intent")
+	defer common.FinishOperationLog(c)
 	service, ok := billingServiceOrDisabled(c)
 	if !ok {
 		return
@@ -609,6 +617,8 @@ func (h *BillingHandler) SetupIntent(c *gin.Context) {
 
 // PortalSession handles POST /billing/portal-sessions.
 func (h *BillingHandler) PortalSession(c *gin.Context) {
+	common.StartOperationLog(c, "request_billing_portal_session")
+	defer common.FinishOperationLog(c)
 	service, ok := billingServiceOrDisabled(c)
 	if !ok {
 		return
@@ -635,6 +645,8 @@ func (h *BillingHandler) PortalSession(c *gin.Context) {
 
 // PointsCheckout handles POST /billing/points/checkout.
 func (h *BillingHandler) PointsCheckout(c *gin.Context) {
+	common.StartOperationLog(c, "request_billing_points_checkout")
+	defer common.FinishOperationLog(c)
 	service, ok := billingServiceOrDisabled(c)
 	if !ok {
 		return
