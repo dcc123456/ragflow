@@ -201,6 +201,11 @@ func (s *TenantService) UpdateResourcePermissions(ctx context.Context, userID, t
 			if err := requireResourcePermissionManager(ctx, tx, actor, resource, false); err != nil {
 				return err
 			}
+			if *request.Permission&entity.ResourcePermissionManage != 0 {
+				if err := requireResourceOwnerPermission(ctx, tx, actor, resource); err != nil {
+					return err
+				}
+			}
 			if err := requireFeatureSharePermission(ctx, tx, actor, resource.Type); err != nil {
 				return err
 			}
@@ -492,6 +497,29 @@ func requireResourcePermissionManager(ctx context.Context, db *gorm.DB, actor *p
 	return nil
 }
 
+func requireResourceOwnerPermission(ctx context.Context, db *gorm.DB, actor *permissionActor, resource permissionResource) error {
+	if actor.systemAdmin || actor.membership != nil && actor.membership.Role == TenantRoleOwner {
+		return nil
+	}
+	mask, err := loadEffectiveResourcePermissionMask(ctx, db, actor, resource)
+	if err != nil {
+		return err
+	}
+	if mask&entity.ResourcePermissionOwner != 0 {
+		return nil
+	}
+	if resource.OwnerUserID == actor.userID {
+		hasOwner, err := resourceHasOwnerGrant(db, actor.tenantID, resource)
+		if err != nil {
+			return err
+		}
+		if !hasOwner {
+			return nil
+		}
+	}
+	return common.NewCodedError(common.CodeForbidden, "Only a resource owner can grant management permission")
+}
+
 func requireResourcePermissionListAccess(ctx context.Context, db *gorm.DB, actor *permissionActor, resource permissionResource) error {
 	if actor.systemAdmin {
 		return nil
@@ -597,7 +625,7 @@ func replaceResourcePermission(tx *gorm.DB, actor *permissionActor, resource per
 	if ownershipTransfer && newMask&entity.ResourcePermissionOwner == 0 {
 		return common.NewCodedError(common.CodeBadRequest, "ownership transfer must assign the owner permission")
 	}
-	if oldMask == newMask && len(rows) <= 1 {
+	if oldMask == newMask && len(rows) <= 1 && !ownershipTransfer {
 		return nil
 	}
 	if newMask&entity.ResourcePermissionOwner != 0 {
@@ -711,7 +739,97 @@ func transferResourceOwner(tx *gorm.DB, actor *permissionActor, resource permiss
 			return fmt.Errorf("load current resource owner's Tenant membership: %w", err)
 		}
 	}
+	if err := updateResourceUserID(tx, actor.tenantID, resource, target.UserID); err != nil {
+		return err
+	}
+	if err := ensureResourceManagerPermission(tx, actor, resource); err != nil {
+		return err
+	}
 	return nil
+}
+
+func updateResourceUserID(tx *gorm.DB, tenantID string, resource permissionResource, userID string) error {
+	var err error
+	switch resource.Type {
+	case "kb":
+		err = tx.Model(&entity.Knowledgebase{}).
+			Where("id = ? AND tenant_id = ?", resource.ID, tenantID).
+			Update("user_id", userID).Error
+	case "dialog":
+		err = tx.Model(&entity.Chat{}).
+			Where("id = ? AND tenant_id = ?", resource.ID, tenantID).
+			Update("user_id", userID).Error
+	case "document":
+		kbIDs := tx.Model(&entity.Knowledgebase{}).Select("id").Where("tenant_id = ?", tenantID)
+		err = tx.Model(&entity.Document{}).
+			Where("id = ? AND kb_id IN (?)", resource.ID, kbIDs).
+			Update("user_id", userID).Error
+	case "canvas":
+		err = tx.Model(&entity.UserCanvas{}).
+			Where("id = ? AND tenant_id = ?", resource.ID, tenantID).
+			Update("user_id", userID).Error
+	case "memory":
+		err = tx.Model(&entity.Memory{}).
+			Where("id = ? AND tenant_id = ?", resource.ID, tenantID).
+			Update("user_id", userID).Error
+	case "file":
+		err = tx.Model(&entity.File{}).
+			Where("id = ? AND tenant_id = ?", resource.ID, tenantID).
+			Update("user_id", userID).Error
+	case "search":
+		err = tx.Model(&entity.Search{}).
+			Where("id = ? AND tenant_id = ?", resource.ID, tenantID).
+			Update("user_id", userID).Error
+	case "mcp":
+		err = tx.Model(&entity.MCPServer{}).
+			Where("id = ? AND tenant_id = ?", resource.ID, tenantID).
+			Update("user_id", userID).Error
+	case "model_instance":
+		var instance entity.TenantModelInstance
+		if err := tx.Select("provider_id").Where("id = ? AND status = ?", resource.ID, "active").Take(&instance).Error; err != nil {
+			return permissionResourceNotFound(err)
+		}
+		err = tx.Model(&entity.TenantModelProvider{}).
+			Where("id = ? AND tenant_id = ?", instance.ProviderID, tenantID).
+			Update("user_id", userID).Error
+	default:
+		return common.NewCodedError(common.CodeBadRequest, "resource type does not support ownership transfer")
+	}
+	if err != nil {
+		return fmt.Errorf("update %s owner user_id: %w", resource.Type, err)
+	}
+	return nil
+}
+
+func ensureResourceManagerPermission(tx *gorm.DB, actor *permissionActor, resource permissionResource) error {
+	membership := actor.membership
+	if membership == nil {
+		var current entity.UserTenant
+		err := tx.Where("user_id = ? AND tenant_id = ? AND status = ?", actor.userID, actor.tenantID, string(entity.StatusValid)).Take(&current).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("load transferring Tenant member: %w", err)
+		}
+		membership = &current
+	}
+
+	target, err := resolvePermissionTarget(tx, actor.tenantID, "member", membership.ID)
+	if err != nil {
+		return err
+	}
+	var grants []entity.Permission
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("tenant_id = ? AND resource_type = ? AND resource_id = ? AND status = ? AND member_id = ? AND (group_id IS NULL OR group_id = '')",
+			actor.tenantID, resource.Type, resource.ID, string(entity.StatusValid), membership.ID).Find(&grants).Error; err != nil {
+		return fmt.Errorf("load transferring member resource permissions: %w", err)
+	}
+	var mask int32
+	for _, grant := range grants {
+		mask |= grant.Permission
+	}
+	return replaceResourcePermission(tx, actor, resource, target, mask|entity.ResourcePermissionManage, false)
 }
 
 func recordResourcePermissionChange(tx *gorm.DB, actor *permissionActor, resource permissionResource, target resourcePermissionTarget, oldMask, newMask int32) error {
@@ -773,13 +891,13 @@ func resolvePermissionResources(db *gorm.DB, tenantID, resourceType, requestedID
 		if err := db.Where("id = ? AND tenant_id = ? AND status = ?", requestedID, tenantID, string(entity.StatusValid)).Take(&resource).Error; err != nil {
 			return nil, permissionResourceNotFound(err)
 		}
-		return []permissionResource{{ID: resource.ID, Type: "kb", Name: resource.Name, Avatar: pointerValue(resource.Avatar), OwnerUserID: resource.CreatedBy}}, nil
+		return []permissionResource{{ID: resource.ID, Type: "kb", Name: resource.Name, Avatar: pointerValue(resource.Avatar), OwnerUserID: resourceOwnerUserID(resource.UserID, resource.CreatedBy)}}, nil
 	case "dialog", "chat":
 		var resource entity.Chat
 		if err := db.Where("id = ? AND tenant_id = ? AND status = ?", requestedID, tenantID, string(entity.StatusValid)).Take(&resource).Error; err != nil {
 			return nil, permissionResourceNotFound(err)
 		}
-		return []permissionResource{{ID: resource.ID, Type: "dialog", Name: pointerValue(resource.Name), Avatar: pointerValue(resource.Icon)}}, nil
+		return []permissionResource{{ID: resource.ID, Type: "dialog", Name: pointerValue(resource.Name), Avatar: pointerValue(resource.Icon), OwnerUserID: resource.UserID}}, nil
 	case "document":
 		var resource entity.Document
 		if err := db.Where("id = ? AND status = ?", requestedID, string(entity.StatusValid)).Take(&resource).Error; err != nil {
@@ -789,7 +907,7 @@ func resolvePermissionResources(db *gorm.DB, tenantID, resourceType, requestedID
 		if err := db.Select("id", "tenant_id").Where("id = ? AND tenant_id = ? AND status = ?", resource.KbID, tenantID, string(entity.StatusValid)).Take(&dataset).Error; err != nil {
 			return nil, permissionResourceNotFound(err)
 		}
-		return []permissionResource{{ID: resource.ID, Type: "document", Name: pointerValue(resource.Name), Avatar: pointerValue(resource.Thumbnail), OwnerUserID: resource.CreatedBy}}, nil
+		return []permissionResource{{ID: resource.ID, Type: "document", Name: pointerValue(resource.Name), Avatar: pointerValue(resource.Thumbnail), OwnerUserID: resourceOwnerUserID(resource.UserID, resource.CreatedBy)}}, nil
 	case "canvas", "agent":
 		var resource entity.UserCanvas
 		if err := db.Where("id = ? AND tenant_id = ?", requestedID, tenantID).Take(&resource).Error; err != nil {
@@ -801,7 +919,7 @@ func resolvePermissionResources(db *gorm.DB, tenantID, resourceType, requestedID
 		if err := db.Where("id = ? AND tenant_id = ?", requestedID, tenantID).Take(&resource).Error; err != nil {
 			return nil, permissionResourceNotFound(err)
 		}
-		return []permissionResource{{ID: resource.ID, Type: "memory", Name: resource.Name, Avatar: pointerValue(resource.Avatar)}}, nil
+		return []permissionResource{{ID: resource.ID, Type: "memory", Name: resource.Name, Avatar: pointerValue(resource.Avatar), OwnerUserID: resource.UserID}}, nil
 	case "file", "folder":
 		var resource entity.File
 		if err := db.Where("id = ? AND tenant_id = ?", requestedID, tenantID).Take(&resource).Error; err != nil {
@@ -813,19 +931,19 @@ func resolvePermissionResources(db *gorm.DB, tenantID, resourceType, requestedID
 		if resourceType == "folder" && resource.Type != "folder" || resourceType == "file" && resource.Type == "folder" {
 			return nil, common.NewCodedError(common.CodeNotFound, "Resource is not available in the current Tenant")
 		}
-		return []permissionResource{{ID: resource.ID, Type: "file", Name: resource.Name, OwnerUserID: resource.CreatedBy}}, nil
+		return []permissionResource{{ID: resource.ID, Type: "file", Name: resource.Name, OwnerUserID: resourceOwnerUserID(resource.UserID, resource.CreatedBy)}}, nil
 	case "search":
 		var resource entity.Search
 		if err := db.Where("id = ? AND tenant_id = ? AND status = ?", requestedID, tenantID, string(entity.StatusValid)).Take(&resource).Error; err != nil {
 			return nil, permissionResourceNotFound(err)
 		}
-		return []permissionResource{{ID: resource.ID, Type: "search", Name: resource.Name, Avatar: pointerValue(resource.Avatar), OwnerUserID: resource.CreatedBy}}, nil
+		return []permissionResource{{ID: resource.ID, Type: "search", Name: resource.Name, Avatar: pointerValue(resource.Avatar), OwnerUserID: resourceOwnerUserID(resource.UserID, resource.CreatedBy)}}, nil
 	case "mcp":
 		var resource entity.MCPServer
 		if err := db.Where("id = ? AND tenant_id = ?", requestedID, tenantID).Take(&resource).Error; err != nil {
 			return nil, permissionResourceNotFound(err)
 		}
-		return []permissionResource{{ID: resource.ID, Type: "mcp", Name: resource.Name}}, nil
+		return []permissionResource{{ID: resource.ID, Type: "mcp", Name: resource.Name, OwnerUserID: resource.UserID}}, nil
 	case "instance", "model_instance":
 		resource, err := resolveModelInstance(db, tenantID, requestedID)
 		if err != nil {
@@ -1026,6 +1144,13 @@ func pointerValue(value *string) string {
 		return ""
 	}
 	return *value
+}
+
+func resourceOwnerUserID(userID, createdBy string) string {
+	if userID = strings.TrimSpace(userID); userID != "" {
+		return userID
+	}
+	return strings.TrimSpace(createdBy)
 }
 
 func permissionStringValue(value *string) string {

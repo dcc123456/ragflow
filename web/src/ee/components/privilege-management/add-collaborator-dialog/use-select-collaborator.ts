@@ -1,14 +1,16 @@
-import { TeamRole, TeamRoleList } from '@/ee/constants/team';
+import { TenantRole, TeamRole, TeamRoleList } from '@/ee/constants/team';
+import { ITenantGroup } from '@/ee/interfaces/database/team';
 import {
   useFetchDepartmentList,
   useFetchDepartmentMemberList,
-  useFetchGroupList,
 } from '@/ee/hooks/use-team';
 import {
   useFetchTenantInfo,
   useListTenantUser,
 } from '@/hooks/use-user-setting-request';
 import { uniqBy } from 'lodash';
+import { listTenantGroups } from '@/ee/services/group-service';
+import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CollaboratorItem } from '@/ee/components/privilege-management/interface';
 
@@ -16,15 +18,16 @@ export function useSelectCollaborator() {
   const [list, setList] = useState<CollaboratorItem[]>([]);
 
   const handleClick = useCallback((id: string, value?: boolean) => {
-    setList((pre) => {
-      const nextList = [...pre];
-      const item = nextList.find((x) => x.id === id);
-      if (item) {
-        item.checked = typeof value === 'boolean' ? value : !item.checked;
-      }
-
-      return nextList;
-    });
+    setList((current) =>
+      current.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              checked: typeof value === 'boolean' ? value : !item.checked,
+            }
+          : item,
+      ),
+    );
   }, []);
 
   const selectAll = useCallback((checked: boolean) => {
@@ -89,14 +92,18 @@ export function useOperateMember(tenantId: string) {
   const { data } = useListTenantUser(tenantId || tenantInfo.tenant_id, true);
 
   useEffect(() => {
-    const arr = data.map((x) => ({
-      id: x.id,
-      label: x.nickname,
-      checked: false,
-      permission: 0,
-      role: TeamRole.Member,
-      avatar: x.avatar,
-    }));
+    const arr = data
+      .filter(
+        (member) => member.status === '1' && member.role !== TenantRole.Invite,
+      )
+      .map((member) => ({
+        id: member.id,
+        label: member.nickname || member.email,
+        checked: false,
+        permission: 0,
+        role: TeamRole.Member,
+        avatar: member.avatar,
+      }));
     setList(arr);
   }, [data, setList]);
 
@@ -110,19 +117,27 @@ export function useOperateMember(tenantId: string) {
 
 export function useOperateGroup(tenantId: string) {
   const { handleClick, list, setList, selectAll } = useSelectCollaborator();
-  const { data: tenantInfo } = useFetchTenantInfo();
-  const { data } = useFetchGroupList(tenantId || tenantInfo.tenant_id);
+  const { data = [] } = useQuery<ITenantGroup[]>({
+    queryKey: ['tenantGroup', 'list', tenantId],
+    initialData: [],
+    queryFn: async () => {
+      const { data } = await listTenantGroups();
+      return Array.isArray(data?.data?.groups) ? data.data.groups : [];
+    },
+  });
 
   useEffect(() => {
-    const arr = data.map((x) => ({
-      id: x.group_id,
-      label: x.name,
-      checked: false,
-      permission: 0,
-      role: TeamRole.Group,
-      avatar: x.avatar,
-    }));
-    setList(arr);
+    setList(
+      data.map((group) => ({
+        id: group.id,
+        label: group.name || group.id,
+        checked: false,
+        permission: 0,
+        role: TeamRole.Group,
+        avatar: group.avatar,
+        parentId: group.parent_id,
+      })),
+    );
   }, [data, setList]);
 
   return {
@@ -247,13 +262,12 @@ export function useHandleRightItemClick({
 }
 
 function addItem(
-  preCheckedList: CollaboratorItem[],
   checkedList: CollaboratorItem[],
   list: CollaboratorItem[],
   id: string,
 ) {
   const item = list.find((x) => x.id === id);
-  if (item && preCheckedList.every((x) => x.id !== id)) {
+  if (item && checkedList.every((x) => x.id !== id)) {
     checkedList.push({ ...item, checked: true });
   }
 }
@@ -265,12 +279,7 @@ export function useCacheCheckedList(list: CollaboratorItem[]) {
     (id: string) => {
       setCheckedList((pre) => {
         const nextList = [...pre];
-        // const item = list.find((x) => x.id === id);
-        // if (item) {
-        //   nextList.push({ ...item, checked: true });
-        // }
-
-        addItem(pre, nextList, list, id);
+        addItem(nextList, list, id);
 
         return nextList;
       });
@@ -289,11 +298,7 @@ export function useCacheCheckedList(list: CollaboratorItem[]) {
       setCheckedList((pre) => {
         const nextList = [...pre];
         ids.forEach((id) => {
-          addItem(pre, nextList, list, id);
-          // const item = list.find((x) => x.id === id);
-          // if (item && pre.every((x) => x.id !== id)) {
-          //   nextList.push({ ...item, checked: true });
-          // }
+          addItem(nextList, list, id);
         });
 
         return nextList;
@@ -310,7 +315,6 @@ export function useCacheCheckedList(list: CollaboratorItem[]) {
 
   const cacheCheckedItem = useCallback(
     (id: string, value?: boolean) => {
-      console.info(checkedList);
       if (typeof value === 'boolean') {
         if (value) {
           add(id);
@@ -319,7 +323,7 @@ export function useCacheCheckedList(list: CollaboratorItem[]) {
         }
       }
     },
-    [add, checkedList, remove],
+    [add, remove],
   );
 
   const cacheCheckedList = useCallback(

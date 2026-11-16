@@ -52,75 +52,6 @@ export function useOperatePermission({
     ],
   );
 
-  const togglePermission = React.useCallback(
-    async (permissionBit: number, records: IPermission[]) => {
-      type PermissionUpdate = {
-        resourceIds: Set<string>;
-        memberList: Set<string>;
-        groupList: Set<string>;
-        departmentList: Set<string>;
-      };
-
-      const updates = new Map<number, PermissionUpdate>();
-      const resourceIds =
-        initialValues.resourceType === PermissionResourceType.Document
-          ? initialValues.documents || []
-          : [initialValues.id];
-
-      for (const record of records) {
-        const targetField = FieldMap[record.role as keyof typeof FieldMap];
-        if (!targetField) continue;
-        const shouldGrant = !resourceIds.every(
-          (resourceId) =>
-            ((record.permissions[resourceId] ?? 0) & permissionBit) !== 0,
-        );
-
-        for (const resourceId of resourceIds) {
-          const currentMask = record.permissions[resourceId] ?? 0;
-          const nextMask = shouldGrant
-            ? currentMask | permissionBit
-            : currentMask & ~permissionBit;
-          const update = updates.get(nextMask) ?? {
-            resourceIds: new Set<string>(),
-            memberList: new Set<string>(),
-            groupList: new Set<string>(),
-            departmentList: new Set<string>(),
-          };
-          update.resourceIds.add(resourceId);
-          if (targetField === 'member_list') update.memberList.add(record.id);
-          if (targetField === 'group_list') update.groupList.add(record.id);
-          if (targetField === 'department_list') {
-            update.departmentList.add(record.id);
-          }
-          updates.set(nextMask, update);
-        }
-      }
-
-      for (const [permission, update] of updates) {
-        const result = await updatePermission({
-          resource_type:
-            initialValues.resourceType || PermissionResourceType.KnowledgeBase,
-          resource_ids: [...update.resourceIds],
-          tenant_id: initialValues.tenant_id,
-          permission,
-          member_list: [...update.memberList],
-          group_list: [...update.groupList],
-          department_list: [...update.departmentList],
-        });
-        if (result !== 0) return result;
-      }
-
-      return 0;
-    },
-    [
-      initialValues.documents,
-      initialValues.id,
-      initialValues.resourceType,
-      initialValues.tenant_id,
-      updatePermission,
-    ],
-  );
-
   const handleDelete = React.useCallback(
     (record: IPermission | Array<IPermission>, callback?: () => void) => () => {
       showDeleteConfirm({
@@ -137,5 +68,5 @@ export function useOperatePermission({
     [setPermission, showDeleteConfirm],
   );
 
-  return { togglePermission, handleDelete, setPermission };
+  return { handleDelete, setPermission };
 }

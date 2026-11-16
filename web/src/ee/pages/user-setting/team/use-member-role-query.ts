@@ -24,6 +24,11 @@ export const MemberRoleKeys = {
     [...MemberRoleKeys.all, 'member', tenantId, userId] as const,
 };
 
+export const TenantMemberKeys = {
+  list: (tenantId: string) =>
+    [UserSettingApiAction.ListTenantUser, tenantId] as const,
+};
+
 export const TenantRoleKeys = {
   all: ['tenantRole'] as const,
   list: (tenantId: string) =>

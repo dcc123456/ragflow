@@ -101,9 +101,9 @@ export function LeftPanel({ selectAll }: LeftPanelProps) {
           </label>
         </div>
       )}
-      <ul>
-        {breadcrumbs.length === 0 &&
-          items.map((x) => (
+      {breadcrumbs.length === 0 && (
+        <ul className="m-0 list-none p-0">
+          {items.map((x) => (
             <LeftCollaboratorItem
               item={x}
               key={x.id}
@@ -114,15 +114,16 @@ export function LeftPanel({ selectAll }: LeftPanelProps) {
               <ChevronRight />
             </LeftCollaboratorItem>
           ))}
-        {secondBreadcrumb === TeamRole.Member && <MemberList></MemberList>}
-        {secondBreadcrumb === TeamRole.Department && (
-          <DepartmentList
-            clickCollaborator={clickCollaborator}
-            latestBreadcrumb={latestBreadcrumb}
-          ></DepartmentList>
-        )}
-        {secondBreadcrumb === TeamRole.Group && <GroupList></GroupList>}
-      </ul>
+        </ul>
+      )}
+      {secondBreadcrumb === TeamRole.Member && <MemberList></MemberList>}
+      {secondBreadcrumb === TeamRole.Department && (
+        <DepartmentList
+          clickCollaborator={clickCollaborator}
+          latestBreadcrumb={latestBreadcrumb}
+        ></DepartmentList>
+      )}
+      {secondBreadcrumb === TeamRole.Group && <GroupList></GroupList>}
     </section>
   );
 }

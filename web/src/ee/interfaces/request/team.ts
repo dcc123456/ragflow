@@ -65,6 +65,13 @@ export interface IUpdatePermission {
   department_list?: string[];
 }
 
+export interface ITransferResourceOwnershipRequest {
+  tenant_id: string;
+  resource_type: string;
+  resource_id: string;
+  user_id: string;
+}
+
 export interface IConfirmDeletePermission {
   resource_type: string;
   resource_ids: string[];

@@ -25,11 +25,20 @@ export enum Permission {
   Owner = 8,
 }
 
-export const PermissionList = [
-  Permission.Read,
-  Permission.Write,
-  Permission.Manage,
-];
+export const PermissionLevelOptions = [
+  {
+    action: Permission.Read,
+    value: Permission.Read,
+  },
+  {
+    action: Permission.Write,
+    value: Permission.Write,
+  },
+  {
+    action: Permission.Manage,
+    value: Permission.Manage,
+  },
+] as const;
 
 export function hasResourcePermission(permission: number, action: number) {
   return (permission & action) === action;
@@ -39,9 +48,16 @@ export function getResourcePermissionActions(permission: number) {
   if (hasResourcePermission(permission, Permission.Owner)) {
     return [Permission.Owner];
   }
-  return PermissionList.filter((action) =>
-    hasResourcePermission(permission, action),
-  );
+  if (hasResourcePermission(permission, Permission.Manage)) {
+    return [Permission.Manage];
+  }
+  if (hasResourcePermission(permission, Permission.Write)) {
+    return [Permission.Write];
+  }
+  if (hasResourcePermission(permission, Permission.Read)) {
+    return [Permission.Read];
+  }
+  return [];
 }
 
 export function hasResourceOwnerPermission(

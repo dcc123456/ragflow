@@ -1,6 +1,7 @@
+import { RAGFlowAvatar } from '@/components/ragflow-avatar';
+import { TeamRole } from '@/ee/constants/team';
 import { X } from 'lucide-react';
 import { CollaboratorItem } from '@/ee/components/privilege-management/interface';
-import { PrivilegeAvatar } from '@/ee/components/privilege-management/privilege-avatar';
 
 type RightPanelProps = {
   list: CollaboratorItem[];
@@ -21,15 +22,20 @@ export function RightPanel({ list, click }: RightPanelProps) {
       {list.map((x) => (
         <li
           key={x.id}
-          className="hover:bg-slate-100 hover:dark:bg-gray-800 rounded p-2 flex justify-between items-center !m-0"
+          className="m-0 flex min-w-0 items-center justify-between gap-2 rounded-md p-2 hover:bg-bg-card"
           onClick={() => click(x)}
         >
-          <div className="flex gap-2 items-center">
-            <PrivilegeAvatar avatar={x.avatar}></PrivilegeAvatar>
-            {x.label}
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <RAGFlowAvatar
+              isPerson={x.role === TeamRole.Member}
+              className="size-7 shrink-0"
+              name={x.label}
+              avatar={x.avatar}
+            />
+            <span className="min-w-0 truncate">{x.label}</span>
             <RoleLabel label={x.role as string}></RoleLabel>
           </div>
-          <X className="size-4 cursor-pointer" />
+          <X className="size-4 shrink-0 cursor-pointer" />
         </li>
       ))}
     </ul>

@@ -1,5 +1,9 @@
 import { UseRowSelectionType } from '@/hooks/logic-hooks/use-row-selection';
-import { Permission } from '@/ee/constants/team';
+import {
+  LabelMap,
+  Permission,
+  PermissionLevelOptions,
+} from '@/ee/constants/team';
 import { IPermission } from '@/ee/interfaces/database/team';
 import { RowSelectionState } from '@tanstack/react-table';
 import { Eye, ShieldCheck, SquarePen, Trash2 } from 'lucide-react';
@@ -27,12 +31,14 @@ export function useBulkOperatePrivilege({
   setRowSelection,
   initialValues,
   permissions,
+  canGrantManage,
 }: Pick<UseRowSelectionType, 'rowSelection' | 'setRowSelection'> & {
   initialValues: IPrivilegeManagementInitialValues;
   permissions: IPermission[];
+  canGrantManage: boolean;
 }) {
   const { t } = useTranslation();
-  const { togglePermission, setPermission } = useOperatePermission({
+  const { setPermission } = useOperatePermission({
     initialValues,
   });
 
@@ -42,30 +48,24 @@ export function useBulkOperatePrivilege({
   );
 
   const list = [
-    {
-      id: 'read',
-      label: t('permission.readPermission'),
-      icon: <Eye />,
-      onClick: () => {
-        togglePermission(Permission.Read, selectedRows);
+    ...PermissionLevelOptions.filter(
+      ({ action }) => canGrantManage || action !== Permission.Manage,
+    ).map(({ action, value }) => ({
+      id: LabelMap[action],
+      label: t(`permission.${LabelMap[action]}`),
+      icon:
+        action === Permission.Manage ? (
+          <ShieldCheck />
+        ) : action === Permission.Write ? (
+          <SquarePen />
+        ) : (
+          <Eye />
+        ),
+      onClick: async () => {
+        await setPermission(value, selectedRows);
+        setRowSelection({});
       },
-    },
-    {
-      id: 'write',
-      label: t('permission.writePermission'),
-      icon: <SquarePen />,
-      onClick: () => {
-        togglePermission(Permission.Write, selectedRows);
-      },
-    },
-    {
-      id: 'manage',
-      label: t('permission.managePermission'),
-      icon: <ShieldCheck />,
-      onClick: () => {
-        togglePermission(Permission.Manage, selectedRows);
-      },
-    },
+    })),
     {
       id: 'delete',
       label: t('common.delete'),

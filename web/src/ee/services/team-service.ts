@@ -14,6 +14,7 @@ const {
   createGroup,
   moveDepartment,
   updatePermission,
+  transferResourceOwner,
   listPermission,
   listPermissionByTarget,
 } = api;
@@ -33,6 +34,10 @@ const methods = {
   },
   updatePermission: {
     url: updatePermission,
+    method: 'put',
+  },
+  transferResourceOwner: {
+    url: transferResourceOwner,
     method: 'put',
   },
   listPermission: {

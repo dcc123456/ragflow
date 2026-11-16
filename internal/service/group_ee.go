@@ -693,7 +693,7 @@ func (s *GroupService) TransferGroupOwnership(ctx context.Context, userID, tenan
 		return nil, common.NewCodedError(common.CodeBadRequest, "user_id is required")
 	}
 	err := dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		_, group, err := requireGroupOwner(ctx, tx, userID, tenantID, groupID)
+		access, group, err := requireGroupOwner(ctx, tx, userID, tenantID, groupID)
 		if err != nil {
 			return err
 		}
@@ -739,14 +739,19 @@ func (s *GroupService) TransferGroupOwnership(ctx context.Context, userID, tenan
 			return fmt.Errorf("load new group owner membership: %w", err)
 		}
 
-		oldMask, err := loadStoredDirectGroupMemberPermission(tx, tenantID, groupID, oldOwnerID)
-		if err != nil {
-			return err
-		}
-		if oldMask&entity.GroupPermissionOwner != 0 {
-			if _, err := replaceDirectGroupMemberPermission(ctx, tx, groupID, oldOwnerID, oldMask&^entity.GroupPermissionOwner); err != nil {
+		if oldOwnerID != access.membership.ID {
+			oldMask, err := loadStoredDirectGroupMemberPermission(tx, tenantID, groupID, oldOwnerID)
+			if err != nil {
 				return err
 			}
+			if oldMask&entity.GroupPermissionOwner != 0 {
+				if _, err := replaceDirectGroupMemberPermission(ctx, tx, groupID, oldOwnerID, oldMask&^entity.GroupPermissionOwner); err != nil {
+					return err
+				}
+			}
+		}
+		if _, err := replaceDirectGroupMemberPermission(ctx, tx, groupID, access.membership.ID, groupPermissionOperationMask); err != nil {
+			return err
 		}
 
 		before := map[string]interface{}{

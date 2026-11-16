@@ -12,6 +12,7 @@ export function hasPreviewPermission(operatorPermission: number) {
 export function hasEditPermission(operatorPermission: number) {
   return (
     hasResourcePermission(operatorPermission, Permission.Write) ||
+    hasResourcePermission(operatorPermission, Permission.Manage) ||
     hasResourcePermission(operatorPermission, Permission.Owner)
   );
 }

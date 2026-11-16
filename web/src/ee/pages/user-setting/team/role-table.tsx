@@ -16,6 +16,7 @@ import {
 import message from '@/components/ui/message';
 import { ITenantRole } from '@/ee/interfaces/database/team';
 import { ITenantUser } from '@/interfaces/database/user-setting';
+import { TenantMembershipStatus } from '@/pages/user-setting/constants';
 import { Pencil, ShieldCheck, Star, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -62,6 +63,10 @@ export function RoleTable({
   const roleMemberCounts = useMemo(() => {
     const counts = new Map<number, number>();
     members.forEach((member) => {
+      if (member.status !== TenantMembershipStatus.Joined) {
+        return;
+      }
+
       const roleId = Number(member.role);
       if (Number.isInteger(roleId) && roleId > 0) {
         counts.set(roleId, (counts.get(roleId) ?? 0) + 1);
@@ -69,7 +74,6 @@ export function RoleTable({
     });
     return counts;
   }, [members]);
-
   const handleSetDefaultRole = async (roleId: number) => {
     const code = await setDefaultRole(roleId);
 
@@ -110,7 +114,7 @@ export function RoleTable({
           ) : visibleRoles.length > 0 ? (
             visibleRoles.map((role) => {
               const memberCount = roleMemberCounts.get(role.id) ?? 0;
-              const cannotDelete = role.is_default || memberCount > 0;
+              const cannotDelete = role.is_default;
 
               return (
                 <TableRow key={role.id} className="group">
@@ -210,9 +214,7 @@ export function RoleTable({
                               title={
                                 role.is_default
                                   ? t('admin.defaultTenantRole')
-                                  : memberCount > 0
-                                    ? t('permission.roleInUse')
-                                    : t('permission.deleteRole')
+                                  : t('permission.deleteRole')
                               }
                             >
                               <Trash2 />

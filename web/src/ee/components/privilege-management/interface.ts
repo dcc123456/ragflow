@@ -7,6 +7,7 @@ export type CollaboratorItem = {
   permission?: number;
   role?: TeamRole;
   avatar?: string;
+  parentId?: string;
 };
 
 export type CheckedCollaboratorItem = Pick<
@@ -20,6 +21,7 @@ export interface IPrivilegeManagementInitialValues {
   name: string;
   avatar?: string;
   icon?: string;
+  operator_permission?: number;
   resourceType?: PermissionResourceType;
   kbs?: string[];
   llm_id?: string;

@@ -10,7 +10,7 @@ import { SelectWithSearch } from '@/components/originui/select-with-search';
 import {
   LabelMap,
   Permission,
-  PermissionList,
+  PermissionLevelOptions,
   TeamRole,
 } from '@/ee/constants/team';
 import { IModalProps } from '@/interfaces/common';
@@ -54,11 +54,15 @@ export function AddCollaboratorDialog({
   onOk,
   loading,
   tenantId,
+  canGrantManage,
 }: IModalProps<Partial<IUpdatePermission>> & {
   tenantId: string;
+  canGrantManage: boolean;
 }) {
   const { t } = useTranslation();
-  const [value, setValue] = useState<string>(Permission.Read.toString());
+  const [value, setValue] = useState<string>(
+    PermissionLevelOptions[0].value.toString(),
+  );
 
   const { memberList } = useOperateMember(tenantId);
   const { groupList, handleGroupClick, selectAllGroup } =
@@ -113,14 +117,16 @@ export function AddCollaboratorDialog({
     ],
   );
 
-  const options = PermissionList.map((x) => ({
+  const options = PermissionLevelOptions.filter(
+    ({ action }) => canGrantManage || action !== Permission.Manage,
+  ).map(({ action, value }) => ({
     label: (
       <div className="flex items-center gap-2">
-        <span className="shrink-0">{getPermissionIcon(x)}</span>
-        <span>{t(`permission.${LabelMap[x]}Permission`)}</span>
+        <span className="shrink-0">{getPermissionIcon(action)}</span>
+        <span>{t(`permission.${LabelMap[action]}`)}</span>
       </div>
     ),
-    value: x.toString(),
+    value: value.toString(),
   }));
 
   const clickMember = useCallback(
@@ -197,15 +203,15 @@ export function AddCollaboratorDialog({
 
   return (
     <Dialog open onOpenChange={hideModal}>
-      <DialogContent className="max-w-4xl">
+      <DialogContent className="max-h-[calc(100vh-2rem)] max-w-4xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <UserPlus />
             {t('permission.addCollaborator')}
           </DialogTitle>
         </DialogHeader>
-        <section className="border rounded-lg divide-x flex">
-          <div className="flex-1 p-4">
+        <section className="flex min-w-0 overflow-hidden rounded-lg border divide-x">
+          <div className="min-w-0 flex-1 p-4">
             <CheckedListContext.Provider value={nextCheckedList}>
               <MemberContext.Provider value={memberContextValue}>
                 <DepartmentContext.Provider value={departmentContextValue}>
@@ -216,24 +222,28 @@ export function AddCollaboratorDialog({
               </MemberContext.Provider>
             </CheckedListContext.Provider>
           </div>
-          <div className="flex-1 p-4">
+          <div className="min-w-0 flex-1 p-4">
             <RightPanel
               list={flatCheckedList}
               click={clickRightItem}
             ></RightPanel>
           </div>
         </section>
-        <DialogFooter>
-          <SelectWithSearch
-            options={options}
-            onChange={setValue}
-            value={value}
-          ></SelectWithSearch>
+        <DialogFooter className="min-w-0 gap-2 sm:justify-between sm:space-x-0">
+          <div className="min-w-0 flex-1">
+            <SelectWithSearch
+              options={options}
+              onChange={setValue}
+              value={value}
+              triggerClassName="min-w-0"
+            ></SelectWithSearch>
+          </div>
           <ButtonLoading
             type="submit"
             onClick={handleOk}
             loading={loading}
             disabled={flatCheckedList.length === 0}
+            className="w-full shrink-0 sm:w-auto"
           >
             {t('common.save')}
           </ButtonLoading>

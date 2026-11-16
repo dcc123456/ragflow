@@ -588,7 +588,7 @@ func (p *enterprisePolicy) QueryScope(ctx context.Context, query ScopeQuery) (Qu
 		db := p.db.WithContext(ctx)
 		grant := db.Table("permission AS file_grant").Select("1").
 			Where("file_grant.tenant_id = file.tenant_id AND file_grant.resource_type = ? AND file_grant.resource_id = file.id AND file_grant.status = ? AND (file_grant.permission & ?) <> 0",
-				"file", string(entity.StatusValid), entity.ResourcePermissionRead|entity.ResourcePermissionManage|entity.ResourcePermissionOwner).
+				"file", string(entity.StatusValid), entity.ResourcePermissionRead|entity.ResourcePermissionWrite|entity.ResourcePermissionManage|entity.ResourcePermissionOwner).
 			Where("(file_grant.member_id = ? OR EXISTS (SELECT 1 FROM group_member JOIN group_info ON group_info.id = group_member.group_id WHERE group_member.group_id = file_grant.group_id AND group_member.member_id = ? AND group_member.status = ? AND group_info.tenant_id = file.tenant_id AND group_info.status = ?))",
 				membership.Membership.ID, membership.Membership.ID, string(entity.StatusValid), string(entity.StatusValid))
 		ownerGrant := db.Table("permission AS owner_grant").Select("1").
@@ -625,7 +625,7 @@ func (p *enterprisePolicy) mcpServerReadQueryScope(ctx context.Context) (QuerySc
 			Select("1").
 			Where("mcp_grant.tenant_id = mcp_server.tenant_id AND mcp_grant.resource_type = ? AND mcp_grant.resource_id = mcp_server.id AND mcp_grant.status = ?",
 				"mcp", string(entity.StatusValid)).
-			Where("(mcp_grant.permission & ?) <> 0", entity.ResourcePermissionRead|entity.ResourcePermissionManage|entity.ResourcePermissionOwner).
+			Where("(mcp_grant.permission & ?) <> 0", entity.ResourcePermissionRead|entity.ResourcePermissionWrite|entity.ResourcePermissionManage|entity.ResourcePermissionOwner).
 			Where("((mcp_grant.member_id = ? AND (mcp_grant.group_id IS NULL OR mcp_grant.group_id = '')) OR ((mcp_grant.group_id IS NOT NULL AND mcp_grant.group_id <> '') AND (mcp_grant.member_id IS NULL OR mcp_grant.member_id = '') AND EXISTS (?)))",
 				memberID, groupMembership)
 		if !owner {
@@ -1082,10 +1082,10 @@ func operationsForMasks(featureMask, resourceMask int32, hasFeature bool) []Oper
 	allows := func(action Action) bool {
 		return !hasFeature || featureMask&entity.RoleActionEnable != 0 && featureMask&featureActionMask(action) != 0
 	}
-	if resourceMask&(entity.ResourcePermissionRead|entity.ResourcePermissionOwner|entity.ResourcePermissionManage) != 0 && allows(ActionRead) {
+	if resourceMask&(entity.ResourcePermissionRead|entity.ResourcePermissionWrite|entity.ResourcePermissionManage|entity.ResourcePermissionOwner) != 0 && allows(ActionRead) {
 		operations = append(operations, OperationRead, OperationRun, OperationUse)
 	}
-	if resourceMask&(entity.ResourcePermissionWrite|entity.ResourcePermissionOwner) != 0 && allows(ActionWrite) {
+	if resourceMask&(entity.ResourcePermissionWrite|entity.ResourcePermissionManage|entity.ResourcePermissionOwner) != 0 && allows(ActionWrite) {
 		operations = append(operations, OperationCreate, OperationUpdate, OperationDeleteContent)
 	}
 	if resourceMask&(entity.ResourcePermissionManage|entity.ResourcePermissionOwner) != 0 {
