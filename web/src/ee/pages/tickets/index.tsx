@@ -19,7 +19,7 @@ import {
 import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
 import { useEnterpriseNavigate } from '@/ee/hooks/use-enterprise-navigate';
 import { useCloseTicket, useFetchTickets } from '@/ee/hooks/use-ticket-request';
-import { formatDateToLocal } from '@/utils/date';
+import { formatIsoDateTime } from '@/utils/date';
 import { pick } from 'lodash';
 import { ArrowLeft, CircleX, MessageCircle, Plus } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -116,7 +116,7 @@ export default function TicketsPage() {
                   <TableCell>{ticket.customer}</TableCell>
                   <TableCell>
                     {ticket.created_at
-                      ? formatDateToLocal(ticket.created_at)
+                      ? formatIsoDateTime(ticket.created_at)
                       : '-'}
                   </TableCell>
                   <TableCell>

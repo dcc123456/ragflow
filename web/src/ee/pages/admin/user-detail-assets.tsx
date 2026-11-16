@@ -27,7 +27,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { listUserAgents, listUserDatasets } from '@/ee/services/admin-service';
 import { formatFileSize } from '@/utils/common-util';
-import { formatDateToLocal } from '@/utils/date';
+import { formatIsoDateTime } from '@/utils/date';
 
 type AssetPagination = { page: number; pageSize: number };
 type UserAssetPage<T> = { items: T[]; total: number };
@@ -77,7 +77,7 @@ function AssetText({ value }: { value: string }) {
 }
 
 function formatAssetDate(value?: string) {
-  return value ? formatDateToLocal(value) : '-';
+  return value ? formatIsoDateTime(value) : '-';
 }
 
 function UserAssetTable<T extends IdentifiedAsset>({

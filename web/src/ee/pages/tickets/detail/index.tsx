@@ -9,7 +9,7 @@ import {
   useReplyTicket,
 } from '@/ee/hooks/use-ticket-request';
 import { useFetchUserInfo } from '@/hooks/use-user-setting-request';
-import { formatDateToLocal } from '@/utils/date';
+import { formatIsoDateTime } from '@/utils/date';
 import { fileToBase64, formatBytes } from '@/ee/utils/file-util';
 import {
   ArrowLeft,
@@ -272,7 +272,7 @@ export default function TicketDetailPage() {
         </span>
         <span>
           {t('tickets.detail.updatedAt')}:{' '}
-          {ticket?.updated_at ? formatDateToLocal(ticket.updated_at) : '-'}
+          {ticket?.updated_at ? formatIsoDateTime(ticket.updated_at) : '-'}
         </span>
       </div>
 
@@ -304,7 +304,7 @@ export default function TicketDetailPage() {
                   <div className="flex items-center justify-between gap-4 mb-2">
                     <span className="text-sm font-medium text-accent-primary">
                       {article.created_at
-                        ? formatDateToLocal(article.created_at)
+                        ? formatIsoDateTime(article.created_at)
                         : '-'}
                     </span>
                     <span className="text-xs px-2 py-0.5 rounded bg-bg-card text-text-primary">
