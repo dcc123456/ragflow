@@ -1,3 +1,15 @@
+x-monitoring-environment: &monitoring-environment
+  DB_TYPE: ${DB_TYPE:-mysql}
+  DOC_ENGINE: ${DOC_ENGINE:-elasticsearch}
+  MYSQL_EXPORTER_PORT: ${MYSQL_EXPORTER_PORT:-9104}
+  KVROCKS_EXPORTER_PORT: ${KVROCKS_EXPORTER_PORT:-9121}
+  NATS_EXPORTER_PORT: ${NATS_EXPORTER_PORT:-7777}
+  ES_EXPORTER_PORT: ${ES_EXPORTER_PORT:-9114}
+  MONITORING_MINIO_ENABLED: ${MONITORING_MINIO_ENABLED:-true}
+  MONITORING_CLICKHOUSE_ENABLED: ${MONITORING_CLICKHOUSE_ENABLED:-true}
+  MINIO_METRICS_ADDRESS: ${MINIO_METRICS_ADDRESS:-minio:9000}
+  CLICKHOUSE_METRICS_ADDRESS: ${CLICKHOUSE_METRICS_ADDRESS:-clickhouse:9363}
+
 services:
   es01:
     profiles:
@@ -392,15 +404,48 @@ services:
       retries: 120
 
 
+  components-exporter:
+    profiles:
+      - prometheus
+    build:
+      context: ./exporter
+    image: ragflow/components-exporter:local
+    mem_limit: ${MEM_LIMIT}
+    networks:
+      - ragflow
+    restart: unless-stopped
+    environment:
+      <<: *monitoring-environment
+      MYSQL_EXPORTER_ADDRESS: ${MYSQL_EXPORTER_ADDRESS:-mysql:3306}
+      MYSQL_EXPORTER_USER: ${MYSQL_EXPORTER_USER:-exporter}
+      MYSQLD_EXPORTER_PASSWORD: ${MYSQL_EXPORTER_PASSWORD:-}
+      KVROCKS_ADDR: ${KVROCKS_EXPORTER_ADDRESS:-kvrocks://kvrocks:6379}
+      KVROCKS_PASSWORD: ${REDIS_PASSWORD:-}
+      NATS_MONITORING_URL: ${NATS_MONITORING_URL:-http://${NATS_HOST:-nats}:8222}
+      ELASTICSEARCH_EXPORTER_URL: ${ELASTICSEARCH_EXPORTER_URL:-http://${ES_HOST:-es01}:9200}
+      OPENSEARCH_EXPORTER_URL: ${OPENSEARCH_EXPORTER_URL:-http://${OS_HOST:-opensearch39}:9201}
+      ES_EXPORTER_USER: ${ES_EXPORTER_USER:-elastic}
+      OPENSEARCH_EXPORTER_USER: ${OPENSEARCH_EXPORTER_USER:-admin}
+      ES_EXPORTER_PASSWORD: ${ES_EXPORTER_PASSWORD:-${ELASTIC_PASSWORD:-}}
+      OPENSEARCH_EXPORTER_PASSWORD: ${OPENSEARCH_EXPORTER_PASSWORD:-${OPENSEARCH_PASSWORD:-}}
+    stop_grace_period: 15s
+
+
   prometheus:
     profiles:
       - prometheus
     image: prom/prometheus:v3.16.0
-    network_mode: host
+    depends_on:
+      - components-exporter
+    networks:
+      - ragflow
+    ports:
+      - "127.0.0.1:9090:9090"
+    entrypoint: ["/bin/sh", "/etc/prometheus/entrypoint.sh"]
+    environment:
+      <<: *monitoring-environment
     command:
-      - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
-      - --web.listen-address=localhost:9090
     restart: unless-stopped
     volumes:
       - type: bind
@@ -410,8 +455,8 @@ services:
         bind:
           create_host_path: false
       - type: bind
-        source: ./prometheus/secrets/minio.token
-        target: /run/secrets/minio.token
+        source: ./exporter/monitoring-config.sh
+        target: /etc/exporter/monitoring-config.sh
         read_only: true
         bind:
           create_host_path: false

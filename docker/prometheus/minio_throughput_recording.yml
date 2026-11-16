@@ -1,7 +1,5 @@
 groups:
 - name: minio_throughput_recording
-  # Match the 60-second scrape interval to avoid resampling counters twice.
-  interval: 60s
   rules:
   # Silo v3 omits zero-valued metrics. Record zero-filled counters BEFORE
   # rate/increase so the first nonzero sample after idle is counted.

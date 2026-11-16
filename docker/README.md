@@ -21,7 +21,7 @@ The Go image runs the API, Admin, Ingestor, and Syncer modes from the single `bi
 - **docker-compose-base.yml**
   Defines the dependency services. The default Go profile uses Elasticsearch, MySQL, MinIO, Kvrocks, NATS, and ClickHouse. Other document engines and metadata databases are selected through `.env`.
 
-The optional `prometheus` profile starts Prometheus independently of the monitored services. Prepare the MinIO/Silo metrics token once, then scrape its native endpoints and the ClickHouse metrics endpoint. Existing MinIO recording and alert rules are enabled. See the [monitoring guide](./prometheus/README.md) for setup and startup commands.
+The optional `prometheus` profile starts Prometheus and component exporters independently of the monitored services. Targets follow the deployment settings, and missing credentials affect only their corresponding monitoring job. Existing recording and alert rules are included. See the [monitoring guide](./prometheus/README.md) for setup and startup commands.
 
 > **Note:** `docker-compose-macos.yml` are not the Go deployment entry points. Use `docker-compose.yml` on a Linux x86-64 host; macOS is temporarily not supported by the Go backend.
 

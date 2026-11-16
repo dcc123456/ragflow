@@ -1,0 +1,81 @@
+groups:
+- name: component_availability_alerts
+  rules:
+  - record: ragflow_monitoring_target_healthy
+    expr: |
+      max by (job, service) (
+        ((up{job="minio-job"} == 1) and on (job, instance) minio_system_process_uptime_seconds{job="minio-job"})
+        or ((up{job="clickhouse"} == 1) and on (job, instance) ClickHouseMetrics_MemoryTracking{job="clickhouse"})
+        or ((up{job="mysql"} == 1) and on (job, instance) (mysql_up{job="mysql"} == 1))
+        or ((up{job="kvrocks"} == 1) and on (job, instance) (kvrocks_up{job="kvrocks"} == 1))
+        or ((up{job="nats"} == 1) and on (job, instance) (nats_healthz_status_value{job="nats",value="ok"} == 1))
+        or (
+          (up{job="elasticsearch"} == 1)
+          and on (job, instance) elasticsearch_cluster_health_status{job="elasticsearch"}
+          and on (job, instance) elasticsearch_jvm_memory_max_bytes{job="elasticsearch",area="heap"}
+        )
+      ) or on (job, service) (0 * ragflow_monitoring_target_enabled)
+
+  # 0: disabled, 1: configuration missing/invalid, 2: unhealthy, 3: healthy.
+  - record: ragflow_monitoring_target_state
+    expr: |
+      ragflow_monitoring_target_enabled
+      * on (job, service) (
+        1 + ragflow_monitoring_target_configured
+        * on (job, service) (1 + ragflow_monitoring_target_healthy)
+      )
+
+  - alert: MonitoringNotConfigured
+    expr: |
+      (ragflow_monitoring_target_enabled == 1)
+      and on (job, service) (ragflow_monitoring_target_configured == 0)
+    for: 1m
+    labels:
+      severity: warning
+      category: monitoring
+    annotations:
+      summary: "{{ $labels.service }} monitoring is not configured"
+      description: "The deployment enables {{ $labels.service }} monitoring, but its listener/address configuration or required MinIO token is missing or invalid. Other jobs continue running."
+
+  - alert: MonitoringTargetMissing
+    expr: |
+      (
+        (ragflow_monitoring_target_enabled == 1)
+        and on (job, service) (ragflow_monitoring_target_configured == 1)
+      ) unless on (job, service) up
+    for: 2m
+    labels:
+      severity: critical
+      category: monitoring
+    annotations:
+      summary: "{{ $labels.service }} monitoring target is missing"
+      description: "The deployment expects a {{ $labels.service }} target, but Prometheus has no scrape status for it. Check the generated local target files and discovery errors."
+
+  - alert: MonitoringTargetDown
+    expr: |
+      (up == 0)
+      and on (job, service) (ragflow_monitoring_target_enabled == 1)
+      and on (job, service) (ragflow_monitoring_target_configured == 1)
+    for: 1m
+    labels:
+      severity: critical
+      category: availability
+    annotations:
+      summary: "{{ $labels.service }} metrics endpoint is unreachable ({{ $labels.instance }})"
+      description: "Prometheus cannot scrape {{ $labels.instance }}. Check the metrics endpoint, exporter process, network and authentication."
+
+  - alert: MonitoringBackendUnavailable
+    expr: |
+      (
+        (up == 1)
+        unless on (job, service) (ragflow_monitoring_target_healthy == 1)
+      )
+      and on (job, service) (ragflow_monitoring_target_enabled == 1)
+      and on (job, service) (ragflow_monitoring_target_configured == 1)
+    for: 1m
+    labels:
+      severity: critical
+      category: availability
+    annotations:
+      summary: "{{ $labels.service }} backend collection failed ({{ $labels.instance }})"
+      description: "The metrics endpoint responds, but backend health or required metrics are missing. Check the backend, credentials, permissions and enabled collectors."

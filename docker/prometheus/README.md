@@ -1,173 +1,172 @@
-# Native service monitoring
+# Service monitoring
 
-Prometheus scrapes the existing MinIO/Silo and ClickHouse services directly.
-It starts independently; it does not start or initialize the monitored services.
-API/Admin and MySQL metrics are outside this setup.
+Prometheus monitors MinIO/Silo and ClickHouse directly, plus MySQL, Kvrocks, NATS
+and Elasticsearch/OpenSearch through the combined components-exporter container.
+Both monitoring containers join the `ragflow` bridge network and communicate by
+service name. Prometheus publishes its UI at `127.0.0.1:9090`; exporter ports stay
+inside the Compose network. Monitoring starts independently of the application
+and monitored services.
 
-| Job | Native endpoint | Metrics |
+## Start monitoring
+
+Run from the repository root, using the same Compose project name as the
+application deployment. Start the middleware first, then prepare credentials once:
+
+```bash
+bash docker/prometheus/setup.sh
+```
+
+Start monitoring after setup succeeds:
+
+```bash
+docker compose --env-file docker/.env -f docker/docker-compose-base.yml up -d --build --wait prometheus
+```
+
+Starting `prometheus` also starts `components-exporter`. The dependency waits
+for container startup, not backend health.
+
+To include monitoring in normal deployment startup, append `prometheus` to
+`COMPOSE_PROFILES` in `docker/.env`.
+
+## Configuration
+
+Targets follow the deployment settings in `docker/.env`:
+
+| Job | Default metrics endpoint | Enabled when |
 | --- | --- | --- |
-| `minio-job` | `localhost:9000/minio/metrics/v3` | Cluster capacity/health, objects, S3 requests/errors/traffic, process CPU/memory/I/O and drive metrics. |
-| `clickhouse` | `localhost:9363/metrics` | Query/connection/memory gauges, cumulative events, asynchronous metrics and errors. |
-| `prometheus` | `localhost:9090/metrics` | Prometheus itself. |
+| `minio-job` | `minio:9000/minio/metrics/v3` | `MONITORING_MINIO_ENABLED=true` (default) |
+| `clickhouse` | `clickhouse:9363/metrics` | `MONITORING_CLICKHOUSE_ENABLED=true` (default) |
+| `mysql` | `components-exporter:9104/metrics` | `DB_TYPE=mysql` |
+| `kvrocks` | `components-exporter:9121/metrics` | Always |
+| `nats` | `components-exporter:7777/metrics` | Always |
+| `elasticsearch` | `components-exporter:9114/metrics` | `DOC_ENGINE=elasticsearch` or `opensearch` |
 
-Prometheus uses Linux host networking. These default targets assume that the
-services publish their ports on the same host. For other deployments, change the
-targets in `prometheus.yml` to the actual reachable addresses. Changing
-`MINIO_PORT` or `CLICKHOUSE_PROMETHEUS_PORT` also requires updating those targets.
+Keep `DB_TYPE` and `DOC_ENGINE` consistent with the application. Set
+`MONITORING_MINIO_ENABLED=false` or `MONITORING_CLICKHOUSE_ENABLED=false` when
+that service is unused.
 
-The MinIO/Silo job uses the v3 root endpoint without a trailing slash. The pinned
-Silo image already supports it; no exporter or image upgrade is needed.
+MinIO and ClickHouse use their container ports, independently of host port
+mappings. Override `MINIO_METRICS_ADDRESS` or `CLICKHOUSE_METRICS_ADDRESS` with
+`host:port` or `[IPv6]:port` for external services. HTTPS settings belong in the
+corresponding job in `prometheus.yml`.
 
-Run the commands below from the repository root. They use Compose's normal project
-name selection. If the existing deployment uses a custom project name, set
-`COMPOSE_PROJECT_NAME` to that same name, or add `-p PROJECT_NAME` to each Compose
-command. Use the existing deployment's project name consistently.
+Exporters connect to `mysql:3306`, `kvrocks:6379`, `nats:8222`, `es01:9200` or
+`opensearch39:9201`. External services can override
+`MYSQL_EXPORTER_ADDRESS` (`host:port`),
+`KVROCKS_EXPORTER_ADDRESS` (`kvrocks://host:port`), `NATS_MONITORING_URL`,
+`ELASTICSEARCH_EXPORTER_URL` or `OPENSEARCH_EXPORTER_URL`. NATS uses its HTTP
+monitoring port, normally 8222. External addresses must be reachable from the
+container; `localhost` refers to the container itself.
 
-## Prepare the MinIO/Silo token once
+The default NATS monitoring target follows `NATS_HOST:8222`, independently of
+the NATS client port (`NATS_PORT`, normally 4222). `EXPOSE_NATS_MONITORING_PORT`
+publishes the monitoring port on the host and does not change the internal port.
+The default ES/OpenSearch monitoring target follows `ES_HOST:9200` /
+`OS_HOST:9201`. `ES_PORT` and `OS_PORT` publish ports on the host; they are not
+the ports used between these containers.
 
-If a valid token file is already present, proceed directly to Start Prometheus.
+Exporter listener ports use `MYSQL_EXPORTER_PORT`, `KVROCKS_EXPORTER_PORT`,
+`NATS_EXPORTER_PORT` and `ES_EXPORTER_PORT`. Prometheus uses the same values.
+An invalid or conflicting listener disables only that exporter.
 
-For a new deployment, generate a token manually using the existing MinIO/Silo
-credentials. For MinIO managed by this Compose project, enter the running service:
+`components-exporter` uses `MEM_LIMIT` from `docker/.env` as the total memory limit
+for Supervisor and all exporter processes. Recreate the container with Compose
+after changing this limit.
 
-```bash
-docker compose --env-file docker/.env -f docker/docker-compose-base.yml exec minio /bin/sh
-mc alias set monitor http://localhost:9000
-mc admin prometheus generate monitor --api-version v3
-exit
-```
+Adjust the `global` time settings in `prometheus.yml` to control scrape frequency,
+scrape timeout and rule evaluation frequency. Each alert's `for` controls how long
+its condition must hold before firing. After changing deployment settings or
+exporter credentials, repeat the startup command above.
+Changes under `docker/exporter` require rebuilding `components-exporter`; the
+startup command includes `--build` so its copied scripts stay up to date.
 
-For a separately deployed MinIO/Silo service, run the same `mc` commands in its
-running container and use the API address reachable from there.
+## Credentials
 
-When prompted, enter the deployment's existing access key and secret key. With
-this Compose configuration, they come from `MINIO_USER` and `MINIO_PASSWORD`
-in `docker/.env`, unless overridden at deployment time. Use the actual deployed
-credentials rather than copying example passwords.
+`setup.sh` uses `docker/.env` and `docker/docker-compose-base.yml`. Additional
+arguments are forwarded to Compose; for example, use `-p PROJECT` for your
+deployment's project name. It connects to the running Compose `mysql:3306` and
+`minio:9000` services, so both must be running. This is a one-time initialization
+command for those two services. Prepare credentials separately for external services.
 
-Copy only the generated `bearer_token` value. For the first deployment, create
-its file with the permissions required by the pinned Prometheus image:
+### MySQL
 
-```bash
-install -d -m 700 docker/prometheus/secrets
-sudo install -m 600 -o 65534 -g 65534 /dev/null docker/prometheus/secrets/minio.token
-sudo nano docker/prometheus/secrets/minio.token
-```
+Set `MYSQL_EXPORTER_USER` and `MYSQL_EXPORTER_PASSWORD` in `.env`. The script uses
+`MYSQL_PASSWORD` to connect as root, creates the monitoring account if absent,
+then verifies its password and grants `PROCESS`, `REPLICATION CLIENT`, and
+`SELECT ON performance_schema.*`. Existing passwords are never reset.
 
-Paste the token as a single line, without quotes or `bearer_token:`. In nano,
-press Ctrl+O, Enter, then Ctrl+X to save and exit. Another editor can also be used.
-To update an existing file, run only the editor command.
+### MinIO/Silo
 
-The token file is ignored by Git and mounted read-only at
-`/run/secrets/minio.token`. A valid token remains usable across normal restarts.
-After replacing an existing token file, restart only Prometheus to refresh its
-single-file bind mount:
-
-```bash
-docker compose --env-file docker/.env -f docker/docker-compose-base.yml --profile prometheus restart prometheus
-```
-
-## Prepare ClickHouse
-
-The Compose ClickHouse service mounts `docker/clickhouse/prometheus.xml` to expose
-its native `/metrics` endpoint on container port 9363. Docker publishes that port
-only on the host's IPv4 loopback address; the scrape target uses `localhost`.
-`CLICKHOUSE_PROMETHEUS_PORT` selects the published host port (default 9363).
-Use distinct host ports for deployments sharing a Docker host.
-Apply this configuration through the normal ClickHouse deployment. Adding the
-mount and port to an existing container requires recreating that container and
-briefly interrupts connections; its existing data volume is retained.
-
-## Start Prometheus
-
-Once its token file is present, start only the optional monitoring service:
+Every run generates a v3 token using `MINIO_USER` and `MINIO_PASSWORD` and saves
+it to `secrets/minio.token` with owner UID/GID 65534 and mode 600, using `sudo`
+when needed. Token contents are ignored by Git. A failed generation leaves the
+existing token file in place. After running setup, restart an already running
+Prometheus to read the generated token:
 
 ```bash
-docker compose --env-file docker/.env -f docker/docker-compose-base.yml --profile prometheus up -d --no-deps --wait prometheus
+docker compose --env-file docker/.env -f docker/docker-compose-base.yml restart prometheus
 ```
 
-Prometheus has no dependent initialization service. The monitored services may
-be deployed separately; an unreachable target is shown as DOWN. Configuration and
-rule files are mounted read-only, and historical metrics persist in `prometheus_data`.
+A missing or unreadable token marks MinIO monitoring as **Not configured**.
+An invalid nonempty token makes its scrape fail. Other jobs continue running.
 
-## Rules and verification
+### Other services
 
-Open <http://localhost:9090/targets>. All three configured jobs should be UP when
-their services are running. The scrape and alert evaluation intervals are 60
-seconds. The recording group also runs every 60 seconds to match the scrape interval.
+Kvrocks uses `REDIS_PASSWORD`. Elasticsearch/OpenSearch use the deployment
+credentials; override `ES_EXPORTER_USER` / `ES_EXPORTER_PASSWORD` or
+`OPENSEARCH_EXPORTER_USER` / `OPENSEARCH_EXPORTER_PASSWORD` for monitoring accounts.
+ClickHouse uses its existing `clickhouse/prometheus.xml` metrics endpoint.
 
-Rules for other services remain in the repository and are not loaded until their
-scrape jobs are configured. Four MinIO rule files are enabled:
+## Status and alerts
 
-| File | Purpose |
+Open <http://localhost:9090/targets> for scrape status, or query
+`ragflow_monitoring_target_state` in <http://localhost:9090>:
+
+| Value | Meaning |
 | --- | --- |
-| `minio_alerts.yml` | Metrics availability, offline nodes, free capacity, request error rate, read/write/delete latency and predicted growth. |
-| `minio_throughput_recording.yml` | Network and process storage I/O rates, daily totals and I/O efficiency ratios. |
-| `minio_throughput_alerts.yml` | Network throughput alerts. |
-| `minio_disk_throughput_alerts.yml` | Silo process storage I/O throughput alerts. |
+| `0` | Disabled in the deployment |
+| `1` | Monitoring configuration is missing or invalid |
+| `2` | Target discovery, scraping or required backend metrics are failing |
+| `3` | Metrics collection is healthy |
 
-All MinIO metrics come from one v3 scrape, avoiding duplicate accounting.
-Rules use v3 names such as `minio_api_requests_traffic_received_bytes`,
-`minio_system_process_io_write_bytes` and
-`minio_system_drive_api_latency_micros`. S3 request counters use the `name`
-label for the API operation, while drive latency still uses `api`; latency is
-in microseconds and is converted to milliseconds by the alert rules.
+The status distinguishes an exporter responding from its backend being healthy.
+`MonitoringNotConfigured`, `MonitoringTargetMissing`, `MonitoringTargetDown` and
+`MonitoringBackendUnavailable` cover those failures. Disabled services do not
+raise availability alerts. MySQL, ES and MinIO performance/capacity rules remain
+enabled.
 
-This Silo release omits zero-valued metrics. Four recording rules normalize the
-network and process I/O byte counters before the throughput and daily-total rules
-apply `rate` or `increase`. Filling missing counters before calculating changes
-includes the first nonzero traffic observed after an idle period. These rules run
-in that order in the same 60-second group. Missing counters are filled with zero
-only when the target is UP and its process uptime metric is present. The S3 `type`
-label is removed so network and process I/O recordings have matching node labels.
-A failed scrape does not record counter values or fallback zeros.
+Rules run locally. Sending notifications requires a configured Alertmanager;
+Prometheus itself needs an external uptime check.
 
-The performance alert group also records `minio:api:errors_total`, filling absent
-error counters with zero for APIs whose S3 request counter is present and whose
-target is UP. The error-rate alert evaluates this counter after it is recorded in
-the same group, preserving the first error burst after successful requests. API
-labels remain separate, and counter resets are handled by `rate`.
-
-Capacity alerts use actual usable free space, treating an omitted free-space
-gauge as zero when usable total capacity is present. This preserves full-disk
-alerts. Offline-node metrics being absent while the cluster is healthy is normal.
-Percentages are scaled to 0–100 before formatting. Storage I/O counters describe
-the Silo process, not all activity on the host's disks.
-
-Throughput values use MiB/s and daily totals use GiB. Efficiency ratios are
-absent while their denominator is zero. Calculating changes requires at least
-two recorded counter samples. Daily totals use the counter samples recorded since
-these rules started, up to the last 24 hours; earlier samples are not backfilled.
-Object counts and object usage follow the background scanner.
-
-Examples:
-
-```promql
-up{job=~"minio-job|clickhouse"}
-minio_cluster_health_capacity_usable_free_bytes{job="minio-job"}
-rate(minio_api_requests_total{job="minio-job",type="s3"}[5m])
-minio_system_process_resident_memory_bytes{job="minio-job"}
-minio:network:write_throughput_mb_sec
-minio:disk:total_throughput_mb_sec
-ClickHouseMetrics_Query{job="clickhouse"}
-ClickHouseMetrics_MemoryTracking{job="clickhouse"}
-```
-
-Rate queries need multiple scrapes. Alert thresholds retain the previous values.
-Rules are evaluated in Prometheus; sending notifications requires a separately
-configured Alertmanager.
-
-## Manage
+## Operations
 
 ```bash
-# Inspect only Prometheus.
-docker compose --env-file docker/.env -f docker/docker-compose-base.yml --profile prometheus ps prometheus
+# Inspect monitoring containers.
+docker compose --env-file docker/.env -f docker/docker-compose-base.yml ps components-exporter prometheus
 
-# Reload scrape and rule files without restarting Prometheus.
-docker compose --env-file docker/.env -f docker/docker-compose-base.yml --profile prometheus kill -s SIGHUP prometheus
+# Reload rule changes.
+docker compose --env-file docker/.env -f docker/docker-compose-base.yml kill -s SIGHUP prometheus
 
-# Stop monitoring without stopping the monitored services.
-docker compose --env-file docker/.env -f docker/docker-compose-base.yml --profile prometheus stop prometheus
+# Stop monitoring.
+docker compose --env-file docker/.env -f docker/docker-compose-base.yml stop components-exporter prometheus
+
+# Validate configuration and rules using the image's promtool.
+docker compose --env-file docker/.env -f docker/docker-compose-base.yml run --rm --no-deps prometheus --check-config
+docker compose --env-file docker/.env -f docker/docker-compose-base.yml --profile prometheus config --quiet
 ```
 
-Silo source references for the pinned release: [v3 collectors](https://github.com/pgsty/silo/blob/RELEASE.2026-08-06T00-00-00Z/cmd/metrics-v3.go), [metric value emission](https://github.com/pgsty/silo/blob/RELEASE.2026-08-06T00-00-00Z/cmd/metrics-v3-types.go).
+Prometheus creates its target files and expected inventory at startup, and copies
+`prometheus.yml` unchanged into its runtime directory. Restart it after changing
+that file. Rule files stay linked to their source, so SIGHUP reloads rule edits.
+Metric history stays in the `prometheus_data` volume.
+
+The validation command uses the deployment's Compose environment and removes
+the temporary container after checking. It requires no host installation of promtool.
+
+## MinIO metric details
+
+MinIO/Silo uses one v3 scrape. Throughput is MiB/s, daily totals are GiB, and
+storage I/O measures the Silo process. Silo omits zero-valued counters; recording
+rules fill the gaps only for healthy targets before calculating rates and totals.
+Daily totals cover the available history up to 24 hours and are not backfilled.
+Object usage follows the background scanner.

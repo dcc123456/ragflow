@@ -1,117 +1,125 @@
 groups:
-- name: mysql_critical_alerts
+- name: mysql_availability_alerts
   rules:
-  - alert: MySQLDown
-    expr: mysql_up == 0
+  - alert: MySQLCollectorFailed
+    expr: |
+      (mysql_exporter_collector_success{job="mysql"} == 0)
+      and on (job, instance) (mysql_up{job="mysql"} == 1)
     for: 1m
     labels:
-      severity: critical
-      category: availability
+      severity: warning
+      category: monitoring
     annotations:
-      summary: "MySQL instance is down ({{ $labels.instance }})"
-      description: "MySQL instance {{ $labels.mysql_host }}:{{ $labels.mysql_port }} has been down for more than 1 minute."
+      summary: "A MySQL metrics collector failed ({{ $labels.instance }})"
+      description: "MySQL is reachable from {{ $labels.instance }}, but {{ $labels.collector }} failed. Check monitoring grants and collector support."
 
 - name: mysql_performance_alerts
   rules:
   - alert: MySQLMaxConnectionsApproaching
     expr: |
-      mysql_global_status_max_used_connections / mysql_global_variables_max_connections > 0.8
+      (mysql_global_status_threads_connected{job="mysql"} / mysql_global_variables_max_connections{job="mysql"} > 0.8)
+      and (mysql_global_variables_max_connections{job="mysql"} > 0)
     for: 3m
     labels:
       severity: warning
       category: connections
     annotations:
       summary: "MySQL connections high ({{ $labels.instance }})"
-      description: "MySQL connections usage is {{ $value | humanizePercentage }} on {{ $labels.mysql_host }}:{{ $labels.mysql_port }}"
+      description: "MySQL connections usage is {{ $value | humanizePercentage }} for the instance monitored by {{ $labels.instance }}."
 
   - alert: MySQLMaxConnectionsCritical
     expr: |
-      mysql_global_status_max_used_connections / mysql_global_variables_max_connections > 0.9
+      (mysql_global_status_threads_connected{job="mysql"} / mysql_global_variables_max_connections{job="mysql"} > 0.9)
+      and (mysql_global_variables_max_connections{job="mysql"} > 0)
     for: 2m
     labels:
       severity: critical
       category: connections
     annotations:
       summary: "MySQL connections critical ({{ $labels.instance }})"
-      description: "MySQL connections usage is {{ $value | humanizePercentage }} on {{ $labels.mysql_host }}:{{ $labels.mysql_port }}"
+      description: "MySQL connections usage is {{ $value | humanizePercentage }} for the instance monitored by {{ $labels.instance }}."
 
   - alert: MySQLSlowQueries
     expr: |
-      rate(mysql_global_status_slow_queries[5m]) > 0.1
+      rate(mysql_global_status_slow_queries{job="mysql"}[5m]) > 0.1
     for: 5m
     labels:
       severity: warning
       category: performance
     annotations:
       summary: "MySQL slow queries detected ({{ $labels.instance }})"
-      description: "Slow query rate is {{ $value | humanize }} per second on {{ $labels.mysql_host }}:{{ $labels.mysql_port }}"
+      description: 'Slow query rate is {{ printf "%.2f" $value }} per second for the instance monitored by {{ $labels.instance }}.'
 
   - alert: MySQLHighQuestionsRate
     expr: |
-      rate(mysql_global_status_questions[5m]) > 1000
+      rate(mysql_global_status_questions{job="mysql"}[5m]) > 1000
     for: 3m
     labels:
       severity: warning
       category: performance
     annotations:
       summary: "MySQL high query rate ({{ $labels.instance }})"
-      description: "Query rate is {{ $value | humanize }} queries per second on {{ $labels.mysql_host }}:{{ $labels.mysql_port }}"
+      description: "Query rate is {{ $value | humanize }} queries per second for the instance monitored by {{ $labels.instance }}."
 
 - name: mysql_resource_alerts
   rules:
   - alert: MySQLInnoDBBufferPoolHitRateLow
     expr: |
-      (1 - (mysql_innodb_buffer_pool_reads / mysql_innodb_buffer_pool_read_requests)) < 0.99
+      (1 - rate(mysql_global_status_innodb_buffer_pool_reads{job="mysql"}[5m]) / rate(mysql_global_status_innodb_buffer_pool_read_requests{job="mysql"}[5m]) < 0.99)
+      and (rate(mysql_global_status_innodb_buffer_pool_read_requests{job="mysql"}[5m]) > 0)
     for: 5m
     labels:
       severity: warning
       category: performance
     annotations:
       summary: "MySQL InnoDB buffer pool hit rate low ({{ $labels.instance }})"
-      description: "Buffer pool hit rate is {{ $value | humanizePercentage }} on {{ $labels.mysql_host }}:{{ $labels.mysql_port }}"
+      description: "Buffer pool hit rate is {{ $value | humanizePercentage }} for the instance monitored by {{ $labels.instance }}."
 
   - alert: MySQLDiskTempTables
     expr: |
-      rate(mysql_global_status_created_tmp_disk_tables[5m]) / rate(mysql_global_status_created_tmp_tables[5m]) > 0.05
+      (rate(mysql_global_status_created_tmp_disk_tables{job="mysql"}[5m]) / rate(mysql_global_status_created_tmp_tables{job="mysql"}[5m]) > 0.05)
+      and (rate(mysql_global_status_created_tmp_tables{job="mysql"}[5m]) > 0)
     for: 5m
     labels:
       severity: warning
       category: performance
     annotations:
       summary: "MySQL high disk temp tables ({{ $labels.instance }})"
-      description: "{{ $value | humanizePercentage }} of temp tables are created on disk on {{ $labels.mysql_host }}:{{ $labels.mysql_port }}"
+      description: "{{ $value | humanizePercentage }} of temp tables are created on disk for the instance monitored by {{ $labels.instance }}."
 
   - alert: MySQLTableLocksWaited
     expr: |
-      rate(mysql_global_status_table_locks_waited[5m]) > 10
+      rate(mysql_global_status_table_locks_waited{job="mysql"}[5m]) > 10
     for: 3m
     labels:
       severity: warning
       category: performance
     annotations:
       summary: "MySQL table lock waits high ({{ $labels.instance }})"
-      description: "Table lock wait rate is {{ $value | humanize }} per second on {{ $labels.mysql_host }}:{{ $labels.mysql_port }}"
+      description: "Table lock wait rate is {{ $value | humanize }} per second for the instance monitored by {{ $labels.instance }}."
 
   - alert: MySQLConnectionErrors
     expr: |
-      (rate(mysql_global_status_aborted_connects[5m]) / rate(mysql_global_status_connections[5m])) > 0.01
+      (rate(mysql_global_status_aborted_connects{job="mysql"}[5m]) / rate(mysql_global_status_connections{job="mysql"}[5m]) > 0.01)
+      and (rate(mysql_global_status_connections{job="mysql"}[5m]) > 0)
     for: 3m
     labels:
       severity: warning
       category: connections
     annotations:
       summary: "MySQL connection errors high ({{ $labels.instance }})"
-      description: "Connection error rate is {{ $value | humanizePercentage }} on {{ $labels.mysql_host }}:{{ $labels.mysql_port }}"
+      description: "Connection error rate is {{ $value | humanizePercentage }} for the instance monitored by {{ $labels.instance }}."
 
 - name: mysql_storage_alerts
   rules:
   - alert: MySQLOpenFilesHigh
     expr: |
-      mysql_global_status_open_files / mysql_global_variables_open_files_limit > 0.8
+      (mysql_global_status_open_files{job="mysql"} / mysql_global_variables_open_files_limit{job="mysql"} > 0.8)
+      and (mysql_global_variables_open_files_limit{job="mysql"} > 0)
     for: 3m
     labels:
       severity: warning
       category: resources
     annotations:
       summary: "MySQL open files high ({{ $labels.instance }})"
-      description: "Open files usage is {{ $value | humanizePercentage }} of limit on {{ $labels.mysql_host }}:{{ $labels.mysql_port }}"
+      description: "Open files usage is {{ $value | humanizePercentage }} of limit for the instance monitored by {{ $labels.instance }}."

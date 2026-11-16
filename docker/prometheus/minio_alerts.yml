@@ -1,15 +1,6 @@
 groups:
 - name: minio_critical_alerts
   rules:
-  - alert: MinIOMetricsUnavailable
-    expr: up{job="minio-job"} == 0
-    for: 1m
-    labels:
-      severity: critical
-    annotations:
-      summary: "MinIO metrics endpoint unavailable"
-      description: "Cannot scrape {{ $labels.job }} at {{ $labels.instance }}. Check the service, network and monitoring token."
-
   - alert: MinIOClusterDown
     expr: minio_cluster_health_nodes_offline_count{job="minio-job"} > 0
     for: 1m

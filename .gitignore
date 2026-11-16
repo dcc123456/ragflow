@@ -1,5 +1,6 @@
 # TLS / Private Keys
-/docker/prometheus/secrets/
+/docker/prometheus/secrets/*
+!/docker/prometheus/secrets/.gitkeep
 *.key
 *.crt
 *.expired

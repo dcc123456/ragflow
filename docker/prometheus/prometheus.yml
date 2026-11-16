@@ -1,51 +1,48 @@
-# Same-host deployment: Prometheus uses Linux host networking.
-# Update the targets if MINIO_PORT or CLICKHOUSE_PROMETHEUS_PORT is changed.
-
-# Default intervals; individual scrape jobs and rule groups can override them.
 global:
-  scrape_interval: 60s       # Collect metrics from each target every 60 seconds.
-  scrape_timeout: 10s        # Maximum time allowed for one scrape.
-  evaluation_interval: 60s   # Evaluate recording and alerting rules every 60 seconds.
+  scrape_interval: 60s      # How often to collect metrics.
+  scrape_timeout: 10s       # Maximum time allowed for each scrape.
+  evaluation_interval: 60s  # How often to evaluate recording and alerting rules.
 
-# Optional Alertmanager configuration for delivering alert notifications.
-# Rules are evaluated even without Alertmanager. Uncomment after deploying it
-# and replace the target with an address reachable from Prometheus.
-# This example assumes Alertmanager publishes port 9093 on the same host.
-# alerting:
-#   alertmanagers:
-#     - static_configs:
-#         - targets: ["localhost:9093"]
-
-# Load recording and alerting rules. Paths are relative to this configuration.
 rule_files:
+  - expected_inventory.yml
+  - component_availability_alerts.yml
   - minio_alerts.yml
   - minio_throughput_recording.yml
   - minio_throughput_alerts.yml
   - minio_disk_throughput_alerts.yml
+  - mysql_alerts.yml
+  - es_alerts.yml
 
-# Each job adds a job label to its collected metrics.
-# The default scheme is http and the default metrics_path is /metrics.
 scrape_configs:
-  # Monitor Prometheus itself.
   - job_name: prometheus
     static_configs:
       - targets: ["localhost:9090"]
         labels:
           app: prometheus
 
-  # Collect MinIO/Silo native metrics, including cluster and process metrics.
   - job_name: minio-job
-    # The v3 root path has no trailing slash.
     metrics_path: /minio/metrics/v3
     authorization:
-      type: Bearer
-      # The token file is mounted read-only by Compose.
-      credentials_file: /run/secrets/minio.token
-    static_configs:
-      - targets: ["localhost:9000"]
+      credentials_file: minio.token
+    file_sd_configs:
+      - files: ["targets/minio-job.json"]
 
-  # Collect ClickHouse native metrics enabled by clickhouse/prometheus.xml.
   - job_name: clickhouse
-    metrics_path: /metrics
-    static_configs:
-      - targets: ["localhost:9363"]
+    file_sd_configs:
+      - files: ["targets/clickhouse.json"]
+
+  - job_name: mysql
+    file_sd_configs:
+      - files: ["targets/mysql.json"]
+
+  - job_name: kvrocks
+    file_sd_configs:
+      - files: ["targets/kvrocks.json"]
+
+  - job_name: nats
+    file_sd_configs:
+      - files: ["targets/nats.json"]
+
+  - job_name: elasticsearch
+    file_sd_configs:
+      - files: ["targets/elasticsearch.json"]

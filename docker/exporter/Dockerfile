@@ -1,41 +1,20 @@
-FROM alpine:3.18 AS builder
+FROM registry-1.docker.io/prom/mysqld-exporter:v0.21.0 AS mysql
+FROM registry-1.docker.io/kvrocks/kvrocks-exporter:1.0.11 AS kvrocks
+FROM registry-1.docker.io/natsio/prometheus-nats-exporter:0.20.3 AS nats
+FROM quay.io/prometheuscommunity/elasticsearch-exporter:v1.11.0 AS elasticsearch
 
-RUN apk add wget tar
-
-RUN wget -O /tmp/redis_exporter.tar.gz https://github.com/oliver006/redis_exporter/releases/download/v1.80.0/redis_exporter-v1.80.0.linux-amd64.tar.gz && \
-    tar xzf /tmp/redis_exporter.tar.gz -C /tmp/ && \
-    mv /tmp/redis_exporter-v1.80.0.linux-amd64/redis_exporter /usr/local/bin/redis_exporter
-
-RUN wget -O /tmp/mysqld_exporter.tar.gz https://github.com/prometheus/mysqld_exporter/releases/download/v0.18.0/mysqld_exporter-0.18.0.linux-amd64.tar.gz && \
-    tar xzf /tmp/mysqld_exporter.tar.gz -C /tmp/ && \
-    mv /tmp/mysqld_exporter-0.18.0.linux-amd64/mysqld_exporter /usr/local/bin/mysqld_exporter
-
-RUN wget -O /tmp/elasticsearch_exporter.tar.gz https://github.com/prometheus-community/elasticsearch_exporter/releases/download/v1.9.0/elasticsearch_exporter-1.9.0.linux-amd64.tar.gz && \
-    tar xzf /tmp/elasticsearch_exporter.tar.gz -C /tmp/ && \
-    mv /tmp/elasticsearch_exporter-1.9.0.linux-amd64/elasticsearch_exporter /usr/local/bin/elasticsearch_exporter
-
-FROM alpine:3.18
-
-RUN apk add supervisor
-
-RUN addgroup -g 1000 exporters && \
-    adduser -D -u 1000 -G exporters exporter
-
-COPY --from=builder /usr/local/bin/redis_exporter /usr/local/bin/
-COPY --from=builder /usr/local/bin/mysqld_exporter /usr/local/bin/
-COPY --from=builder /usr/local/bin/elasticsearch_exporter /usr/local/bin/
-
-RUN mkdir -p /etc/supervisor.d /etc/exporters && \
-    chown -R exporter:exporters /etc/exporters
-
+FROM registry-1.docker.io/library/alpine:3.24.3
+RUN apk add --no-cache ca-certificates supervisor \
+    && addgroup -g 1000 exporters \
+    && adduser -D -u 1000 -G exporters exporter
+COPY --from=mysql /bin/mysqld_exporter /usr/local/bin/
+COPY --from=kvrocks /ko-app/kvrocks_exporter /usr/local/bin/kvrocks_exporter
+COPY --from=nats /prometheus-nats-exporter /usr/local/bin/
+COPY --from=elasticsearch /bin/elasticsearch_exporter /usr/local/bin/
+COPY entrypoint.sh monitoring-config.sh /usr/local/bin/
 COPY supervisord.conf /etc/supervisord.conf
-COPY exporter-configs/ /etc/exporters/
-
-RUN chmod +x /usr/local/bin/*_exporter && \
-    chown -R exporter:exporters /usr/local/bin/*_exporter
-
-USER exporter
-
-EXPOSE 9121 9104 9114
-
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]
+RUN chmod 755 /usr/local/bin/entrypoint.sh
+USER 1000:1000
+HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
+    CMD ["supervisorctl", "-c", "/etc/supervisord.conf", "pid"]
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
