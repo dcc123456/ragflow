@@ -19,19 +19,26 @@
 package parser
 
 import (
+	"ragflow/internal/common"
 	"ragflow/internal/deepdoc/client"
 	deepdoctype "ragflow/internal/deepdoc/parser/type"
 )
 
 // eeDeepDocMethods are the EE DeepDoc parse methods routed to the EE HTTP
-// inference service (a single binary serving cpu/gpu/ascend variants). They
-// share one client factory -- only the endpoint (<METHOD>_URL) and the UI label
-// differ -- so they are registered by the same loop in init. Every method is
-// fully suffixed (cpu/gpu/ascend): there is no un-suffixed "deepdoc_ee" alias and
-// no DEEPDOC_EE_URL, so every EE identifier carries its hardware suffix. Kept as
-// data (not inline) so the test suite can assert dispatch for exactly these
-// methods and never drift from the registration.
-var eeDeepDocMethods = []string{"deepdoc_cpu_ee", "deepdoc_gpu_ee", "deepdoc_ascend_ee"}
+// inference service. They are derived from the single source of truth
+// common.EEDeepDocBackends (id/urlEnv/label), so the parser dispatch and the
+// handler's analyzer probe can never drift. They share one client factory --
+// only the endpoint (<METHOD>_URL) and the UI label differ -- so they are
+// registered by the same loop in init. Every method is fully suffixed
+// (cpu/gpu/ascend): there is no un-suffixed "deepdoc_ee" alias and no
+// DEEPDOC_EE_URL, so every EE identifier carries its hardware suffix.
+var eeDeepDocMethods = func() []string {
+	ids := make([]string, 0, len(common.EEDeepDocBackends))
+	for _, b := range common.EEDeepDocBackends {
+		ids = append(ids, b.ID)
+	}
+	return ids
+}()
 
 func init() {
 	// Register the EE DeepDoc variants (cpu/gpu/ascend) as external analyzer

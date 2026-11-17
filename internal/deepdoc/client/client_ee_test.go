@@ -28,6 +28,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -344,7 +345,7 @@ func TestClient_Health_OK(t *testing.T) {
 	}))
 	defer srv.Close()
 	c := New(srv.URL)
-	if !c.Health() {
+	if !c.HealthContext(context.Background()) {
 		t.Fatal("want healthy")
 	}
 }
@@ -355,14 +356,153 @@ func TestClient_Health_Down(t *testing.T) {
 	}))
 	defer srv.Close()
 	c := New(srv.URL)
-	if c.Health() {
+	if c.HealthContext(context.Background()) {
 		t.Fatal("want unhealthy on 500")
 	}
 }
 
 func TestClient_Health_Unreachable(t *testing.T) {
 	c := New("http://127.0.0.1:1") // nothing listening
-	if c.Health() {
+	if c.HealthContext(context.Background()) {
 		t.Fatal("want unhealthy on unreachable")
+	}
+}
+
+// TestClient_Health_ContextCancelled pins that a cancelled context makes
+// Health return false without blocking on the connection. Before ctx was
+// threaded in, Health ignored caller cancellation and could hang for the
+// full client timeout.
+func TestClient_Health_ContextCancelled(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+	c := New(srv.URL)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // already cancelled before the call
+
+	start := time.Now()
+	if c.HealthContext(ctx) {
+		t.Fatal("want unhealthy on cancelled context")
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Fatalf("Health blocked for %s on a cancelled context; want fast return", elapsed)
+	}
+}
+
+// TestClient_Health_ContextTimeout pins that a short deadline bounds the
+// probe even when the backend hangs.
+func TestClient_Health_ContextTimeout(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+	c := New(srv.URL)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	if c.HealthContext(ctx) {
+		t.Fatal("want unhealthy on deadline-exceeded")
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Fatalf("Health blocked for %s past the 150ms deadline; want bounded return", elapsed)
+	}
+}
+
+// --- response-body ownership on cancellation (adversarial) ---
+
+// trackingBody records whether the transport's response body was closed.
+type trackingBody struct {
+	closed chan struct{}
+	once   sync.Once
+}
+
+func (b *trackingBody) Read([]byte) (int, error) { return 0, io.EOF }
+func (b *trackingBody) Close() error {
+	b.once.Do(func() { close(b.closed) })
+	return nil
+}
+
+// bodyTrackingTransport ignores ctx (like a hung/buggy backend) and always
+// returns a 200 with a tracked body, so the probe cannot succeed by the
+// transport itself rejecting the cancelled request.
+type bodyTrackingTransport struct {
+	mu     sync.Mutex
+	bodies []*trackingBody
+}
+
+func (t *bodyTrackingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	b := &trackingBody{closed: make(chan struct{})}
+	t.mu.Lock()
+	t.bodies = append(t.bodies, b)
+	t.mu.Unlock()
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       b,
+		Header:     make(http.Header),
+		Request:    req,
+	}, nil
+}
+
+func (t *bodyTrackingTransport) snapshot() []*trackingBody {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return append([]*trackingBody(nil), t.bodies...)
+}
+
+// TestClient_HealthContext_ClosesBodyWhenCallerCancels pins the ownership
+// contract: even when the caller's context is cancelled, any response body
+// the HTTP stack produced must be closed. The old implementation raced the
+// Do call in a goroutine against ctx.Done(); when Done won, the 200 response
+// and its body were left sitting in a buffered channel, never closed, leaking
+// the underlying connection. The fix (ctx-bound Do, no race) closes it.
+func TestClient_HealthContext_ClosesBodyWhenCallerCancels(t *testing.T) {
+	tr := &bodyTrackingTransport{}
+	c := New("http://health.test", WithHTTPClient(&http.Client{Transport: tr}))
+
+	const n = 64
+	for i := 0; i < n; i++ {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel() // cancelled before the probe starts
+		_ = c.HealthContext(ctx)
+	}
+
+	// Wait until every RoundTrip has produced its response.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && len(tr.snapshot()) < n {
+		time.Sleep(time.Millisecond)
+	}
+	bodies := tr.snapshot()
+	if len(bodies) != n {
+		t.Fatalf("got %d RoundTrips, want %d", len(bodies), n)
+	}
+	leaked := 0
+	for _, b := range bodies {
+		select {
+		case <-b.closed:
+		default:
+			leaked++
+		}
+	}
+	if leaked != 0 {
+		t.Fatalf("%d/%d response bodies left unclosed after cancelled probes", leaked, n)
+	}
+}
+
+// TestClient_Health_DelegatesToContextProbe pins that the interface method
+// Health still delegates to the ctx-bound probe (healthy backend -> true).
+func TestClient_Health_DelegatesToContextProbe(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/health" {
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	}))
+	defer srv.Close()
+	if !New(srv.URL).Health() {
+		t.Fatal("Health() should report healthy via the ctx-bound probe")
 	}
 }

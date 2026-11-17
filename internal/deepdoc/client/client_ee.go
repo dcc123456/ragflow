@@ -199,9 +199,27 @@ func (c *Client) OCRRecognize(ctx context.Context, img image.Image) ([]deepdocty
 	return []deepdoctype.OCRText{{Text: it.Text, Confidence: it.Score}}, nil
 }
 
-// Health reports whether the EE service is reachable and reports ok.
+// Health reports whether the EE service is reachable and reports ok. It
+// satisfies the deepdoctype.DocAnalyzer interface and is best-effort: it
+// ignores caller cancellation and is bounded only by the client timeout.
 func (c *Client) Health() bool {
-	req, err := http.NewRequest(http.MethodGet, c.baseURL+"/health", nil)
+	return c.HealthContext(context.Background())
+}
+
+// HealthContext is like Health but binds the probe to ctx, so a
+// cancelled/deadline-exceeded caller (e.g. an HTTP client that
+// disconnected) does not block the probe for the full client timeout.
+//
+// Attaching ctx to the request with NewRequestWithContext is sufficient:
+// http.Client.Do aborts an in-flight request when its context is cancelled.
+// Racing the call in a goroutine against ctx.Done() is not only redundant but
+// leaks the response body whenever Done wins a completed Do, because the
+// returned response is left sitting in the channel and never closed.
+func (c *Client) HealthContext(ctx context.Context) bool {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/health", nil)
 	if err != nil {
 		return false
 	}

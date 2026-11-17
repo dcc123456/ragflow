@@ -14,7 +14,6 @@
 //  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
-//
 
 package parser
 
@@ -22,6 +21,7 @@ import (
 	"strings"
 	"testing"
 
+	"ragflow/internal/common"
 	"ragflow/internal/deepdoc/client"
 	deepdoctype "ragflow/internal/deepdoc/parser/type"
 )
@@ -86,5 +86,18 @@ func TestEEDeepDocMethods_ResolveUnconfigured(t *testing.T) {
 				t.Fatalf("expected error for %s when url unset", m)
 			}
 		})
+	}
+}
+
+// TestEEDeepDocBackends_URLConvention guards the single source of truth:
+// every common.EEDeepDocBackends entry must use the generic <METHOD>_URL env
+// key the parser resolves through (eeMethodURLE), so the handler probe and the
+// parser dispatch cannot disagree on which env var holds a backend URL.
+func TestEEDeepDocBackends_URLConvention(t *testing.T) {
+	for _, b := range common.EEDeepDocBackends {
+		want := eeMethodURLE(b.ID)
+		if b.URLEnv != want {
+			t.Fatalf("backend %s: URLEnv %q != expected %q", b.ID, b.URLEnv, want)
+		}
 	}
 }
