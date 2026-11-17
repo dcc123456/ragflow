@@ -158,6 +158,41 @@ func checkEnterpriseFiles(t *testing.T, dir string, wantFallback bool) {
 	}
 }
 
+func TestGenerateSliceAndArraySignatures(t *testing.T) {
+	dir := t.TempDir()
+	putFile(t, dir, "shared.go", `package fixture
+import "context"
+type DocAnalyzerInfo struct{}
+const Size = 2
+func docAnalyzers(ctx context.Context) []DocAnalyzerInfo { return eeDocAnalyzers(ctx) }
+`)
+	putFile(t, dir, "stub.go", `//go:build !ee
+
+package fixture
+import "context"
+func eeDocAnalyzers(_ context.Context) []DocAnalyzerInfo { return nil }
+func SliceParam([]string) {}
+func NestedSlices() map[string][][]string { return nil }
+func SliceCallback() func([]string) []string { return nil }
+func FixedArray([2]string) {}
+func NamedArray([Size]string) {}
+func AfterSlice() error { return nil }
+`)
+	var report bytes.Buffer
+	if err := generate(dir, []string{"."}, true, &report); err == nil {
+		t.Fatal("generated fallbacks must fail the check")
+	}
+	for _, name := range []string{"eeDocAnalyzers", "SliceParam", "NestedSlices", "SliceCallback", "FixedArray", "NamedArray", "AfterSlice"} {
+		if !strings.Contains(report.String(), "GENERATED .."+name+":") {
+			t.Errorf("missing generated hook %s in report:\n%s", name, &report)
+		}
+	}
+	if !strings.Contains(report.String(), "Full scan completed") {
+		t.Errorf("scan did not complete:\n%s", &report)
+	}
+	checkEnterpriseFiles(t, dir, true)
+}
+
 func TestExistingSignaturesAreNeverOverwritten(t *testing.T) {
 	for _, tc := range []struct {
 		name, stub, implementation, status string

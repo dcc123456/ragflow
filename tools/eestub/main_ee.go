@@ -576,12 +576,14 @@ func fallbackDependencies(fn *ast.FuncDecl, source *sourceFile, names, typeNames
 		case *ast.ArrayType:
 			// Array lengths can refer to constants, rather than types. Avoid
 			// evaluating expressions or importing packages to infer a value.
-			ast.Inspect(expr.Len, func(node ast.Node) bool {
-				if id, ok := node.(*ast.Ident); ok && !names[id.Name] {
-					reason = "unresolved array length: " + id.Name
-				}
-				return true
-			})
+			if expr.Len != nil { // Slices have no length expression.
+				ast.Inspect(expr.Len, func(node ast.Node) bool {
+					if id, ok := node.(*ast.Ident); ok && !names[id.Name] {
+						reason = "unresolved array length: " + id.Name
+					}
+					return true
+				})
+			}
 			check(expr.Elt)
 		case *ast.MapType:
 			check(expr.Key)
