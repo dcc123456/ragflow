@@ -8415,3 +8415,13 @@ Failure:
     "message": "no authorization"
 }
 ```
+
+### Delete your account (Enterprise)
+
+`DELETE /api/v1/users/me` requires a signed-in user session in the Authorization header; API keys are rejected.
+
+Send `{ "confirmation_email": "your-account@example.com" }` using the exact account email. The target is always the authenticated user.
+
+Deletion permanently removes the account and the data covered by admin cascading cleanup, including owned workspace data and datasets/documents created in other workspaces. System administrators, workspace owners with other members, and owners with ongoing external subscriptions cannot self-delete. Cancel subscriptions and wait for their termination first.
+
+Success returns the standard response with `code: 0`, clears the authentication cookie, and invalidates subsequent user-token lookups. Errors return the standard error response. External-storage cleanup precedes the database transaction, so failures can leave partially deleted data.

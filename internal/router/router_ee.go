@@ -71,6 +71,7 @@ func RegisterEENoAuthRouter(engine *gin.Engine, apiNoAuth *gin.RouterGroup, r *R
 // RegisterEEAuthRouter registers authenticated enterprise routes.
 func RegisterEEAuthRouter(authorized *gin.RouterGroup, r *Router) {
 	authorized.GET("/api/v1/heartbeat", userHeartbeat)
+	authorized.DELETE("/api/v1/users/me", r.userHandler.DeleteAccount)
 	billingHandler := handler.NewBillingHandler()
 	{
 		group := authorized.Group("/api/v1/billing")

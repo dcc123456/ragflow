@@ -4,6 +4,12 @@ export default {
       licenseExpired: '許可證已過期。請聯繫管理員續期。',
     },
     setting: {
+      deleteAccount: '刪除帳戶',
+      deleteAccountDescription: '永久刪除您的帳戶及相關資料，此操作無法撤銷。',
+      deleteAccountWarning:
+        '此操作會刪除您擁有的工作空間及其資源，以及您在其他工作空間建立的資料集和文件。請先轉移工作空間擁有權或移除其他成員。',
+      deleteAccountConfirmation: '輸入您的帳戶郵箱（{{email}}）以確認刪除。',
+
       larkDescription: '連接飛書同步指定文件夾中的文件。',
       larkFolderTip: '留空則不執行。',
       larkWikiTip: '留空則不執行。',

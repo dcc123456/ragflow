@@ -116,6 +116,14 @@ export default {
       },
     },
     setting: {
+      deleteAccount: 'Delete account',
+      deleteAccountDescription:
+        'Permanently delete your account and associated data. This cannot be undone.',
+      deleteAccountWarning:
+        'This removes your owned workspace and its resources, and datasets and documents you created in other workspaces. Transfer ownership or remove other workspace members first.',
+      deleteAccountConfirmation:
+        'Enter your account email ({{email}}) to confirm.',
+
       larkDescription: 'Sync files from a specified Lark folder.',
       larkFolderTip: 'Leave blank to skip.',
       larkWikiTip: 'Leave blank to skip.',

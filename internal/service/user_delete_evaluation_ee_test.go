@@ -1,6 +1,6 @@
 //go:build ee
 
-package admin
+package service
 
 import (
 	"github.com/glebarez/sqlite"

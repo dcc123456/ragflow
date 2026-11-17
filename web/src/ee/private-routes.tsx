@@ -58,6 +58,15 @@ export type PrivateRoute = {
  */
 export const privateRoutes: PrivateRoute[] = [
   {
+    path: Routes.UserSetting,
+    children: [
+      {
+        path: `${Routes.UserSetting}/profile`,
+        override: () => import('@/ee/pages/user-setting/profile'),
+      },
+    ],
+  },
+  {
     // Replace upstream's flat `/login` and `/login-next` pages with the
     // enterprise auth layout (flip effect, register, forget password).
     replace: ['/login', '/login-next'],

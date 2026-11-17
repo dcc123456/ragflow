@@ -60,6 +60,12 @@ export default {
       },
     },
     setting: {
+      deleteAccount: '删除账户',
+      deleteAccountDescription: '永久删除您的账户及相关数据，此操作无法撤销。',
+      deleteAccountWarning:
+        '此操作会删除您拥有的工作空间及其资源，以及您在其他工作空间创建的数据集和文档。请先转移工作空间所有权或移除其他成员。',
+      deleteAccountConfirmation: '输入您的账户邮箱（{{email}}）以确认删除。',
+
       larkDescription: '连接飞书同步指定文件夹中的文件。',
       larkFolderTip: '不填写则不执行。',
       larkWikiTip: '不填写则不执行。',
