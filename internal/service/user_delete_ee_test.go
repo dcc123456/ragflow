@@ -4,14 +4,20 @@ package service
 
 import (
 	"errors"
-	"strings"
 	"testing"
 
 	"ragflow/internal/dao"
+	"ragflow/internal/engine"
 	"ragflow/internal/entity"
+	"ragflow/internal/storage"
 )
 
 func TestDeleteOwnAccount(t *testing.T) {
+	factory := storage.GetStorageFactory()
+	previousStorage := factory.GetStorage()
+	factory.SetStorage(nil)
+	t.Cleanup(func() { factory.SetStorage(previousStorage) })
+
 	for _, tt := range []struct {
 		name, confirmation          string
 		memberStatus                string
@@ -60,8 +66,16 @@ func TestDeleteOwnAccount(t *testing.T) {
 			}
 			_, _, err := NewUserService().DeleteOwnAccount(t.Context(), user.ID, tt.confirmation)
 			if tt.memberStatus != "" {
-				if err == nil || !strings.Contains(err.Error(), "document engine is unavailable") {
+				// Integration tests may have already initialized the global document engine.
+				want := "document engine is unavailable for user data cleanup"
+				if engine.Get() != nil {
+					want = "storage is unavailable for user data cleanup"
+				}
+				if err == nil || err.Error() != want {
 					t.Fatalf("inactive memberships blocked cleanup: %v", err)
+				}
+				if _, err := dao.NewUserDAO().GetByID(t.Context(), db, user.ID); err != nil {
+					t.Fatalf("account removed after failed cleanup: %v", err)
 				}
 				return
 			}
