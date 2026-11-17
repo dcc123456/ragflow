@@ -1070,10 +1070,10 @@ variable "upload_size_limit" {
 # Rate Limiting Configuration
 # =============================================================================
 
-variable "rate_limit_disabled" {
-  description = "Disable Nginx rate limiting entirely (useful for CI/test environments). Set to true to bypass."
+variable "rate_limit_enabled" {
+  description = "Enable Nginx rate limiting. Disabled by default; set to true to enable."
   type        = bool
-  default     = false
+  default     = true
 }
 
 #===============================================================

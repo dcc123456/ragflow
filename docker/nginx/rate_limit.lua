@@ -724,9 +724,9 @@ function _M.check()
     -- Only rate-limit blacklisted paths; everything else passes through.
     if not is_rate_limited_path() then return end
 
-    -- Allow disabling rate limiting entirely (e.g. for CI/test environments)
-    local disabled = _read_env("RATELIMIT_DISABLED")
-    if disabled and (disabled == "1" or disabled:lower() == "true") then
+    -- Rate limiting is disabled unless explicitly enabled.
+    local enabled = _read_env("RATELIMIT_ENABLED")
+    if not enabled or (enabled ~= "1" and enabled:lower() ~= "true") then
         return
     end
 

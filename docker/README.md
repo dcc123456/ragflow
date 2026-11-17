@@ -107,6 +107,11 @@ Kvrocks uses its own `kvrocks_data` volume; the Python `valkey_data` volume cont
 
 The [.env](./.env) file is the user-facing environment file for the Go deployment. Compose also loads shared defaults from [.env](./.env) for included dependency definitions. When a dependency setting exists in both files, keep the credentials and published ports consistent.
 
+### Rate limiting
+
+- `RATELIMIT_ENABLED`
+  Nginx rate limiting is disabled by default. Set this variable to `1` or `true` (case-insensitive) in the environment or `docker/.env` to enable it. Unset, empty, and other values leave it disabled. For OpenTofu deployments, set `rate_limit_enabled = true`.
+
 ### Metadata database
 
 - `DB_TYPE`

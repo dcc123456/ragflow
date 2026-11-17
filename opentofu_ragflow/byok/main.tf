@@ -2234,8 +2234,8 @@ resource "kubernetes_secret_v1" "ragflow_env" {
     # and also by rag/svr/task_executor.py to reject oversized documents before processing
     MAX_CONTENT_LENGTH = local.max_content_length_bytes
 
-    # Rate limiting control (set to "1" to disable, useful for CI)
-    RATELIMIT_DISABLED = var.rate_limit_disabled ? "1" : "0"
+    # Rate limiting control (set to "1" to enable; disabled by default)
+    RATELIMIT_ENABLED = var.rate_limit_enabled ? "1" : "0"
 
     # Rate limiting Redis configuration (used by OpenResty rate_limit.lua)
     RATELIMIT_REDIS_HOST     = local.redis_host_effective
