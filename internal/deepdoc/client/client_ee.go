@@ -35,7 +35,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"image"
-	"image/png"
+	"image/jpeg"
 	"io"
 	"net/http"
 	"strings"
@@ -271,12 +271,19 @@ func (c *Client) do(ctx context.Context, method, path string, body []byte) ([]by
 	return raw, nil
 }
 
-// encodeImageB64 renders the image as PNG and base64-encodes it, matching the
+// encodeImageB64 renders the image as JPEG and base64-encodes it, matching the
 // {"image": "<b64>"} / {"images": ["<b64>"]} contracts the EE server accepts.
+//
+// JPEG (not PNG) is required for parity: every Python deepdoc client
+// (dla_cli/tsr_cli/ocr_cli) submits img.save(format="jpeg"), and the EE
+// inference models were calibrated on that lossy encoding. Submitting the
+// same crop as PNG makes the 2-class TSR detector lose the thin column
+// separators (score drops ~0.95 -> ~0.61), which merges header/data cells.
+// Go's jpeg.Encode with nil options uses quality 75, same as PIL's default.
 func encodeImageB64(img image.Image) string {
 	var buf bytes.Buffer
-	if err := png.Encode(&buf, img); err != nil {
-		// png.Encode only fails on unsupported image types; fall back to an
+	if err := jpeg.Encode(&buf, img, nil); err != nil {
+		// jpeg.Encode only fails on unsupported image types; fall back to an
 		// empty payload rather than panicking mid-request.
 		return ""
 	}

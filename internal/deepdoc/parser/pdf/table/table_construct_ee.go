@@ -128,3 +128,101 @@ func vhBoxCellOverlap(box, cell pdf.TSRCell) float64 {
 	cellArea := math.Max((cell.X1-cell.X0)*(cell.Y1-cell.Y0), 1e-6)
 	return math.Max(inter/boxArea, inter/cellArea)
 }
+
+// ConstructTableVHPaged renders a cross-page V/H table by processing each page
+// independently, mirroring Python's deepdoc/vision/tsr.py construct_table loop:
+// for each (img, cells) pair, overlay ONLY that page's boxes onto that page's
+// cells, then emit a fresh <tr> and break rows on geometry. This keeps the two
+// pages' identical crop-space coordinates from collapsing into one row (the
+// "101 127" / "序号 序号" bug) without any cross-page Y translation.
+//
+// cells/spans are the flat concat produced by MergeTablesAcrossPages; boxes is
+// the full page-global box list collected for the merged table. Page-less
+// boxes (HasPageNumber false) are offered to every page so callers that do not
+// carry page metadata still overlay correctly.
+func ConstructTableVHPaged(cells []pdf.TSRCell, boxes []pdf.TextBox, spans []pdf.VHPageSpan, caption string) string {
+	var valid []pdf.VHPageSpan
+	for _, sp := range spans {
+		if sp.CellStart >= 0 && sp.CellEnd > sp.CellStart && sp.CellEnd <= len(cells) {
+			valid = append(valid, sp)
+		}
+	}
+	if len(valid) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("<table>")
+	if caption != "" {
+		sb.WriteString("<caption>")
+		sb.WriteString(html.EscapeString(caption))
+		sb.WriteString("</caption>")
+	}
+	for _, sp := range valid {
+		pageCells := make([]pdf.TSRCell, sp.CellEnd-sp.CellStart)
+		copy(pageCells, cells[sp.CellStart:sp.CellEnd])
+		// Map this page's boxes into the same crop-pixel frame as its cells.
+		var pageBoxes []pdf.TextBox
+		for _, b := range boxes {
+			if b.HasPageNumber && b.PageNumber != sp.Page {
+				continue
+			}
+			pageBoxes = append(pageBoxes, BoxToCropSpace(b, sp.Scale, sp.CropOffX, sp.CropOffY))
+		}
+		sb.WriteString(vhOverlayAndRenderRows(pageCells, pageBoxes))
+	}
+	sb.WriteString("</table>")
+	return sb.String()
+}
+
+// vhOverlayAndRenderRows overlays boxes onto cells via the same v/h overlap
+// rule as ConstructTableVH, then renders the cells as <tr>/<td> rows breaking
+// on the same geometry. It is the per-page body shared by the paged renderer.
+func vhOverlayAndRenderRows(cells []pdf.TSRCell, boxes []pdf.TextBox) string {
+	if len(cells) == 0 {
+		return ""
+	}
+	work := make([]pdf.TSRCell, len(cells))
+	copy(work, cells)
+	for _, b := range boxes {
+		if strings.TrimSpace(b.Text) == "" {
+			continue
+		}
+		bx := pdf.TSRCell{X0: b.X0, Y0: b.Top, X1: b.X1, Y1: b.Bottom}
+		best, bestOv := -1, 0.85
+		for i := range work {
+			if ov := vhBoxCellOverlap(bx, work[i]); ov >= bestOv {
+				best, bestOv = i, ov
+			}
+		}
+		if best < 0 {
+			continue
+		}
+		if work[best].Text != "" && vhCellTextTailRE.MatchString(work[best].Text) {
+			work[best].Text += " "
+		}
+		work[best].Text += b.Text
+	}
+	var sb strings.Builder
+	sb.WriteString("<tr>")
+	for j := range work {
+		c := work[j]
+		if j > 0 {
+			prev := work[j-1]
+			if c.Y0 >= prev.Y1-2 || c.X1-2 <= prev.X0 {
+				sb.WriteString("</tr><tr>")
+			}
+		}
+		sb.WriteString("<td")
+		if c.ColSpan > 1 {
+			sb.WriteString(fmt.Sprintf(" colspan=%d", c.ColSpan))
+		}
+		if c.RowSpan > 1 {
+			sb.WriteString(fmt.Sprintf(" rowspan=%d", c.RowSpan))
+		}
+		sb.WriteString(">")
+		sb.WriteString(html.EscapeString(c.Text))
+		sb.WriteString("</td>")
+	}
+	sb.WriteString("</tr>")
+	return sb.String()
+}

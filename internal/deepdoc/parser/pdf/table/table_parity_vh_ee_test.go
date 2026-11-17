@@ -24,9 +24,11 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	pdf "ragflow/internal/deepdoc/parser/pdf/type"
+	"ragflow/internal/entity"
 	"ragflow/internal/parser/tableutil"
 )
 
@@ -143,4 +145,179 @@ func TestVHTableParity(t *testing.T) {
 			}
 		})
 	}
+}
+
+// vhAlignParse parses a rendered V/H table into its structural text grid.
+// buildGrid expands colspan/rowspan into Covered markers, so the returned
+// [][]entity.TableCell is exactly the post-merge shape Python's
+// construct_table would yield: every logical position appears once, merged
+// cells keep their text on the origin slot, and engulfed positions are
+// Covered (NOT empty). That is the contract the alignment tests assert.
+func vhAlignParse(t *testing.T, html string) [][]entity.TableCell {
+	t.Helper()
+	td, err := tableutil.ParseTableHTML(html)
+	if err != nil {
+		t.Fatalf("parse html: %v", err)
+	}
+	return td.Grid
+}
+
+// vhAlignAssertNoEmpty fails if any NON-covered cell is empty text. A covered
+// marker is a legitimate merge placeholder (Python never emits a literal
+// empty <td> for it), so it is not a phantom; an empty real cell IS a
+// phantom/edge collapse and must not happen.
+func vhAlignAssertNoEmpty(t *testing.T, grid [][]entity.TableCell) {
+	t.Helper()
+	for r, row := range grid {
+		for c, cell := range row {
+			if cell.Covered {
+				continue
+			}
+			if strings.TrimSpace(cell.Text) == "" {
+				t.Errorf("row %d col %d is an empty real cell (phantom/edge collapse): grid=%v", r, c, grid)
+			}
+		}
+	}
+}
+
+// TestVHAlignment_EdgeColumnEmptyBand asserts the V/H renderer drops a
+// spurious TSR-split empty band at the FIRST and LAST column (the exact edge
+// cases CleanupOrphanColumns never reached) instead of emitting a collapsed
+// empty <td>. Python's construct_table never builds a fixed grid, so it
+// never produces these; Go must mirror that by dropping fully-empty edge
+// columns before streaming.
+func TestVHAlignment_EdgeColumnEmptyBand(t *testing.T) {
+	xs := []float64{0, 100, 200, 300, 400}
+	ys := []float64{0, 50, 100, 150}
+	letters := "ABCDEFGH"
+	emptyCols := map[int]bool{0: true, 3: true}
+	grid := make([][]pdf.TSRCell, 3)
+	k := 0
+	for r := 0; r < 3; r++ {
+		grid[r] = make([]pdf.TSRCell, 4)
+		for c := 0; c < 4; c++ {
+			text := ""
+			if !emptyCols[c] {
+				text = string(letters[k%len(letters)])
+				k++
+			}
+			grid[r][c] = pdf.TSRCell{X0: xs[c], Y0: ys[r], X1: xs[c+1], Y1: ys[r+1], Text: text, ColSpan: 1, RowSpan: 1}
+		}
+	}
+	item := &pdf.TableItem{RenderVH: true, GridUnified: true, Grid: grid}
+	html := ConstructTable(nil, nil, "", item)
+	got := vhAlignParse(t, html)
+	if len(got) != 3 {
+		t.Fatalf("expected 3 rows, got %d: %s", len(got), html)
+	}
+	for _, row := range got {
+		if len(row) != 2 {
+			t.Fatalf("expected 2 real columns (edges dropped), got %d: %v", len(row), row)
+		}
+	}
+	vhAlignAssertNoEmpty(t, got)
+	if !strings.Contains(html, ">A<") || !strings.Contains(html, ">F<") {
+		t.Errorf("edge real content missing: %s", html)
+	}
+}
+
+// TestVHAlignment_CrossPage asserts a table merged across two pages renders
+// BOTH pages' rows. item.Cells is NOT Y-shifted on merge, so the dispatch
+// must route to the unified GridUnified grid (which IS Y-shifted and
+// X-aligned); routing to item.Cells would interleave the two pages and
+// scramble columns. Mirrors Python, where cross-page cells are Y-shifted
+// and concatenated before streaming.
+func TestVHAlignment_CrossPage(t *testing.T) {
+	item := &pdf.TableItem{
+		RenderVH:    true,
+		GridUnified: true,
+		Grid: [][]pdf.TSRCell{
+			{{X0: 0, Y0: 0, X1: 200, Y1: 30, Text: "h1"}, {X0: 200, Y0: 0, X1: 400, Y1: 30, Text: "h2"}},
+			{{X0: 0, Y0: 30, X1: 200, Y1: 60, Text: "p1a"}, {X0: 200, Y0: 30, X1: 400, Y1: 60, Text: "p1b"}},
+			{{X0: 0, Y0: 300, X1: 200, Y1: 330, Text: "p2a"}, {X0: 200, Y0: 300, X1: 400, Y1: 330, Text: "p2b"}},
+		},
+	}
+	html := ConstructTable(nil, nil, "", item)
+	got := vhAlignParse(t, html)
+	if len(got) != 3 {
+		t.Fatalf("expected 3 rows (2 pages), got %d: %s", len(got), html)
+	}
+	for _, row := range got {
+		if len(row) != 2 {
+			t.Fatalf("expected 2 columns, got %d: %v", len(row), row)
+		}
+	}
+	vhAlignAssertNoEmpty(t, got)
+	for _, want := range []string{"h1", "h2", "p1a", "p1b", "p2a", "p2b"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("cross-page content missing %q: %s", want, html)
+		}
+	}
+}
+
+// TestVHAlignment_ColSpanHeader asserts a header that spans two columns
+// renders with colspan=2 and exactly 2 body columns -- no phantom third
+// column is introduced, and no empty <td> appears. Python streams the flat
+// cells and never adds a placeholder column for the spanned width.
+//
+// Variant A exercises the single-page streaming path (item.Cells-equivalent,
+// what VHTableAssembler.Assemble emits). Variant B exercises the grid path
+// (GridUnified) where a spurious trailing band sits right of the spanned
+// header; it must be dropped, leaving the 2 real columns and the colspan
+// header intact.
+func TestVHAlignment_ColSpanHeader(t *testing.T) {
+	// Variant A: single-page streaming path (no grid).
+	cells := []pdf.TSRCell{
+		{X0: 0, Y0: 0, X1: 200, Y1: 20, ColSpan: 2, RowSpan: 1, Text: "HDR"},
+		{X0: 0, Y0: 20, X1: 100, Y1: 40, Text: "a"},
+		{X0: 100, Y0: 20, X1: 200, Y1: 40, Text: "b"},
+		{X0: 0, Y0: 40, X1: 100, Y1: 60, Text: "c"},
+		{X0: 100, Y0: 40, X1: 200, Y1: 60, Text: "d"},
+	}
+	htmlA := ConstructTableVH(cells, nil, "")
+	if !strings.Contains(htmlA, "colspan=2") {
+		t.Fatalf("expected colspan=2, got: %s", htmlA)
+	}
+	gotA := vhAlignParse(t, htmlA)
+	if len(gotA) != 3 {
+		t.Fatalf("expected 3 rows, got %d: %s", len(gotA), htmlA)
+	}
+	for _, row := range gotA {
+		if len(row) != 2 {
+			t.Fatalf("expected 2 columns (no phantom), got %d: %v", len(row), row)
+		}
+	}
+	vhAlignAssertNoEmpty(t, gotA)
+
+	// Variant B: grid path with a phantom trailing band right of the spanned
+	// header. Covered/phantom positions are zero-valued (matching ExpandGrid),
+	// so gridToStreamCells skips them and dropEmptyColumns removes the empty
+	// trailing column.
+	grid := [][]pdf.TSRCell{
+		{
+			{X0: 0, Y0: 0, X1: 200, Y1: 20, ColSpan: 2, RowSpan: 1, Text: "HDR"},
+			{}, // covered by HDR colspan
+			{}, // phantom trailing band
+		},
+		{
+			{X0: 0, Y0: 20, X1: 100, Y1: 40, Text: "a"},
+			{X0: 100, Y0: 20, X1: 200, Y1: 40, Text: "b"},
+			{}, // phantom trailing band
+		},
+	}
+	item := &pdf.TableItem{RenderVH: true, GridUnified: true, Grid: grid}
+	htmlB := ConstructTable(nil, nil, "", item)
+	if !strings.Contains(htmlB, "colspan=2") {
+		t.Fatalf("expected colspan=2 on grid path, got: %s", htmlB)
+	}
+	gotB := vhAlignParse(t, htmlB)
+	if len(gotB) != 2 {
+		t.Fatalf("expected 2 rows, got %d: %s", len(gotB), htmlB)
+	}
+	for _, row := range gotB {
+		if len(row) != 2 {
+			t.Fatalf("expected 2 columns (phantom trailing dropped), got %d: %v", len(row), row)
+		}
+	}
+	vhAlignAssertNoEmpty(t, gotB)
 }
