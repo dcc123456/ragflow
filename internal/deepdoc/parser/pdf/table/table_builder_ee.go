@@ -52,6 +52,14 @@ func NewDeepDocVHTableBuilder(c tsrClient) *DeepDocVHTableBuilder {
 
 func (b *DeepDocVHTableBuilder) Name() string { return "deepdoc_vh" }
 
+// RendersOwnHTML reports that this builder produces its final HTML via
+// ConstructTableVH straight from item.Cells (a port of Python's
+// deepdoc/vision/tsr.py construct_table), so the OSS cross-product grid
+// produced by GroupCells/ExpandGrid and the R/C annotation derived from it
+// are not needed. table_extract.go uses this to keep the broken Exact-float
+// ExpandGrid grid off the EE path. The OSS DeepDocTableBuilder returns false.
+func (b *DeepDocVHTableBuilder) RendersOwnHTML() bool { return true }
+
 // DetectCells calls the EE TSR service (2-class v/h separators) and assembles
 // the result into spanned cells via VHTableAssembler.
 func (b *DeepDocVHTableBuilder) DetectCells(ctx context.Context, cropped image.Image) ([]pdf.TSRCell, error) {

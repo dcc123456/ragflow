@@ -111,8 +111,8 @@ func (VHTableAssembler) ExpandGrid(cells []pdf.TSRCell) ([][]pdf.TSRCell, map[[2
 			Text:    c.Text,
 			Label:   c.Label,
 			Score:   c.Score,
-			ColSpan: c.ColSpan,
-			RowSpan: c.RowSpan,
+			ColSpan: cs,
+			RowSpan: rs,
 		}
 		spanInfo[[2]int{r, cc}] = [2]int{cs, rs}
 		for dr := 0; dr < rs; dr++ {
