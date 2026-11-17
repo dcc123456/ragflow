@@ -31,8 +31,17 @@ import (
 	"ragflow/internal/utility"
 )
 
+func cadTestChunkDocs(t testing.TB, chunks []cadChunk) []schema.ChunkDoc {
+	t.Helper()
+	docs, err := cadChunkDocs(chunks)
+	if err != nil {
+		t.Fatalf("serialize CAD provenance: %v", err)
+	}
+	return docs
+}
+
 func cadTestSheet(id string, bounds [4]float64) cadsource.Sheet {
-	return cadsource.Sheet{ID: id, Index: 1, Bounds: bounds}
+	return cadsource.Sheet{ID: id, Index: 1, Source: "polyline", Bounds: bounds}
 }
 
 func cadTestText(text, sheet string, x, y, height float64) cadsource.Text {
@@ -172,7 +181,7 @@ func TestCADChunkerDeterministic(t *testing.T) {
 		},
 	)
 	first, _ := buildCADChunks(drawing, defaultCADChunkerConfig(), "M-102")
-	firstJSON, err := json.Marshal(cadChunkDocs(first))
+	firstJSON, err := json.Marshal(cadTestChunkDocs(t, first))
 	if err != nil {
 		t.Fatalf("marshal first: %v", err)
 	}
@@ -183,7 +192,7 @@ func TestCADChunkerDeterministic(t *testing.T) {
 	}
 	drawing.Texts = reversed
 	second, _ := buildCADChunks(drawing, defaultCADChunkerConfig(), "M-102")
-	secondJSON, err := json.Marshal(cadChunkDocs(second))
+	secondJSON, err := json.Marshal(cadTestChunkDocs(t, second))
 	if err != nil {
 		t.Fatalf("marshal second: %v", err)
 	}
@@ -470,7 +479,7 @@ func TestCADChunkerChunkIDsUnique(t *testing.T) {
 	chunks, _ := buildCADChunks(drawing, defaultCADChunkerConfig(), "M-102")
 	seen := make(map[string]bool, len(chunks))
 	for _, chunk := range chunks {
-		doc := cadChunkDocs([]cadChunk{chunk})[0]
+		doc := cadTestChunkDocs(t, []cadChunk{chunk})[0]
 		id := canonicalChunkID("doc-1", doc)
 		if seen[id] {
 			t.Fatalf("duplicate chunk id %s for content %q", id, doc.Text)

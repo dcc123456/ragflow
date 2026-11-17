@@ -107,81 +107,104 @@ func detectFormat(filename string) (format string, isDXF bool) {
 }
 
 func buildSheets(d *Drawing, doc *cad.Document) {
-	detected := cad.DetectSheets(doc)
+	// DetectSheets is a model-space detector. Exclude pre-R13 paper-space
+	// entities so the sheet indices match TextLayouts' model layout.
+	model := *doc
+	model.PspaceSpace = nil
+	detection := cad.DetectSheetsDetailed(&model)
+	detected := detection.Sheets
 	if len(detected) == 0 || (len(detected) == 1 && detected[0].Name == "整图") {
 		var bounds [4]float64
+		var viewport [4]float64
 		if len(detected) == 1 {
 			bounds = detected[0].Box
+			viewport = detected[0].Viewport
 		}
 		d.Sheets = []Sheet{{
-			ID:     "s0",
-			Index:  0,
-			Name:   "整图",
-			Bounds: bounds,
+			ID:       "s0",
+			Index:    0,
+			Name:     "整图",
+			Layout:   "model",
+			Space:    string(cad.SpaceModel),
+			Bounds:   bounds,
+			Viewport: viewport,
+			Source:   "fallback",
 		}}
 		d.Diagnostics.SheetDetection = "fallback"
+		for _, warning := range detection.Warnings {
+			d.addWarning("sheet_detection: " + warning)
+		}
 		return
 	}
 
 	d.Diagnostics.SheetDetection = "detected"
 	for i, sheet := range detected {
 		d.Sheets = append(d.Sheets, Sheet{
-			ID:     fmt.Sprintf("s%d", i+1),
-			Index:  i + 1,
-			Name:   sheet.Name,
-			Bounds: sheet.Box,
+			ID:         fmt.Sprintf("s%d", i+1),
+			Index:      i + 1,
+			Name:       sheet.Name,
+			Layout:     sheet.LayoutID,
+			Space:      string(sheet.Space),
+			Bounds:     sheet.Box,
+			Viewport:   sheet.Viewport,
+			Source:     sheet.Source,
+			Confidence: sheet.Confidence,
 		})
+	}
+	for _, warning := range detection.Warnings {
+		d.addWarning("sheet_detection: " + warning)
 	}
 }
 
 func buildTexts(doc *cad.Document, d *Drawing) []Text {
-	infos := cad.SheetTexts(doc)
-	if len(infos) == 0 {
-		// SheetTexts runs the tessellator; when it yields nothing (budget,
-		// malformed geometry, or a text-only model the tessellator skipped)
-		// fall back to the flat stream so the document is not silently empty.
-		flat := doc.Texts()
-		out := make([]Text, 0, len(flat))
-		for _, info := range flat {
+	layoutByID := make(map[string]cad.Layout)
+	for _, layout := range cad.Layouts(doc) {
+		layoutByID[layout.ID] = layout
+	}
+	var out []Text
+	for _, layout := range cad.TextLayouts(doc) {
+		infos := layout.Texts
+		paper := layout.ID != "model"
+		sheetID := ""
+		if paper && len(infos) > 0 {
+			sheetID = "p" + strings.TrimPrefix(layout.ID, "paper:")
+			name := layout.ID
+			bounds := layout.Bounds
+			if meta, ok := layoutByID[layout.ID]; ok {
+				name = meta.Name
+				bounds = meta.Bounds
+			}
+			d.Sheets = append(d.Sheets, Sheet{
+				ID:       sheetID,
+				Name:     name,
+				Layout:   layout.ID,
+				Space:    string(cad.SpacePaper),
+				Bounds:   bounds,
+				Viewport: cad.SheetViewport(bounds),
+				Source:   "paper_layout",
+			})
+		}
+		if !paper && len(infos) == 0 {
+			for _, info := range doc.Texts() {
+				if text := strings.TrimSpace(info.Text); text != "" {
+					out = append(out, Text{Text: text, Kind: KindUnknown, Origin: OriginTexts, SheetID: sheetIDForIndex(d, 0), Layer: layerName(doc, info.Layer), X: info.X, Y: info.Y, Confidence: 0.6})
+				}
+			}
+			if len(out) > 0 {
+				d.addWarning("texts_fallback")
+			}
+		}
+		for _, info := range infos {
 			text := strings.TrimSpace(info.Text)
 			if text == "" {
 				continue
 			}
-			out = append(out, Text{
-				Text:       text,
-				Kind:       KindUnknown,
-				Origin:     OriginTexts,
-				SheetID:    sheetIDForIndex(d, 0),
-				Layer:      layerName(doc, info.Layer),
-				X:          info.X,
-				Y:          info.Y,
-				Confidence: 0.6,
-			})
+			id := sheetID
+			if !paper {
+				id = sheetIDForIndex(d, info.Sheet)
+			}
+			out = append(out, Text{Text: text, Kind: KindUnknown, Origin: OriginSheetTexts, SheetID: id, Layer: info.Layer, X: info.X, Y: info.Y, Height: info.Height, Rotation: info.Rotation, Bounds: info.Bounds, Handle: info.Handle, Confidence: 1})
 		}
-		if len(out) > 0 {
-			d.addWarning("texts_fallback")
-		}
-		return out
-	}
-
-	out := make([]Text, 0, len(infos))
-	for _, info := range infos {
-		text := strings.TrimSpace(info.Text)
-		if text == "" {
-			continue
-		}
-		out = append(out, Text{
-			Text:       text,
-			Kind:       KindUnknown,
-			Origin:     OriginSheetTexts,
-			SheetID:    sheetIDForIndex(d, info.Sheet),
-			Layer:      info.Layer,
-			X:          info.X,
-			Y:          info.Y,
-			Height:     info.Height,
-			Rotation:   info.Rotation,
-			Confidence: 1,
-		})
 	}
 	return out
 }
@@ -189,10 +212,30 @@ func buildTexts(doc *cad.Document, d *Drawing) []Text {
 // ensureUnassignedSheet materializes the synthetic sheet for texts that fall
 // outside every detected frame, so every Text.SheetID resolves to a Sheet.
 func ensureUnassignedSheet(d *Drawing) {
+	var bounds [4]float64
+	found := false
 	for _, text := range d.Texts {
 		if text.SheetID == "s0" {
-			d.ensureSheet("s0", "未归属", 0)
-			return
+			box := text.Bounds
+			if box[2] <= box[0] || box[3] <= box[1] {
+				h := math.Max(text.Height, 1)
+				box = [4]float64{text.X, text.Y, text.X + h, text.Y + h}
+			}
+			if !found {
+				bounds, found = box, true
+			} else {
+				bounds = [4]float64{math.Min(bounds[0], box[0]), math.Min(bounds[1], box[1]), math.Max(bounds[2], box[2]), math.Max(bounds[3], box[3])}
+			}
+		}
+	}
+	if !found {
+		return
+	}
+	d.ensureSheet("s0", "未归属", 0)
+	for i := range d.Sheets {
+		if d.Sheets[i].ID == "s0" && d.Sheets[i].Source == "unassigned" {
+			d.Sheets[i].Bounds = bounds
+			d.Sheets[i].Viewport = cad.SheetViewport(bounds)
 		}
 	}
 }
@@ -338,13 +381,16 @@ func applyDimensionRow(d *Drawing, row dumpRow, layer string) {
 		Position:    pointFromAny(row.DXF["text_midpt"]),
 		Confidence:  0.7,
 	}
+	// The dump contains model-space entities. Resolve that sheet before
+	// matching against the combined model/paper text stream.
+	dimension.SheetID = sheetForPoint(d, dimension.Position)
 
-	if !matchDimensionText(d, &dimension) && dimension.UserText != "" {
+	matched, ambiguous := matchDimensionText(d, &dimension)
+	if !matched && dimension.UserText != "" && (!ambiguous || dimension.Position != nil) {
 		x, y := 0.0, 0.0
 		if dimension.Position != nil {
 			x, y = dimension.Position.X, dimension.Position.Y
 		}
-		dimension.SheetID = sheetForPoint(d, dimension.Position)
 		d.Texts = append(d.Texts, Text{
 			Text:       dimension.UserText,
 			Kind:       KindDimension,
@@ -366,49 +412,84 @@ func applyDimensionRow(d *Drawing, row dumpRow, layer string) {
 // matchDimensionText links a dimension record to the text the tessellator
 // already extracted from its anonymous block. The link is positional: the
 // dimension's text midpoint is the insertion point of that text.
-func matchDimensionText(d *Drawing, dimension *Dimension) bool {
+func matchDimensionText(d *Drawing, dimension *Dimension) (matched, ambiguous bool) {
 	if dimension.Position != nil {
-		best := -1
-		bestDistance := math.Inf(1)
+		type candidate struct {
+			index    int
+			distance float64
+		}
+		var candidates []candidate
 		for i := range d.Texts {
 			text := &d.Texts[i]
-			if text.Kind == KindMLeader || text.Kind == KindAttrib {
+			if !dimensionTextCandidate(d, dimension, text) {
 				continue
 			}
 			distance := math.Hypot(text.X-dimension.Position.X, text.Y-dimension.Position.Y)
 			limit := math.Max(2*text.Height, 1)
-			if distance <= limit && distance < bestDistance {
-				best = i
-				bestDistance = distance
+			if distance <= limit {
+				candidates = append(candidates, candidate{index: i, distance: distance})
 			}
 		}
-		if best >= 0 {
-			text := &d.Texts[best]
+		if len(candidates) > 0 {
+			sort.SliceStable(candidates, func(i, j int) bool {
+				return candidates[i].distance < candidates[j].distance
+			})
+			best := candidates[0]
+			if len(candidates) > 1 {
+				text := &d.Texts[best.index]
+				tolerance := math.Max(0.25*text.Height, 0.5)
+				if candidates[1].distance-best.distance <= tolerance {
+					d.addWarning(fmt.Sprintf("dimension_ambiguous:handle=%d", dimension.Handle))
+					return false, true
+				}
+			}
+			text := &d.Texts[best.index]
 			dimension.RenderedText = text.Text
 			dimension.SheetID = text.SheetID
 			text.Kind = KindDimension
 			if text.Handle == 0 {
 				text.Handle = dimension.Handle
 			}
-			return true
+			return true, false
 		}
 	}
 
 	if dimension.UserText == "" {
-		return false
+		return false, false
 	}
+	var matches []int
 	for i := range d.Texts {
 		text := &d.Texts[i]
-		if text.Text != dimension.UserText {
+		if text.Text != dimension.UserText || !dimensionTextCandidate(d, dimension, text) {
 			continue
 		}
-		dimension.RenderedText = text.Text
-		dimension.SheetID = text.SheetID
-		text.Kind = KindDimension
-		if text.Handle == 0 {
-			text.Handle = dimension.Handle
+		matches = append(matches, i)
+	}
+	if len(matches) == 0 {
+		return false, false
+	}
+	if len(matches) > 1 {
+		d.addWarning(fmt.Sprintf("dimension_ambiguous:handle=%d", dimension.Handle))
+		return false, true
+	}
+	text := &d.Texts[matches[0]]
+	dimension.RenderedText = text.Text
+	dimension.SheetID = text.SheetID
+	text.Kind = KindDimension
+	if text.Handle == 0 {
+		text.Handle = dimension.Handle
+	}
+	return true, false
+}
+
+func dimensionTextCandidate(d *Drawing, dimension *Dimension, text *Text) bool {
+	if text.Kind == KindMLeader || text.Kind == KindAttrib || text.Kind == KindDimension || (dimension.SheetID != "" && text.SheetID != dimension.SheetID) {
+		return false
+	}
+	for _, sheet := range d.Sheets {
+		if sheet.ID == text.SheetID {
+			return sheet.Layout == "" || sheet.Layout == "model"
 		}
-		return true
 	}
 	return false
 }
@@ -495,6 +576,7 @@ func sheetForPoint(d *Drawing, point *Point) string {
 // ---------------------------------------------------------------------------
 
 func (d *Drawing) finalize() {
+	ensureUnassignedSheet(d)
 	if d.Diagnostics.Counts == nil {
 		d.Diagnostics.Counts = map[string]int{}
 	}

@@ -180,12 +180,19 @@ func TestCADChunkerMixedScaleBands(t *testing.T) {
 	}
 }
 
-// TestCADChunkerStructuralTitleBlock verifies the locale-independent rule: an
-// unlabelled short-line block at the bottom of the sheet is a title block.
-func TestCADChunkerStructuralTitleBlock(t *testing.T) {
+// TestCADChunkerLocalizedTitleFields recognizes an Italian title block from
+// its scale and format labels while retaining its accompanying text.
+func TestCADChunkerLocalizedTitleFields(t *testing.T) {
 	var texts []cadsource.Text
 	for i := 0; i < 13; i++ {
-		texts = append(texts, cadTestText(fmt.Sprintf("riga %02d", i), "s1", 50, float64(10+i*5), 5))
+		text := fmt.Sprintf("riga %02d", i)
+		if i == 0 {
+			text = "SCALA"
+		}
+		if i == 1 {
+			text = "FORMATO"
+		}
+		texts = append(texts, cadTestText(text, "s1", 50, float64(10+i*5), 5))
 	}
 	drawing := cadTestDrawing(
 		[]cadsource.Sheet{cadTestSheet("s1", [4]float64{0, 0, 1000, 600})},
@@ -193,7 +200,7 @@ func TestCADChunkerStructuralTitleBlock(t *testing.T) {
 	)
 	chunks, _ := buildCADChunks(drawing, defaultCADChunkerConfig(), "title")
 	if len(chunks) != 1 || chunks[0].Kind != cadKindTitleBlock {
-		t.Fatalf("chunks = %+v, want one structural title_block", chunks)
+		t.Fatalf("chunks = %+v, want one localized title_block", chunks)
 	}
 }
 
@@ -264,7 +271,7 @@ func TestCADChunkerNotesAfterTable(t *testing.T) {
 	}
 }
 
-func TestCADChunkerLoneTextMerged(t *testing.T) {
+func TestCADChunkerLoneTextStaysSeparateWhenFar(t *testing.T) {
 	texts := make([]cadsource.Text, 0, 14)
 	for i := 0; i < 13; i++ {
 		texts = append(texts, cadTestText(fmt.Sprintf("label %d", i), "s1", 10, float64(500-i*10), 10))
@@ -275,11 +282,20 @@ func TestCADChunkerLoneTextMerged(t *testing.T) {
 		texts,
 	)
 	chunks, _ := buildCADChunks(drawing, defaultCADChunkerConfig(), "lone")
-	if len(chunks) != 1 {
-		t.Fatalf("chunks = %+v, want the lone title folded into the region", chunks)
+	if len(chunks) != 2 {
+		t.Fatalf("chunks = %+v, want the far title kept separate", chunks)
 	}
-	if !strings.Contains(chunks[0].Content, "drawing title") {
-		t.Fatalf("content = %q, want the drawing title", chunks[0].Content)
+	found := false
+	for _, chunk := range chunks {
+		if strings.Contains(chunk.Content, "drawing title") {
+			found = true
+			if chunk.Bounds[2]-chunk.Bounds[0] > 200 {
+				t.Fatalf("far title stretched a region bbox: %+v", chunk.Bounds)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("drawing title disappeared")
 	}
 }
 

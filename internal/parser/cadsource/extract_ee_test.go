@@ -131,6 +131,35 @@ func TestDrawingJSONRoundTrip(t *testing.T) {
 	}
 }
 
+func TestExtractSeparatesModelAndPaperText(t *testing.T) {
+	// This fixture is generated here; no downloaded drawing is redistributed.
+	paper := "0\nTEXT\n5\n90\n330\n42\n67\n1\n8\nWall\n10\n1.0\n20\n2.0\n40\n3.0\n1\npaper note\n"
+	dxf := strings.Replace(minimalDXF, "0\nENDSEC\n0\nEOF\n", paper+"0\nENDSEC\n0\nEOF\n", 1)
+	doc, err := Extract(t.Context(), "layouts.dxf", []byte(dxf))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(doc.Texts) != 2 {
+		t.Fatalf("model/paper text missing or duplicated: %+v", doc.Texts)
+	}
+	seen := map[string]string{}
+	for _, text := range doc.Texts {
+		seen[text.Text] = text.SheetID
+		if text.Handle == 0 || text.Bounds[2] <= text.Bounds[0] || text.Bounds[3] <= text.Bounds[1] {
+			t.Fatalf("source identity or native bounds missing: %+v", text)
+		}
+	}
+	if seen["hello dxf"] != "s0" || seen["paper note"] != "p42" {
+		t.Fatalf("overlapping coordinate spaces mixed: %v", seen)
+	}
+	for _, sheet := range doc.Sheets {
+		if sheet.ID == "p42" && sheet.Layout == "paper:42" {
+			return
+		}
+	}
+	t.Fatal("paper layout metadata missing")
+}
+
 func TestExtractWithoutEntityDump(t *testing.T) {
 	doc, err := extract(context.Background(), "drawing.dxf", []byte(minimalDXF), false)
 	if err != nil {
@@ -282,6 +311,34 @@ func TestDimensionMatchesRenderedText(t *testing.T) {
 	}
 }
 
+func TestModelDimensionDoesNotMatchPaperText(t *testing.T) {
+	for _, paperText := range []string{"COMPANY NAME", "100"} {
+		for _, positioned := range []bool{true, false} {
+			t.Run(paperText+map[bool]string{true: "/positioned", false: "/unpositioned"}[positioned], func(t *testing.T) {
+				doc := &Drawing{
+					Sheets: []Sheet{
+						{ID: "s0", Layout: "model", Bounds: [4]float64{0, 0, 1000, 1000}},
+						{ID: "p42", Layout: "paper:42", Bounds: [4]float64{0, 0, 200, 200}},
+					},
+					Texts:       []Text{{Text: paperText, Kind: KindUnknown, Origin: OriginSheetTexts, SheetID: "p42", X: 10, Y: 10, Height: 5, Handle: 7}},
+					Diagnostics: Diagnostics{SheetDetection: "fallback", Counts: map[string]int{}},
+				}
+				fields := map[string]any{"user_text": "100"}
+				if positioned {
+					fields["text_midpt"] = map[string]any{"X": 10.0, "Y": 10.0, "Z": 0.0}
+				}
+				applyDimensionRow(doc, dumpRow{Handle: 99, Type: "DIMENSION", DXF: fields}, "")
+				if len(doc.Texts) != 2 || doc.Texts[0].Kind != KindUnknown || doc.Texts[0].SheetID != "p42" {
+					t.Fatalf("model dimension consumed paper text: %+v", doc.Texts)
+				}
+				if doc.Texts[1].Text != "100" || doc.Texts[1].SheetID != "s0" || doc.Dimensions[0].RenderedText != "100" {
+					t.Fatalf("model dimension not retained: texts=%+v dimension=%+v", doc.Texts, doc.Dimensions[0])
+				}
+			})
+		}
+	}
+}
+
 func TestFinalizeZeroTextWarns(t *testing.T) {
 	doc := &Drawing{
 		Source:      Source{EntityCount: 100},
@@ -309,4 +366,78 @@ func TestPointFromAny(t *testing.T) {
 	if pointFromAny(nil) != nil || pointFromAny("bad") != nil {
 		t.Error("invalid point must be nil")
 	}
+}
+
+func TestDimensionAmbiguousSameTextIsNotForced(t *testing.T) {
+	doc := &Drawing{
+		Sheets: []Sheet{{ID: "s0", Layout: "model", Bounds: [4]float64{0, 0, 100, 100}}},
+		Texts: []Text{
+			{Text: "100", Kind: KindUnknown, Origin: OriginSheetTexts, SheetID: "s0", X: 10, Y: 10, Height: 5},
+			{Text: "100", Kind: KindUnknown, Origin: OriginSheetTexts, SheetID: "s0", X: 80, Y: 80, Height: 5},
+		},
+		Diagnostics: Diagnostics{SheetDetection: "detected", Counts: map[string]int{}},
+	}
+	applyDimensionRow(doc, dumpRow{Handle: 7, Type: "DIMENSION", DXF: map[string]any{"user_text": "100"}}, "")
+	if len(doc.Texts) != 2 {
+		t.Fatalf("ambiguous dimension created/removed text: %+v", doc.Texts)
+	}
+	if doc.Dimensions[0].RenderedText != "" {
+		t.Fatalf("ambiguous dimension forced a match: %+v", doc.Dimensions[0])
+	}
+	if !hasCADWarning(doc.Diagnostics.Warnings, "dimension_ambiguous") {
+		t.Fatalf("missing ambiguity diagnostic: %+v", doc.Diagnostics.Warnings)
+	}
+}
+
+func TestDimensionAmbiguousAdjacentCandidates(t *testing.T) {
+	doc := &Drawing{
+		Sheets: []Sheet{{ID: "s0", Layout: "model", Bounds: [4]float64{0, 0, 100, 100}}},
+		Texts: []Text{
+			{Text: "ROOM", Kind: KindUnknown, Origin: OriginSheetTexts, SheetID: "s0", X: 0, Y: 0, Height: 10},
+			{Text: "PIPE", Kind: KindUnknown, Origin: OriginSheetTexts, SheetID: "s0", X: 20, Y: 0, Height: 10},
+		},
+		Diagnostics: Diagnostics{SheetDetection: "detected", Counts: map[string]int{}},
+	}
+	applyDimensionRow(doc, dumpRow{Handle: 8, Type: "DIMENSION", DXF: map[string]any{
+		"user_text":  "100",
+		"text_midpt": map[string]any{"X": 10.0, "Y": 0.0},
+	}}, "")
+	if doc.Dimensions[0].RenderedText != "100" {
+		t.Fatalf("ambiguity erased declared dimension text: %+v", doc.Dimensions[0])
+	}
+	if len(doc.Texts) != 3 || doc.Texts[0].Kind != KindUnknown || doc.Texts[1].Kind != KindUnknown {
+		t.Fatalf("ambiguity altered unrelated candidates or erased declaration: %+v", doc.Texts)
+	}
+	if !hasCADWarning(doc.Diagnostics.Warnings, "dimension_ambiguous") {
+		t.Fatalf("missing ambiguity diagnostic: %+v", doc.Diagnostics.Warnings)
+	}
+}
+
+func hasCADWarning(warnings []string, prefix string) bool {
+	for _, warning := range warnings {
+		if strings.Contains(warning, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func TestUnassignedSheetBoundsCoverMembers(t *testing.T) {
+	doc := &Drawing{
+		Sheets: []Sheet{{ID: "s1", Index: 1, Layout: "model", Bounds: [4]float64{0, 0, 100, 100}}},
+		Texts: []Text{
+			{Text: "outside one", SheetID: "s0", X: 800, Y: 800, Height: 5, Bounds: [4]float64{800, 800, 850, 805}},
+			{Text: "outside two", SheetID: "s0", X: 900, Y: 900, Height: 5, Bounds: [4]float64{900, 900, 950, 905}},
+		},
+	}
+	ensureUnassignedSheet(doc)
+	for _, sheet := range doc.Sheets {
+		if sheet.ID == "s0" {
+			if sheet.Bounds != [4]float64{800, 800, 950, 905} || sheet.Layout != "model" || sheet.Source != "unassigned" {
+				t.Fatalf("unassigned view bounds do not cover its members: %+v", sheet)
+			}
+			return
+		}
+	}
+	t.Fatal("missing unassigned sheet")
 }

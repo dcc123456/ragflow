@@ -71,14 +71,35 @@ type cadEvidence struct {
 
 // cadChunk holds content, drawing context, and internal validation metadata.
 type cadChunk struct {
-	Kind      cadChunkKind
-	SheetID   string
-	RegionID  string
-	SubjectID string
-	Content   string
-	Context   string
-	Evidence  []cadEvidence
-	SourceIDs []string
+	Kind           cadChunkKind
+	SheetID        string
+	Layout         string
+	Space          string
+	RegionID       string
+	SubjectID      string
+	Content        string
+	Context        string
+	Evidence       []cadEvidence
+	SourceIDs      []string
+	Sources        []cadSourceFact
+	ContextSources []cadSourceFact
+	Keywords       []string
+	Bounds         [4]float64
+	SheetBounds    [4]float64
+	Viewport       [4]float64
+}
+
+// cadSourceFact is one source text's stable provenance carried into the
+// persisted chunk extra. It never replaces SourceIDs; it adds the fields the
+// raw text stream exposes (kind/origin/layer/rotation/native bounds).
+type cadSourceFact struct {
+	ID       string     `json:"id"`
+	Handle   uint64     `json:"handle,omitempty"`
+	Kind     string     `json:"kind,omitempty"`
+	Origin   string     `json:"origin,omitempty"`
+	Layer    string     `json:"layer,omitempty"`
+	Rotation float64    `json:"rotation,omitempty"`
+	Bounds   [4]float64 `json:"bounds,omitzero"`
 }
 
 // cadDiagnostic is a coverage or quality signal reported through run progress.
@@ -109,15 +130,13 @@ type cadChunkerConfig struct {
 	// MaxRegions caps the target region count of one scale band.
 	MaxRegions int
 	// MaxLines and MaxChars cap one chunk body. Oversized regions are split at
-	// their next-largest whitespace before any line-budget fallback.
+	// separating whitespace near the required budget before a line fallback.
 	MaxLines int
 	MaxChars int
 	// MinTextsPerRegion folds an undersized region into its nearest neighbour
 	// when the gap between them is small enough. A value of two keeps a
 	// label/value pair together while still folding a lone drawing title.
 	MinTextsPerRegion int
-	// MaxSubChunks caps the parts produced by one oversize split.
-	MaxSubChunks int
 }
 
 func defaultCADChunkerConfig() cadChunkerConfig {
@@ -130,7 +149,6 @@ func defaultCADChunkerConfig() cadChunkerConfig {
 		MaxLines:           100,
 		MaxChars:           1200,
 		MinTextsPerRegion:  2,
-		MaxSubChunks:       32,
 	}
 }
 
@@ -189,7 +207,7 @@ const (
 	cadTextWidthFactor = 0.7
 
 	// cadSubSplitGapFactor shrinks the gap threshold at each oversize split
-	// level, so a long region is first cut at its next-largest whitespace and
+	// level, so a long region is first cut at budget-balanced whitespace and
 	// only falls back to a hard line split when no gap is left.
 	cadSubSplitGapFactor = 0.5
 
@@ -199,12 +217,13 @@ const (
 
 var (
 	// cadTitleBlockLabels are the title-block field names the classifier looks
-	// for. Matching is case-insensitive substring matching per label.
+	// for. Matching is case-insensitive and requires a field boundary.
 	cadTitleBlockLabels = []string{
 		"图号", "图名", "比例", "材料", "设计", "制图", "审核", "校对",
 		"日期", "版本", "重量", "单位名称",
 		"dwg no", "drawing no", "title", "scale", "material", "drawn",
 		"checked", "approved", "date", "rev", "weight",
+		"scala", "formato", "data", "tavola", "nama", "nim", "tanggal", "no. project", "tugas ke",
 	}
 
 	// cadNotesHeaders mark the technical-notes region. A header is searched
@@ -238,7 +257,12 @@ func chunkCAD(ctx context.Context, upstream schema.ChunkerFromUpstream) (map[str
 	for _, diagnostic := range diagnostics {
 		runtime.ReportProgressMessage(ctx, "CADChunker", cadDiagnosticMessage(diagnostic))
 	}
-	return chunkOutputs(cadChunkDocs(chunks)), true, nil
+	docs, err := cadChunkDocs(chunks)
+	if err != nil {
+		runtime.ReportProgressMessage(ctx, "CADChunker", cadDiagnosticMessage(cadDiagnostic{Code: "cad_metadata_serialize_failed", Detail: err.Error()}))
+		return nil, true, fmt.Errorf("CADChunker: serialize provenance: %w", err)
+	}
+	return chunkOutputs(docs), true, nil
 }
 
 // cadPayload returns the structured CAD document the parser put on
@@ -310,6 +334,11 @@ func buildCADChunks(doc *cadsource.Drawing, cfg cadChunkerConfig, docName string
 	emittedSources := 0
 	for _, chunk := range chunks {
 		emittedSources += len(chunk.SourceIDs)
+	}
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Code == "cad_sheet_grid_excluded" {
+			expectedSources -= diagnostic.Count
+		}
 	}
 	if emittedSources < expectedSources {
 		diagnostics = append(diagnostics, cadDiagnostic{
@@ -391,12 +420,22 @@ func cadSheetChunks(sheet cadsource.Sheet, raw []cadsource.Text, cfg cadChunkerC
 		if trimmed == "" {
 			continue
 		}
+		var nativeBounds *cadBounds
+		b := text.Bounds
+		if b[2] >= b[0] && b[3] >= b[1] && (b[2] > b[0] || b[3] > b[1]) {
+			nativeBounds = &cadBounds{minX: b[0], minY: b[1], maxX: b[2], maxY: b[3]}
+		}
 		items = append(items, cadTextItem{
-			text:   trimmed,
-			x:      cadFinite(text.X),
-			y:      cadFinite(text.Y),
-			height: cadNonNegative(text.Height),
-			handle: text.Handle,
+			bounds:   nativeBounds,
+			text:     trimmed,
+			x:        cadFinite(text.X),
+			y:        cadFinite(text.Y),
+			height:   cadNonNegative(text.Height),
+			handle:   text.Handle,
+			kind:     text.Kind,
+			origin:   text.Origin,
+			layer:    text.Layer,
+			rotation: text.Rotation,
 		})
 	}
 	if len(items) == 0 {
@@ -405,9 +444,27 @@ func cadSheetChunks(sheet cadsource.Sheet, raw []cadsource.Text, cfg cadChunkerC
 	sortCADTextItems(items)
 	for i := range items {
 		items[i].sourceID = fmt.Sprintf("text:%06d", sequence)
+		items[i].sourceIDs = []string{items[i].sourceID}
+		items[i].facts = []cadSourceFact{{
+			ID:       items[i].sourceID,
+			Handle:   items[i].handle,
+			Kind:     string(items[i].kind),
+			Origin:   string(items[i].origin),
+			Layer:    items[i].layer,
+			Rotation: items[i].rotation,
+			Bounds:   sourceFactBounds(items[i]),
+		}}
 		sequence++
 	}
+	sheet, geometryDiagnostics := cadRepairSheetGeometry(sheet, items)
+	items, excluded := cadFilterFrameGrid(items, sheet)
+	items, legend := cadJoinLegendRows(items)
 	chunks, diagnostics := cadSheetChunksFromItems(sheet, items, cfg, docName)
+	diagnostics = append(geometryDiagnostics, diagnostics...)
+	cadAddLegendContext(chunks, legend)
+	if excluded > 0 {
+		diagnostics = append(diagnostics, cadDiagnostic{Code: "cad_sheet_grid_excluded", Detail: sheet.ID, Count: excluded})
+	}
 	return chunks, diagnostics, sequence
 }
 
@@ -446,6 +503,11 @@ func cadSheetChunksFromItems(sheet cadsource.Sheet, items []cadTextItem, cfg cad
 	}
 	bounds := cadBoundsForSheet(sheet, allBoxes)
 
+	items, titleParts := cadExtractTitleFields(items, bounds)
+	titleChunks := cadTitleChunks(docName, sheet, titleParts, cfg)
+	if len(items) == 0 {
+		return titleChunks, nil
+	}
 	bands := cadHeightBands(items, cfg.BandHeightRatio)
 	parts := make([]cadScaledPart, 0, len(items))
 	var diagnostics []cadDiagnostic
@@ -491,17 +553,10 @@ func cadSheetChunksFromItems(sheet cadsource.Sheet, items []cadTextItem, cfg cad
 	}
 	sortCADScaledParts(parts)
 
-	titleIndex := cadTitleBlockIndex(parts, bounds)
 	chunks := make([]cadChunk, 0, len(parts))
 	for i, part := range parts {
 		baseID := fmt.Sprintf("R%d", i+1)
 		gap := cfg.MinGapFactor * part.scale
-		if i == titleIndex {
-			chunks = append(chunks, cadRegionChunks(docName, sheet, baseID, cadKindTitleBlock,
-				[]cadEvidence{{Level: cadEvidenceDerived, Source: "layout", Method: "title_block"}},
-				part.boxes, gap, 0, cfg)...)
-			continue
-		}
 		if before, notes, ok := cadSplitNotesPart(part.boxes); ok {
 			if len(before) > 0 {
 				chunks = append(chunks, cadRegionChunks(docName, sheet, baseID, cadKindRegion,
@@ -518,7 +573,7 @@ func cadSheetChunksFromItems(sheet cadsource.Sheet, items []cadTextItem, cfg cad
 			[]cadEvidence{{Level: cadEvidenceDerived, Source: "text_layout", Method: "xy_cut"}},
 			part.boxes, gap, 0, cfg)...)
 	}
-	return chunks, diagnostics
+	return append(chunks, titleChunks...), diagnostics
 }
 
 // cadNaturalRegions is a band's target region count before MaxRegions clips
@@ -548,12 +603,20 @@ func cadTargetRegions(texts int, cfg cadChunkerConfig) int {
 
 // cadTextItem holds a text's content, position, scale, and source identity.
 type cadTextItem struct {
-	text     string
-	x        float64
-	y        float64
-	height   float64
-	handle   uint64
-	sourceID string
+	text      string
+	x         float64
+	y         float64
+	height    float64
+	handle    uint64
+	kind      cadsource.Kind
+	origin    cadsource.Origin
+	layer     string
+	rotation  float64
+	sourceID  string
+	sourceIDs []string
+	facts     []cadSourceFact
+	legendRow bool
+	bounds    *cadBounds
 }
 
 // cadTextBox is a text's estimated world-space rectangle. The insertion point
@@ -564,6 +627,10 @@ type cadTextBox struct {
 }
 
 func cadTextBoxFor(item cadTextItem, height float64) cadTextBox {
+	if item.bounds != nil {
+		b := item.bounds
+		return cadTextBox{item: item, minX: b.minX, minY: b.minY, maxX: b.maxX, maxY: b.maxY}
+	}
 	if item.height > 0 {
 		height = item.height
 	}
@@ -645,7 +712,7 @@ func cadScaleFromLineSpacing(items []cadTextItem) (float64, bool) {
 }
 
 // cadRegionChunks builds one region's chunks. A region that exceeds the line or
-// character budget is split at its next-largest whitespace first; if no gap is
+// character budget is split at budget-balanced whitespace first; if no gap is
 // left it is cut between lines, which keeps every text exactly once.
 func cadRegionChunks(docName string, sheet cadsource.Sheet, regionID string, kind cadChunkKind,
 	evidence []cadEvidence, boxes []cadTextBox, gap float64, depth int, cfg cadChunkerConfig) []cadChunk {
@@ -658,7 +725,7 @@ func cadRegionChunks(docName string, sheet cadsource.Sheet, regionID string, kin
 
 	if depth < cadMaxSubSplitDepth && gap > 0 {
 		subGap := gap * math.Pow(cadSubSplitGapFactor, float64(depth+1))
-		parts := splitCADBoxesTarget(boxes, subGap, cfg.MaxSubChunks)
+		parts := splitCADBoxesBudget(boxes, subGap, cfg.MaxChars)
 		if len(parts) > 1 {
 			parts = mergeCADParts(parts, cfg.MinTextsPerRegion, 3*gap)
 			chunks := make([]cadChunk, 0, len(parts))
@@ -718,19 +785,29 @@ func cadChunkFromItems(docName string, sheet cadsource.Sheet, regionID string,
 	kind cadChunkKind, items []cadTextItem) cadChunk {
 	sortCADTextItems(items)
 	lines := make([]string, len(items))
-	sourceIDs := make([]string, len(items))
+	sourceIDs := make([]string, 0, len(items))
 	for i, item := range items {
 		lines[i] = item.text
-		sourceIDs[i] = item.sourceID
+		if len(item.sourceIDs) > 0 {
+			sourceIDs = append(sourceIDs, item.sourceIDs...)
+		} else {
+			sourceIDs = append(sourceIDs, item.sourceID)
+		}
 	}
 	return cadChunk{
-		Kind:      kind,
-		SheetID:   sheetRef(sheet),
-		RegionID:  regionID,
-		SubjectID: fmt.Sprintf("%s:%s:%s", kind, sheetRef(sheet), regionID),
-		Content:   strings.Join(lines, "\n"),
-		Context:   cadHeader(docName, sheet, regionID, kind),
-		SourceIDs: sourceIDs,
+		Kind:        kind,
+		SheetID:     sheetRef(sheet),
+		Layout:      sheet.Layout,
+		Space:       sheet.Space,
+		RegionID:    regionID,
+		SubjectID:   fmt.Sprintf("%s:%s:%s", kind, sheetRef(sheet), regionID),
+		Content:     strings.Join(lines, "\n"),
+		Context:     cadHeader(docName, sheet, regionID, kind),
+		SourceIDs:   sourceIDs,
+		Sources:     cadItemFacts(items),
+		Bounds:      cadItemsBounds(items),
+		SheetBounds: sheet.Bounds,
+		Viewport:    sheet.Viewport,
 	}
 }
 
@@ -766,7 +843,7 @@ func cadAttributeChunks(doc *cadsource.Drawing, docName string, cfg cadChunkerCo
 	for _, attribute := range doc.Attributes {
 		tag := strings.TrimSpace(attribute.Tag)
 		value := strings.TrimSpace(attribute.Value)
-		if tag == "" || value == "" {
+		if tag == "" || value == "" || (attribute.OwnerHandle == 0 && strings.EqualFold(tag, "ITEM") && strings.EqualFold(value, "XXX")) {
 			continue
 		}
 		if attribute.OwnerHandle == 0 {
@@ -908,16 +985,40 @@ func cadValidateAndEmit(chunks []cadChunk, diagnostics []cadDiagnostic, docName 
 	return out, diagnostics
 }
 
-func cadChunkDocs(chunks []cadChunk) []schema.ChunkDoc {
+func cadChunkDocs(chunks []cadChunk) ([]schema.ChunkDoc, error) {
 	docs := make([]schema.ChunkDoc, 0, len(chunks))
 	for _, chunk := range chunks {
-		docs = append(docs, schema.ChunkDoc{
-			Text:         chunk.Content,
-			DocType:      "text",
-			ContextAbove: chunk.Context,
-		})
+		doc := schema.ChunkDoc{Text: chunk.Content, DocType: "text", ContextAbove: chunk.Context, Keywords: strings.Join(chunk.Keywords, ",")}
+		// extra is a JSON string in the chunk-store schema (ES text / Infinity
+		// varchar). Keep CAD world coordinates inside that string, not PDF positions.
+		cad := map[string]any{
+			"kind": chunk.Kind, "sheet_id": chunk.SheetID, "region_id": chunk.RegionID,
+			"bbox": chunk.Bounds, "sheet_bounds": chunk.SheetBounds, "viewport": chunk.Viewport, "source_ids": chunk.SourceIDs,
+		}
+		if chunk.Layout != "" {
+			cad["layout_id"] = chunk.Layout
+		}
+		if chunk.Space != "" {
+			cad["space"] = chunk.Space
+		}
+		if len(chunk.Sources) > 0 {
+			cad["sources"] = chunk.Sources
+		}
+		if len(chunk.ContextSources) > 0 {
+			cad["context_sources"] = chunk.ContextSources
+		}
+		raw, err := json.Marshal(map[string]any{"cad": cad})
+		if err != nil {
+			return nil, fmt.Errorf("sheet=%s region=%s: %w", chunk.SheetID, chunk.RegionID, err)
+		}
+		serialized, err := json.Marshal(string(raw))
+		if err != nil {
+			return nil, fmt.Errorf("sheet=%s region=%s extra: %w", chunk.SheetID, chunk.RegionID, err)
+		}
+		doc.Extra = map[string]json.RawMessage{"extra": serialized}
+		docs = append(docs, doc)
 	}
-	return docs
+	return docs, nil
 }
 
 // --- spatial partitioning -------------------------------------------------
@@ -1124,10 +1225,9 @@ func cadSplitAt(boxes []cadTextBox, xAxis bool, at float64) ([]cadTextBox, []cad
 	return lower, upper
 }
 
-// mergeCADParts folds an undersized part into its nearest neighbour. A lone
-// text has no useful standalone chunk, so it is folded regardless of distance;
-// a larger undersized part only merges when the gap is within maxGap. A far
-// part stays alone: losing text coverage is worse than a small region.
+// mergeCADParts folds an undersized part into its nearest neighbour when the
+// gap is within maxGap. A far part stays alone even when it is a single text:
+// a valid annotation must not enlarge an unrelated region's bbox.
 func mergeCADParts(parts [][]cadTextBox, minTexts int, maxGap float64) [][]cadTextBox {
 	if len(parts) < 2 || minTexts <= 1 {
 		return parts
@@ -1150,7 +1250,7 @@ func mergeCADParts(parts [][]cadTextBox, minTexts int, maxGap float64) [][]cadTe
 			if best < 0 {
 				continue
 			}
-			if len(parts[i]) > 1 && bestGap > maxGap {
+			if bestGap > maxGap {
 				continue
 			}
 			parts[best] = append(parts[best], parts[i]...)
@@ -1196,93 +1296,11 @@ func sortCADTextItems(items []cadTextItem) {
 
 // --- region classification ------------------------------------------------
 
-// cadTitleBlockIndex chooses the title-block part among a sheet's parts. A
-// labelled bottom-right block wins on labels; a locale-independent structural
-// rule also recognises a bottom short-line block whose labels are not in the
-// known list (for example an Italian title block). The bottom-most candidate
-// wins so a scale bar above the title block is not mistaken for it.
-func cadTitleBlockIndex(parts []cadScaledPart, bounds cadBounds) int {
-	if len(parts) == 0 || !bounds.valid() {
-		return -1
-	}
-	// A known labelled title block is the stronger signal; only fall back to
-	// the structural rule when no part carries the known field labels.
-	if index := cadBottomMostPart(parts, func(part cadScaledPart) bool {
-		return cadIsTitleBlock(part.boxes, bounds)
-	}); index >= 0 {
-		return index
-	}
-	return cadBottomMostPart(parts, func(part cadScaledPart) bool {
-		return cadIsTitleBlockStructural(part.boxes, bounds)
-	})
-}
-
-func cadBottomMostPart(parts []cadScaledPart, match func(cadScaledPart) bool) int {
-	best := -1
-	bestY := math.Inf(1)
-	bestHits := -1
-	for i, part := range parts {
-		if !match(part) {
-			continue
-		}
-		box := cadBoxesBounds(part.boxes)
-		hits := cadTitleBlockLabelHits(part.boxes)
-		if box.maxY < bestY || (box.maxY == bestY && hits > bestHits) {
-			best, bestY, bestHits = i, box.maxY, hits
-		}
-	}
-	return best
-}
-
-// cadIsTitleBlock requires both a bottom-right position and at least two
-// distinct field labels. One label alone is too weak to assert a title block.
-func cadIsTitleBlock(part []cadTextBox, bounds cadBounds) bool {
-	if len(part) < 2 || !bounds.valid() {
-		return false
-	}
-	box := cadBoxesBounds(part)
-	centerX := (box.minX + box.maxX) / 2
-	centerY := (box.minY + box.maxY) / 2
-	if centerX < bounds.minX+0.6*bounds.width() {
-		return false
-	}
-	if centerY > bounds.minY+0.4*bounds.height() {
-		return false
-	}
-	return cadTitleBlockLabelHits(part) >= 2
-}
-
-// cadIsTitleBlockStructural recognises a title block by shape rather than
-// language: a bottom short-line block that is small relative to the sheet.
-// The known-label rule stays the stronger signal; this rule exists because a
-// title block's field names are locale-specific. A part that carries a notes
-// header is excluded: a bottom block of short lines is then a notes list, and
-// treating it as a title block would drop the notes chunk.
-func cadIsTitleBlockStructural(part []cadTextBox, bounds cadBounds) bool {
-	if len(part) < 8 || !bounds.valid() || cadPartHasNotesHeader(part) {
-		return false
-	}
-	box := cadBoxesBounds(part)
-	if box.maxY > bounds.minY+0.25*bounds.height() {
-		return false
-	}
-	if box.height() > 0.15*bounds.height() {
-		return false
-	}
-	short := 0
-	for _, item := range part {
-		if utf8.RuneCountInString(item.item.text) <= 30 {
-			short++
-		}
-	}
-	return short*100 >= len(part)*70
-}
-
 func cadTitleBlockLabelHits(part []cadTextBox) int {
 	hits := 0
 	for _, label := range cadTitleBlockLabels {
 		for _, box := range part {
-			if strings.Contains(strings.ToLower(box.item.text), label) {
+			if cadMatchesFieldLabel(box.item.text, label) {
 				hits++
 				break
 			}
@@ -1291,34 +1309,40 @@ func cadTitleBlockLabelHits(part []cadTextBox) int {
 	return hits
 }
 
-// cadPartHasNotesHeader reports whether a part carries a notes header. Such a
-// part is a notes list wherever it sits, so the structural title-block rule
-// must not claim it.
-func cadPartHasNotesHeader(part []cadTextBox) bool {
-	for _, box := range part {
-		if cadIsNotesHeader(box.item.text) {
-			return true
-		}
-	}
-	return false
-}
-
 // cadSplitNotesPart finds a notes header anywhere in a region and splits the
 // notes off as their own chunk. The header must have at least one line after
 // it; a table above the notes stays in the preceding region.
 func cadSplitNotesPart(boxes []cadTextBox) (before, notes []cadTextBox, ok bool) {
 	ordered := append([]cadTextBox(nil), boxes...)
-	sort.SliceStable(ordered, func(i, j int) bool {
-		return cadTextItemLess(ordered[i].item, ordered[j].item)
-	})
-	for i, box := range ordered {
-		if !cadIsNotesHeader(box.item.text) {
+	sort.SliceStable(ordered, func(i, j int) bool { return cadTextItemLess(ordered[i].item, ordered[j].item) })
+	for i, header := range ordered {
+		if !cadIsNotesHeader(header.item.text) {
 			continue
 		}
-		if i == len(ordered)-1 {
-			return nil, nil, false
+		height := math.Max(header.item.height, header.maxY-header.minY)
+		if height <= 0 {
+			height = 1
 		}
-		return ordered[:i], ordered[i:], true
+		lastY := header.item.y
+		ended := false
+		for j, box := range ordered {
+			inColumn := math.Abs(box.item.x-header.item.x) <= 4*height
+			inNotes := j >= i && inColumn && !ended
+			if inNotes && j > i && (lastY-box.item.y > 4*height || cadTitleBlockLabelHits([]cadTextBox{box}) > 0 || strings.HasPrefix(strings.ToUpper(strings.TrimSpace(box.item.text)), "SECTION ")) {
+				ended = true
+				inNotes = false
+			}
+			if inNotes {
+				notes = append(notes, box)
+				lastY = box.item.y
+			} else {
+				before = append(before, box)
+			}
+		}
+		if len(notes) > 1 || strings.Contains(header.item.text, "\n") {
+			return before, notes, true
+		}
+		return nil, nil, false
 	}
 	return nil, nil, false
 }
@@ -1345,7 +1369,57 @@ type cadBounds struct {
 	minX, minY, maxX, maxY float64
 }
 
-func (b cadBounds) valid() bool { return b.maxX > b.minX && b.maxY > b.minY }
+func (b cadBounds) valid() bool {
+	for _, v := range []float64{b.minX, b.minY, b.maxX, b.maxY, b.width(), b.height()} {
+		if math.IsNaN(v) || math.IsInf(v, 0) {
+			return false
+		}
+	}
+	return b.maxX > b.minX && b.maxY > b.minY
+}
+
+func cadValidBounds(box [4]float64) bool {
+	return (cadBounds{minX: box[0], minY: box[1], maxX: box[2], maxY: box[3]}).valid()
+}
+
+// cadRepairSheetGeometry validates whole rectangles before spatial processing.
+// Missing or invalid geometry uses finite text extents; zero remains the
+// unknown sentinel when no usable extent exists. Repairs are not frame evidence.
+func cadRepairSheetGeometry(sheet cadsource.Sheet, items []cadTextItem) (cadsource.Sheet, []cadDiagnostic) {
+	var diagnostics []cadDiagnostic
+	var boxes []cadTextBox
+	for _, item := range items {
+		box := cadTextBoxFor(item, 1)
+		if (cadBounds{minX: box.minX, minY: box.minY, maxX: box.maxX, maxY: box.maxY}).valid() {
+			boxes = append(boxes, box)
+		}
+	}
+	b := cadBoxesBounds(boxes)
+	var derived [4]float64
+	if b.valid() {
+		derived = [4]float64{b.minX, b.minY, b.maxX, b.maxY}
+	}
+	if !cadValidBounds(sheet.Bounds) {
+		if sheet.Bounds != [4]float64{} {
+			diagnostics = append(diagnostics, cadDiagnostic{Code: "cad_sheet_bounds_invalid", Detail: sheetRef(sheet)})
+		}
+		sheet.Bounds = derived
+		sheet.Source = "text_extents"
+	}
+	if !cadValidBounds(sheet.Viewport) {
+		if sheet.Viewport != [4]float64{} {
+			diagnostics = append(diagnostics, cadDiagnostic{Code: "cad_viewport_invalid", Detail: sheetRef(sheet)})
+		}
+		sheet.Viewport = sheet.Bounds
+		if cadValidBounds(derived) && cadValidBounds(sheet.Bounds) {
+			v := [4]float64{math.Min(sheet.Bounds[0], derived[0]), math.Min(sheet.Bounds[1], derived[1]), math.Max(sheet.Bounds[2], derived[2]), math.Max(sheet.Bounds[3], derived[3])}
+			if cadValidBounds(v) {
+				sheet.Viewport = v
+			}
+		}
+	}
+	return sheet, diagnostics
+}
 
 func (b cadBounds) width() float64 { return b.maxX - b.minX }
 
@@ -1374,10 +1448,10 @@ func cadBoxesBounds(boxes []cadTextBox) cadBounds {
 // title-block quadrant is never computed against the wrong origin.
 func cadBoundsForSheet(sheet cadsource.Sheet, boxes []cadTextBox) cadBounds {
 	bounds := cadBounds{
-		minX: cadFinite(sheet.Bounds[0]),
-		minY: cadFinite(sheet.Bounds[1]),
-		maxX: cadFinite(sheet.Bounds[2]),
-		maxY: cadFinite(sheet.Bounds[3]),
+		minX: sheet.Bounds[0],
+		minY: sheet.Bounds[1],
+		maxX: sheet.Bounds[2],
+		maxY: sheet.Bounds[3],
 	}
 	derived := cadBoxesBounds(boxes)
 	if !bounds.valid() || len(boxes) == 0 {
@@ -1445,4 +1519,113 @@ func cadNonNegative(value float64) float64 {
 		return 0
 	}
 	return value
+}
+
+// cadMatchesFieldLabel requires a field boundary, avoiding matches such as rev in preview.
+func cadMatchesFieldLabel(text, label string) bool {
+	text = strings.ToLower(strings.TrimSpace(text))
+	return text == label || strings.HasPrefix(text, label+":") || strings.HasPrefix(text, label+" ") || strings.HasPrefix(text, label+"\n")
+}
+
+func cadItemsBounds(items []cadTextItem) [4]float64 {
+	if len(items) == 0 {
+		return [4]float64{}
+	}
+	boxes := make([]cadTextBox, len(items))
+	for i, item := range items {
+		boxes[i] = cadTextBoxFor(item, 1)
+	}
+	b := cadBoxesBounds(boxes)
+	return [4]float64{b.minX, b.minY, b.maxX, b.maxY}
+}
+
+// sourceFactBounds keeps a text's native extent for provenance even when the
+// text item has no explicit bounds (legacy synthetic items).
+func sourceFactBounds(item cadTextItem) [4]float64 {
+	if item.bounds != nil {
+		return [4]float64{item.bounds.minX, item.bounds.minY, item.bounds.maxX, item.bounds.maxY}
+	}
+	b := cadTextBoxFor(item, 1)
+	return [4]float64{b.minX, b.minY, b.maxX, b.maxY}
+}
+
+// cadItemFacts flattens the source facts of all items in one chunk. Legend
+// rows carry two facts (tag and description), so deduplication is by ID.
+func cadItemFacts(items []cadTextItem) []cadSourceFact {
+	var out []cadSourceFact
+	seen := make(map[string]bool, len(items))
+	for _, item := range items {
+		facts := item.facts
+		if len(facts) == 0 && item.sourceID != "" {
+			facts = []cadSourceFact{{
+				ID:       item.sourceID,
+				Handle:   item.handle,
+				Kind:     string(item.kind),
+				Origin:   string(item.origin),
+				Layer:    item.layer,
+				Rotation: item.rotation,
+				Bounds:   sourceFactBounds(item),
+			}}
+		}
+		for _, fact := range facts {
+			if fact.ID == "" || seen[fact.ID] {
+				continue
+			}
+			seen[fact.ID] = true
+			out = append(out, fact)
+		}
+	}
+	return out
+}
+
+// splitCADBoxesBudget chooses a separating whitespace near the character
+// midpoint. A largest-gap tie must not peel off one tag at a time.
+func splitCADBoxesBudget(boxes []cadTextBox, minGap float64, maxChars int) [][]cadTextBox {
+	bestCost := math.Inf(1)
+	bestGap := -1.0
+	var best [][]cadTextBox
+	for _, xAxis := range []bool{true, false} {
+		ordered := append([]cadTextBox(nil), boxes...)
+		lo := func(b cadTextBox) float64 {
+			if xAxis {
+				return b.minX
+			}
+			return b.minY
+		}
+		hi := func(b cadTextBox) float64 {
+			if xAxis {
+				return b.maxX
+			}
+			return b.maxY
+		}
+		sort.SliceStable(ordered, func(i, j int) bool { return lo(ordered[i]) < lo(ordered[j]) })
+		total := cadTextLen(cadBoxesToItems(ordered))
+		left := 0
+		end := math.Inf(-1)
+		for i := 0; i+1 < len(ordered); i++ {
+			left += utf8.RuneCountInString(ordered[i].item.text) + 1
+			end = math.Max(end, hi(ordered[i]))
+			gap := lo(ordered[i+1]) - end
+			if gap <= 0 || gap < minGap {
+				continue
+			}
+			parts := 2
+			if maxChars > 0 {
+				parts = (total + maxChars - 1) / maxChars
+				if parts < 2 {
+					parts = 2
+				}
+			}
+			target := float64(total) * float64(parts/2) / float64(parts)
+			cost := math.Abs(float64(left) - target)
+			if cost < bestCost || (cost == bestCost && gap > bestGap) {
+				bestCost, bestGap = cost, gap
+				best = [][]cadTextBox{ordered[:i+1], ordered[i+1:]}
+			}
+		}
+	}
+	if len(best) == 0 {
+		return [][]cadTextBox{boxes}
+	}
+	return best
 }

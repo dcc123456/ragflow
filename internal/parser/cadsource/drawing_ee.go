@@ -65,26 +65,33 @@ type Source struct {
 }
 
 // Sheet is one detected sheet frame or the fallback whole-drawing sheet.
+// Layout identifies the go-cad layout stable ID ("model" or paper:<handle>);
+// Space is "model" or "paper" so downstream code never mixes coordinates.
 type Sheet struct {
-	ID     string     `json:"id"`
-	Index  int        `json:"index"` // 1-based; 0 = unassigned or fallback
-	Name   string     `json:"name"`
-	Bounds [4]float64 `json:"bounds"` // {minX, minY, maxX, maxY}
+	ID         string     `json:"id"`
+	Index      int        `json:"index"` // 1-based; 0 = unassigned or fallback
+	Name       string     `json:"name"`
+	Layout     string     `json:"layout,omitempty"`
+	Space      string     `json:"space,omitempty"`
+	Bounds     [4]float64 `json:"bounds"`   // {minX, minY, maxX, maxY} in Layout coordinates
+	Viewport   [4]float64 `json:"viewport"` // Render bounds including owned glyphs and margin.
+	Source     string     `json:"source,omitempty"`
+	Confidence float64    `json:"confidence,omitempty"`
 }
 
 // Text is one drawing text with the context the CAD chunker needs.
 type Text struct {
-	Text     string  `json:"text"`
-	Kind     Kind    `json:"kind"`
-	Origin   Origin  `json:"origin"`
-	SheetID  string  `json:"sheet_id,omitempty"`
-	Layer    string  `json:"layer,omitempty"`
-	X        float64 `json:"x"`
-	Y        float64 `json:"y"`
-	Height   float64 `json:"height,omitempty"`
-	Rotation float64 `json:"rotation,omitempty"`
-	// Handle is 0 when only the sheet text stream supplied the text; go-cad
-	// does not expose the entity handle there. Dump-derived facts carry it.
+	Text     string     `json:"text"`
+	Kind     Kind       `json:"kind"`
+	Origin   Origin     `json:"origin"`
+	SheetID  string     `json:"sheet_id,omitempty"`
+	Layer    string     `json:"layer,omitempty"`
+	X        float64    `json:"x"`
+	Y        float64    `json:"y"`
+	Height   float64    `json:"height,omitempty"`
+	Rotation float64    `json:"rotation,omitempty"`
+	Bounds   [4]float64 `json:"bounds,omitempty"`
+	// Handle identifies the source entity; flat-stream fallback texts may lack it.
 	Handle     uint64  `json:"handle,omitempty"`
 	Confidence float64 `json:"confidence"`
 }
@@ -174,5 +181,12 @@ func (d *Drawing) ensureSheet(id, name string, index int) {
 			return
 		}
 	}
-	d.Sheets = append(d.Sheets, Sheet{ID: id, Index: index, Name: name})
+	d.Sheets = append(d.Sheets, Sheet{
+		ID:     id,
+		Index:  index,
+		Name:   name,
+		Layout: "model",
+		Space:  "model",
+		Source: "unassigned",
+	})
 }

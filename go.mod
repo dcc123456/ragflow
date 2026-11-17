@@ -325,3 +325,5 @@ require (
 replace github.com/infiniflow/infinity-go-sdk => github.com/infiniflow/infinity/go v0.0.0-20261105024148-2fffa346354f
 
 replace github.com/AkmalOt/gomsg => github.com/infiniflow/gomsg v0.0.0-20260407083308-985c3a1a76b7
+
+replace github.com/unitedrhino/go-cad => github.com/infiniflow-ai/go-cad v0.1.0-infini.4
