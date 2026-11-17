@@ -156,6 +156,7 @@ it('updates an existing saved run without creating or executing another run', as
     method: 'patch',
     data: {
       name: 'Renamed',
+      collection_id: 'collection-2',
     },
   });
 });

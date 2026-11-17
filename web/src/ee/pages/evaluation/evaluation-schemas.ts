@@ -23,7 +23,7 @@ export function useEvaluationSchema() {
   const { type } = useEvaluationUrl();
 
   return z.object({
-    collection_id: z.string(),
+    collection_id: z.string().min(1),
     config_snapshot: z.object({
       target: type === EvaluationType.Chat ? chatSettingSchema : z.object({}),
       metrics: EvaluationMetricsSchema,

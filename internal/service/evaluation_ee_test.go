@@ -121,6 +121,122 @@ func TestEvaluationTenantIsolationAndInvalidation(t *testing.T) {
 	}
 }
 
+func TestEvaluationUpdateRunCollection(t *testing.T) {
+	s, db := evaluationTestService(t)
+	ctx := permission.WithIdentity(t.Context(), "owner", "tenant")
+	for _, id := range []string{"original", "replacement"} {
+		if err := db.Create(&entity.EvaluationCollection{ID: id, TenantID: "tenant", TargetType: "chat", Name: id, CreatedBy: "owner"}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	run := entity.EvaluationRun{
+		ID: "run", CollectionID: "original", TargetType: "chat", TargetID: "chat", Name: "test",
+		ConfigSnapshot: entity.JSONMap{}, MetricsSummary: entity.JSONMap{"faithfulness": 1.0},
+		Status: "COMPLETED", CompleteTime: new(int64(100)), Progress: 100, Error: "old error",
+		TaskID: "old-task", ExecutionConfig: entity.JSONMap{"case_ids": []string{"old-case"}},
+		ExecutionGeneration: 1, LeaseOwner: "old-owner", LeaseExpiresAt: new(int64(100)),
+	}
+	if err := db.Create(&run).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"run", "other-run"} {
+		if err := db.Create(&entity.EvaluationResult{ID: id + "-result", RunID: id, CaseID: "old-case", RetrievedChunks: entity.JSONMap{}, Metrics: entity.JSONMap{}}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, patch := range []entity.JSONMap{{"name": "renamed"}, {"collection_id": "original"}} {
+		updated, err := s.UpdateRun(ctx, run.ID, patch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if updated.CollectionID != "original" || updated.Status != "COMPLETED" || len(updated.MetricsSummary) == 0 || updated.CompleteTime == nil {
+			t.Fatalf("unchanged collection lost saved state: %+v", updated)
+		}
+		var count int64
+		if err := db.Model(&entity.EvaluationResult{}).Where("run_id = ?", run.ID).Count(&count).Error; err != nil || count != 1 {
+			t.Fatalf("unchanged collection lost results: count=%d err=%v", count, err)
+		}
+	}
+	updated, err := s.UpdateRun(ctx, run.ID, entity.JSONMap{"collection_id": "replacement"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.CollectionID != "replacement" || updated.Name != "renamed" || updated.TargetID != run.TargetID {
+		t.Fatalf("collection change did not persist: %+v", updated)
+	}
+	if updated.Status != "PENDING" || len(updated.MetricsSummary) != 0 || updated.CompleteTime != nil || updated.Progress != 0 || updated.Error != "" || updated.TaskID != "" || len(updated.ExecutionConfig) != 0 || updated.LeaseOwner != "" || updated.LeaseExpiresAt != nil || updated.ExecutionGeneration != 1 {
+		t.Fatalf("collection change retained old execution state: %+v", updated)
+	}
+	var results []entity.EvaluationResult
+	if err = db.Find(&results).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].RunID != "other-run" {
+		t.Fatalf("unexpected results after collection change: %+v", results)
+	}
+	reloaded, err := s.Run(ctx, run.ID)
+	if err != nil || reloaded.CollectionID != "replacement" {
+		t.Fatalf("saved collection=%+v err=%v", reloaded, err)
+	}
+}
+
+func TestEvaluationUpdateRunCollectionValidation(t *testing.T) {
+	s, db := evaluationTestService(t)
+	ctx := permission.WithIdentity(t.Context(), "owner", "tenant")
+	for _, collection := range []entity.EvaluationCollection{
+		{ID: "original", TenantID: "tenant", TargetType: "chat"},
+		{ID: "replacement", TenantID: "tenant", TargetType: "chat"},
+		{ID: "foreign", TenantID: "other", TargetType: "chat"},
+		{ID: "agent", TenantID: "tenant", TargetType: "agent"},
+		{ID: "deleted", TenantID: "tenant", TargetType: "chat"},
+	} {
+		if err := db.Create(&collection).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.Model(&entity.EvaluationCollection{}).Where("id = ?", "deleted").Update("status", 0).Error; err != nil {
+		t.Fatal(err)
+	}
+	run := entity.EvaluationRun{ID: "run", CollectionID: "original", TargetType: "chat", Name: "test", ConfigSnapshot: entity.JSONMap{}, Status: "COMPLETED"}
+	if err := db.Create(&run).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name  string
+		value any
+		err   error
+	}{
+		{"empty", "", ErrEvaluationInvalid},
+		{"blank", " ", ErrEvaluationInvalid},
+		{"null", nil, ErrEvaluationInvalid},
+		{"number", 1, ErrEvaluationInvalid},
+		{"missing", "missing", gorm.ErrRecordNotFound},
+		{"foreign", "foreign", gorm.ErrRecordNotFound},
+		{"deleted", "deleted", gorm.ErrRecordNotFound},
+		{"wrong target", "agent", ErrEvaluationInvalid},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := s.UpdateRun(ctx, run.ID, entity.JSONMap{"name": "must not persist", "collection_id": test.value}); !errors.Is(err, test.err) {
+				t.Fatalf("update error=%v, want %v", err, test.err)
+			}
+			saved, err := s.Run(ctx, run.ID)
+			if err != nil || saved.CollectionID != "original" || saved.Name != "test" {
+				t.Fatalf("invalid change mutated run=%+v err=%v", saved, err)
+			}
+		})
+	}
+	for _, status := range []string{"RUNNING", "QUEUED", "PENDING"} {
+		t.Run(status, func(t *testing.T) {
+			if err := db.Model(&entity.EvaluationRun{}).Where("id = ?", run.ID).Updates(map[string]any{"status": status, "task_id": "active-task"}).Error; err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.UpdateRun(ctx, run.ID, entity.JSONMap{"collection_id": "replacement"}); !errors.Is(err, ErrEvaluationActive) {
+				t.Fatalf("active collection change: %v", err)
+			}
+		})
+	}
+}
+
 func TestEvaluationLegacyXLSImport(t *testing.T) {
 	data, err := os.ReadFile("testdata/evaluation_cases.xls")
 	if err != nil {

@@ -833,7 +833,7 @@ export const useUpdateEvaluationRun = () => {
       ...params
     }: { runId: string } & IEvaluationUpdateRunRequestBody) => {
       const { data } = await evaluationService.updateRun(runId, {
-        ...pick(params, ['name']),
+        ...pick(params, ['name', 'collection_id']),
         ...(params.config_snapshot
           ? { config_snapshot: evaluationSnapshot(params.config_snapshot) }
           : {}),

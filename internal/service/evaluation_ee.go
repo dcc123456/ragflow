@@ -847,6 +847,19 @@ func (s *EvaluationService) UpdateRun(ctx context.Context, id string, patch enti
 					return e
 				}
 				updates[key] = name
+			case "collection_id":
+				collectionID, ok := value.(string)
+				if !ok || strings.TrimSpace(collectionID) == "" {
+					return evaluationInvalid("collection_id must be a non-empty string")
+				}
+				collection, e := s.collection(tx, ctx, collectionID, true)
+				if e != nil {
+					return e
+				}
+				if collection.TargetType != run.TargetType {
+					return evaluationInvalid("target type does not match collection")
+				}
+				updates[key] = collection.ID
 			case "config_snapshot":
 				snapshot, _, e := s.runSnapshot(ctx, EvaluationRunInput{TargetID: run.TargetID, TargetType: run.TargetType, ConfigSnapshot: evaluationMap(value)})
 				if e != nil {
@@ -856,6 +869,16 @@ func (s *EvaluationService) UpdateRun(ctx context.Context, id string, patch enti
 			default:
 				return evaluationInvalid("unsupported run field: " + key)
 			}
+		}
+		if collectionID, ok := updates["collection_id"]; ok && collectionID != run.CollectionID {
+			if e = tx.Where("run_id = ?", id).Delete(&entity.EvaluationResult{}).Error; e != nil {
+				return e
+			}
+			maps.Copy(updates, map[string]any{
+				"metrics_summary": entity.JSONMap{}, "status": "PENDING", "progress": 0,
+				"complete_time": nil, "error": "", "task_id": "", "execution_config": entity.JSONMap{},
+				"lease_owner": "", "lease_expires_at": nil,
+			})
 		}
 		if len(updates) > 0 {
 			if e = tx.Model(run).Updates(updates).Error; e != nil {
