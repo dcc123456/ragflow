@@ -2,7 +2,7 @@
 
 This guide documents the Go implementation of RAGFlow. Use `docker/.env`, `docker/docker-compose.yml`, `Dockerfile`, and `docker/entrypoint.sh` for a Go deployment.
 
-The Go image runs the API, Admin, Ingestor, and Syncer modes from the single `bin/ragflow_server` binary. DeepDoc inference runs in-process. Select an official Go image tag documented in the corresponding release notes, or build the image locally as described below.
+The Go image runs one `bin/ragflow_server` mode per container. Compose starts the API, Admin, Ingestor, and Syncer separately. DeepDoc inference runs in-process in the API and Ingestor; the optional `deepdoc` profile exposes a standalone Go DeepDoc HTTP server. Select an official Go image tag documented in the corresponding release notes, or build the image locally as described below.
 
 <details open>
 <summary><b>📗 Table of Contents</b></summary>
@@ -17,7 +17,7 @@ The Go image runs the API, Admin, Ingestor, and Syncer modes from the single `bi
 ## 🐳 Docker Compose
 
 - **docker-compose.yml**
-  Starts the Go RAGFlow container together with the selected dependencies.
+  Starts the Go RAGFlow services together with the selected dependencies.
 - **docker-compose-base.yml**
   Defines the dependency services. The default Go profile uses Elasticsearch, MySQL, MinIO, Kvrocks, NATS, and ClickHouse. Other document engines and metadata databases are selected through `.env`.
 
@@ -53,7 +53,7 @@ sudo sysctl -w vm.max_map_count=262144
 
 This change is temporary. To preserve it after a reboot, add `vm.max_map_count=262144` to `/etc/sysctl.conf`.
 
-The `v1.0.0-rc1` tag and later release tags use the Go implementation. The entrypoint migrates the default MySQL metadata database first, then starts the Go Syncer, Admin server, API server, and Ingestor. Open `http://localhost` after the HTTP health check succeeds.
+The `v1.0.0-rc1` tag and later release tags use the Go implementation. The `migrate` service runs database migrations once and exits. Admin starts after migration succeeds and the bundled dependencies are healthy. The API, Ingestor, and Syncer start after Admin is healthy. Open `http://localhost` after the API HTTP health check succeeds.
 
 For local image builds, use the [Go image build guide](../docs/develop/build_docker_image.mdx).
 
@@ -61,11 +61,47 @@ Verify the deployment with:
 
 ```bash
 docker ps
-docker logs --tail 100 ragflow-cpu
+docker compose -f docker-compose.yml logs --tail 100 ragflow-cpu admin ingestor syncer
 curl -f http://localhost/api/v1/system/healthz
 ```
 
 If `SVR_WEB_HTTP_PORT` is not `80`, append the configured port to the URL. In the RAGFlow open-source 1.0 release, DeepDoc layout analysis, OCR, and table recognition use CPU inference.
+
+### Service modes
+
+| Compose service | Binary arguments | Published ports |
+| --- | --- | --- |
+| `ragflow-cpu` | `--api` | Web `80`/`443`, API `9380` |
+| `admin` | `--admin --init-superuser` | Admin `9381` |
+| `ingestor` | `--ingestor` | None |
+| `syncer` | `--syncer` | None |
+| `deepdoc` (optional profile) | `--deepdoc --port=8000` | Internal `8000` |
+| `migrate` (one-shot) | `--migrate` | None |
+
+The entrypoint forwards binary arguments and defaults to `--api`. It renders the service configuration, starts nginx for API mode, and replaces itself with the Go process so Docker forwards stop signals and reports its exit status. Restart an individual worker with `docker compose -f docker-compose.yml restart ingestor`. The API's nginx forwards Admin requests to `admin:9381`, and the API and workers report heartbeats to the same address.
+
+To expose the standalone DeepDoc service on the Compose network, build `Dockerfile_deepdoc_cpu_ee` with the required enterprise model files, set `DEEPDOC_IMAGE` to that Go image in `.env`, then run:
+
+```bash
+docker compose -f docker-compose.yml up -d deepdoc
+```
+
+Its health endpoint is `http://deepdoc:8000/health`. `EE_MODEL_DIR` defaults to `/ragflow/models` inside that image. To include it in normal full-stack startup, append `deepdoc` to `COMPOSE_PROFILES` in `.env`. The API and Ingestor continue to use their in-process inference backend.
+
+### Reusing volumes from the Python deployment
+
+The default Compose project name is `docker`, matching the deployment in `../ragflow_enterprise/docker`. The existing volume keys are retained: `mysql_data`, `minio_data`, `esdata01`, `infinity_data`, and `nats_data`. Their Docker names remain `docker_mysql_data`, `docker_minio_data`, and so on. If the previous deployment used a custom project name, pass the same `-p <project>` to both commands below.
+
+Stop the previous stack before starting this one, preserving its volumes:
+
+```bash
+docker compose -p docker -f ../ragflow_enterprise/docker/docker-compose.yml down
+docker compose -p docker -f docker/docker-compose.yml up -d
+```
+
+Run these commands from this repository's root. Keep the previous database name, credentials, bucket settings, document engine, and compatible storage image versions in `docker/.env`. Back up the data before allowing the Go migration to update the database. Do not use `down -v`, which deletes the volumes.
+
+Kvrocks uses its own `kvrocks_data` volume; the Python `valkey_data` volume contains a different storage format and cannot be mounted into Kvrocks. The current OpenSearch service uses `osdata39`; an older `osdata01` deployment requires an OpenSearch data migration before switching versions. Bind-mounted data, such as `docker/oceanbase/` and `docker/seekdb/`, must be copied or mounted from the previous checkout explicitly.
 
 ## 🐬 Docker environment variables
 

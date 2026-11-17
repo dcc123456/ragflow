@@ -69,10 +69,10 @@ For processes on another host, set `admin.host` and `admin.http_port` in their s
 
 ## Start with Docker Compose
 
-For the Go deployment, use `docker/docker-compose.yml` and its `.env` file. The `ragflow-cpu` service already passes `--enable-adminserver` and `--init-superuser` to the Go entrypoint. The entrypoint runs migrations before starting the server processes; it then starts Admin before the API server and ingestor. Its optional syncer starts earlier, so its heartbeat may appear only after Admin becomes available.
+For the Go deployment, use `docker/docker-compose.yml` and its `.env` file. The `admin` service runs `--admin --init-superuser` after the one-shot `migrate` service succeeds. The API (`ragflow-cpu`), Ingestor, and Syncer run in separate containers and start after Admin is healthy. They report heartbeats to `admin:9381` on the Compose network.
 
 ```bash
-docker compose --env-file docker/.env -f docker/docker-compose.yml --profile cpu up -d
+docker compose --env-file docker/.env -f docker/docker-compose.yml up -d
 ```
 
 Before first startup, replace `ADMIN_DEFAULT_PASSWORD` in `docker/.env` with a

@@ -331,7 +331,8 @@ services:
     networks:
       - ragflow
     healthcheck:
-      test: ["CMD", "mysqladmin" ,"ping", "-uroot", "-p${MYSQL_PASSWORD}"]
+      # The initialization server accepts socket connections before TCP is ready.
+      test: ["CMD", "mysql", "--protocol=TCP", "-h127.0.0.1", "-P3306", "-uroot", "-p${MYSQL_PASSWORD}", "-e", "SELECT 1"]
       interval: 1s
       timeout: 2s
       retries: 60
