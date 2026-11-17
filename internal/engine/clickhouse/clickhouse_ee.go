@@ -425,13 +425,13 @@ type UserStatsResult struct {
 }
 
 func (d *Driver) UserStats(userID string, startDateStr, endDateStr string, granularity string) ([]UserStatsResult, error) {
-	startDate, err := time.Parse("2006-01-02", startDateStr)
+	startDate, err := parseStatsDate(startDateStr, "start")
 	if err != nil {
-		return nil, fmt.Errorf("invalid start date: %w", err)
+		return nil, err
 	}
-	endDate, err := time.Parse("2006-01-02 15:04:05", endDateStr)
+	endDate, err := parseStatsDate(endDateStr, "end")
 	if err != nil {
-		return nil, fmt.Errorf("invalid end date: %w", err)
+		return nil, err
 	}
 
 	var dateFormat string
@@ -508,6 +508,128 @@ func (d *Driver) UserStats(userID string, startDateStr, endDateStr string, granu
 	}
 
 	return results, nil
+}
+
+// UsersStats aggregates model_usage_fact per user across all tenants within
+// the date range and returns the top users ranked by total tokens
+// (request_count as tiebreak). Start/end dates accept both "2006-01-02" and
+// "2006-01-02 15:04:05"; the day boundaries drive the event_date comparison.
+func (d *Driver) UsersStats(startDateStr, endDateStr string, top int) ([]UserStatsResult, error) {
+	if top <= 0 {
+		return nil, fmt.Errorf("top must be positive, got %d", top)
+	}
+	startDate, err := parseStatsDate(startDateStr, "start")
+	if err != nil {
+		return nil, err
+	}
+	endDate, err := parseStatsDate(endDateStr, "end")
+	if err != nil {
+		return nil, err
+	}
+
+	query := `
+        SELECT
+            user_id,
+            any(user_email) as user_email,
+            count() as request_count,
+            sum(input_tokens) as total_input_tokens,
+            sum(output_tokens) as total_output_tokens,
+            sum(total_tokens) as total_tokens,
+            avg(response_time_ms) as avg_response_time_ms,
+            countIf(error_message != '') as error_count,
+            (count() - countIf(error_message != '')) / count() as success_rate
+        FROM model_usage_fact
+        WHERE event_date >= ?
+            AND event_date <= ?
+        GROUP BY user_id
+        ORDER BY total_tokens DESC, request_count DESC
+        LIMIT ?`
+
+	rows, err := d.conn.Query(d.ctx, query, startDate, endDate, top)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query users stats: %w", err)
+	}
+	defer rows.Close()
+
+	var results []UserStatsResult
+	for rows.Next() {
+		var r UserStatsResult
+		err = rows.Scan(
+			&r.UserID,
+			&r.UserEmail,
+			&r.RequestCount,
+			&r.TotalInputTokens,
+			&r.TotalOutputTokens,
+			&r.TotalTokens,
+			&r.AvgResponseTime,
+			&r.ErrorCount,
+			&r.SuccessRate,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan users stats result: %w", err)
+		}
+		results = append(results, r)
+	}
+
+	return results, nil
+}
+
+// parseStatsDate accepts both the date-only and the datetime form so handlers
+// can forward their defaults (which include the " 00:00:00"/" 23:59:59"
+// suffixes) without extra trimming.
+func parseStatsDate(value, name string) (time.Time, error) {
+	if t, err := time.Parse("2006-01-02 15:04:05", value); err == nil {
+		return t, nil
+	}
+	t, err := time.Parse("2006-01-02", value)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("invalid %s date %q: %w", name, value, err)
+	}
+	return t, nil
+}
+
+// StatsSummary totals model_usage_fact across all users and tenants within
+// the date range into a single row: request count, token sums, average
+// response time, error count and success rate. Start/end dates accept both
+// "2006-01-02" and "2006-01-02 15:04:05".
+func (d *Driver) StatsSummary(startDateStr, endDateStr string) (*UserStatsResult, error) {
+	startDate, err := parseStatsDate(startDateStr, "start")
+	if err != nil {
+		return nil, err
+	}
+	endDate, err := parseStatsDate(endDateStr, "end")
+	if err != nil {
+		return nil, err
+	}
+
+	query := `
+        SELECT
+            count() as request_count,
+            sum(input_tokens) as total_input_tokens,
+            sum(output_tokens) as total_output_tokens,
+            sum(total_tokens) as total_tokens,
+            avg(response_time_ms) as avg_response_time_ms,
+            countIf(error_message != '') as error_count,
+            (count() - countIf(error_message != '')) / count() as success_rate
+        FROM model_usage_fact
+        WHERE event_date >= ?
+            AND event_date <= ?`
+
+	var summary UserStatsResult
+	err = d.conn.QueryRow(d.ctx, query, startDate, endDate).Scan(
+		&summary.RequestCount,
+		&summary.TotalInputTokens,
+		&summary.TotalOutputTokens,
+		&summary.TotalTokens,
+		&summary.AvgResponseTime,
+		&summary.ErrorCount,
+		&summary.SuccessRate,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query stats summary: %w", err)
+	}
+
+	return &summary, nil
 }
 
 type OperationLogStats struct {

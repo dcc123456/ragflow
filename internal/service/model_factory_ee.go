@@ -22,13 +22,24 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	"ragflow/internal/common"
 	"ragflow/internal/dao"
 	"ragflow/internal/dao/transaction"
 	"ragflow/internal/entity"
+	modelModule "ragflow/internal/entity/models"
 	"ragflow/internal/permission"
 )
+
+func init() {
+	usageTemplateAttacher = attachUsageTemplateEE
+}
+
+// groupNamesByID caches the display name of every model group a gp- reference
+// has resolved through, so the usage template can carry the group name without
+// a second lookup.
+var groupNamesByID sync.Map
 
 // pickGroupModel resolves a gp-<group_id> model reference: the group must
 // belong to the requesting tenant, and the returned model is the
@@ -47,7 +58,42 @@ func (s *ModelFactory) pickGroupModel(ctx context.Context, tenantID, groupID str
 	if err != nil {
 		return nil, fmt.Errorf("%w: picking model from group %q failed: %w", errModelConfigUnavailable, group.GroupName, err)
 	}
+	groupNamesByID.Store(groupID, group.GroupName)
 	return model, nil
+}
+
+// attachUsageTemplateEE pre-fills the construction-time usage identity
+// (tenant, user, provider, instance, model, gp- group) on the model info, so
+// every call of the resolved model produces an attributable usage row without
+// each call site having to build one.
+func attachUsageTemplateEE(ctx context.Context, apiConfig *modelModule.APIConfig, info *modelModule.ModelInfo) {
+	if info == nil {
+		return
+	}
+	usage := &common.ModelUsage{}
+	populateModelUsage(ctx, usage, info, apiConfig, permission.TenantIDFromContext(ctx))
+	if info.GroupID != "" {
+		usage.GroupID = info.GroupID
+		usage.GroupName = groupNameForUsage(ctx, info.GroupID)
+		info.GroupName = usage.GroupName
+	}
+	info.UsageTemplate = usage
+}
+
+// groupNameForUsage resolves the display name of a model group, preferring the
+// name cached by pickGroupModel during resolution and falling back to a direct
+// lookup.
+func groupNameForUsage(ctx context.Context, groupID string) string {
+	if name, ok := groupNamesByID.Load(groupID); ok {
+		if name, ok := name.(string); ok {
+			return name
+		}
+	}
+	group, err := dao.NewTenantModelGroupDAO().GetByID(ctx, dao.DB, groupID)
+	if err != nil || group == nil {
+		return ""
+	}
+	return group.GroupName
 }
 
 // MarkGroupMemberInactive deactivates the group's currently active,

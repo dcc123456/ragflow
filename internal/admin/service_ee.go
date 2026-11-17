@@ -2081,30 +2081,55 @@ func (s *Service) GetTokenStats(ctx context.Context, userName, fromDate, toDate,
 	return maps, nil
 }
 
-// GetTokenUsersStats returns API token statistics for all users.
+// GetTokenUsersStats returns aggregated token statistics for the top users
+// ranked by total tokens (request_count as tiebreak) across all tenants
+// within the date range, one summary row per user.
 func (s *Service) GetTokenUsersStats(ctx context.Context, fromDate, toDate string, top int) ([]map[string]interface{}, error) {
-	result := []map[string]interface{}{
-		{
-			"command":   "get_token_users_stats",
-			"from_date": fromDate,
-			"to_date":   toDate,
-			"top":       top,
-			"error":     "'Get API token users stats' is not supported",
-		},
+	clickhouseDriver := clickhouse.GetDriver()
+	userStats, err := clickhouseDriver.UsersStats(fromDate, toDate, top)
+	if err != nil {
+		return nil, err
 	}
-	return result, nil
+
+	maps := make([]map[string]interface{}, len(userStats))
+	for i, r := range userStats {
+		maps[i] = map[string]interface{}{
+			"user_id":              r.UserID,
+			"email":                r.UserEmail,
+			"request_count":        r.RequestCount,
+			"total_input_tokens":   r.TotalInputTokens,
+			"total_output_tokens":  r.TotalOutputTokens,
+			"total_tokens":         r.TotalTokens,
+			"avg_response_time_ms": r.AvgResponseTime,
+			"error_count":          r.ErrorCount,
+			"success_rate":         r.SuccessRate,
+		}
+	}
+
+	return maps, nil
 }
 
-// GetTokenStatsSummary returns API token statistics summary for all users.
+// GetTokenStatsSummary returns the token usage summary (request count and
+// token totals) for all users within the requested date range, aggregated
+// into a single row.
 func (s *Service) GetTokenStatsSummary(ctx context.Context, fromDate, toDate string) (map[string]interface{}, error) {
-	result := map[string]interface{}{
-		"command":   "get_token_stats_summary",
-		"from_date": fromDate,
-		"to_date":   toDate,
-		"error":     "'Get API token stats summary' is not supported",
+	clickhouseDriver := clickhouse.GetDriver()
+	summary, err := clickhouseDriver.StatsSummary(fromDate, toDate)
+	if err != nil {
+		return nil, err
 	}
 
-	return result, nil
+	return map[string]interface{}{
+		"from_date":            fromDate,
+		"to_date":              toDate,
+		"request_count":        summary.RequestCount,
+		"total_input_tokens":   summary.TotalInputTokens,
+		"total_output_tokens":  summary.TotalOutputTokens,
+		"total_tokens":         summary.TotalTokens,
+		"avg_response_time_ms": summary.AvgResponseTime,
+		"error_count":          summary.ErrorCount,
+		"success_rate":         summary.SuccessRate,
+	}, nil
 }
 
 // ListLogs lists operation logs for the user.

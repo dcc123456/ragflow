@@ -2067,7 +2067,8 @@ func (h *Handler) GetTokenStats(c *gin.Context) {
 	common.RespondSuccess(c, stats, "success")
 }
 
-// GetTokenUsersStats returns API token statistics summary for the current user's tenant.
+// GetTokenUsersStats returns one summary row per user for the top users
+// ranked by total tokens within the date range.
 func (h *Handler) GetTokenUsersStats(c *gin.Context) {
 	now := time.Now()
 	fromDate := c.DefaultQuery("from", now.AddDate(0, 0, -7).Format("2006-01-02 00:00:00"))
@@ -2078,7 +2079,7 @@ func (h *Handler) GetTokenUsersStats(c *gin.Context) {
 
 	topStr := c.Query("top")
 	top, err := strconv.Atoi(topStr)
-	if err != nil {
+	if err != nil || top <= 0 {
 		common.RespondError(c, common.CodeBadRequest, "Invalid top")
 		return
 	}
@@ -2093,7 +2094,8 @@ func (h *Handler) GetTokenUsersStats(c *gin.Context) {
 	common.RespondSuccess(c, stats, "success")
 }
 
-// GetTokenStatsSummary returns API token statistics summary for the current user's tenant.
+// GetTokenStatsSummary returns the token usage summary for all users within
+// the requested date range.
 func (h *Handler) GetTokenStatsSummary(c *gin.Context) {
 	now := time.Now()
 	fromDate := c.DefaultQuery("from", now.AddDate(0, 0, -7).Format("2006-01-02 00:00:00"))
