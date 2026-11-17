@@ -70,7 +70,7 @@ func init() {
 	common.RegisterComponentName(ComponentNameCADChunker)
 	runtime.MustRegister(ComponentNameCADChunker, runtime.CategoryIngestion,
 		func(_ string, _ map[string]any) (runtime.Component, error) {
-			return &imageUploadDecorator{inner: &cadChunkerComponent{}}, nil
+			return &imageUploadDecorator{inner: &cadArtifactDecorator{inner: &cadChunkerComponent{}}}, nil
 		},
 		runtime.Metadata{
 			Version: "1.0.0",
