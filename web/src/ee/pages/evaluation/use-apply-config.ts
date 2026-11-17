@@ -1,5 +1,8 @@
 import { useUpdateChat } from '@/hooks/use-chat-request';
-import { useFetchEvaluationRun } from '@/ee/hooks/use-evaluation-request';
+import {
+  evaluationSnapshot,
+  useFetchEvaluationRun,
+} from '@/ee/hooks/use-evaluation-request';
 import { isEmpty } from 'lodash';
 import { useCallback, useMemo } from 'react';
 import { UseFormReturn } from 'react-hook-form';
@@ -28,7 +31,9 @@ export function useApplyConfig(
 
     updateChat({
       chatId: id,
-      params: isEmpty(chat) ? currentDialog : chat,
+      params: evaluationSnapshot({
+        target: isEmpty(chat) ? currentDialog : chat,
+      })!.target,
     });
   }, [currentDialog, form, id, updateChat]);
 

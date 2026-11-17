@@ -748,7 +748,7 @@ export const useStartEvaluationRun = () => {
   return { data, loading, startEvaluationRun: mutateAsync };
 };
 
-function evaluationSnapshot(
+export function evaluationSnapshot(
   snapshot: IEvaluationCreateRunRequestBody['config_snapshot'],
 ) {
   if (!snapshot) return snapshot;
