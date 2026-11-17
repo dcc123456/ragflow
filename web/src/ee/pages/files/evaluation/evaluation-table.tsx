@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/table';
 import { UseRowSelectionType } from '@/hooks/logic-hooks/use-row-selection';
 import { Pagination } from '@/interfaces/common';
+import { formatDate } from '@/utils/date';
 import { IEvaluationCollection } from '@/ee/interfaces/database/evaluation';
 import {
   ColumnDef,
@@ -90,7 +91,9 @@ export const getEvaluationTableColumns = (
       accessorKey: 'createdAt',
       header: t('fileManager.evaluation.createdAt'),
       cell: ({ row }) => (
-        <div className="text-text-primary">{row.original.create_date}</div>
+        <div className="text-text-primary">
+          {formatDate(row.original.create_time)}
+        </div>
       ),
     },
     {
