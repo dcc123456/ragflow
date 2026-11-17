@@ -24,6 +24,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"ragflow/internal/common"
 )
 
 const ioProgressInterval = 15 * time.Second
@@ -330,7 +332,7 @@ func (t *ioProgressTracker) groupLocked(component, operation string) ioProgressG
 	return group
 }
 
-func (t *ioProgressTracker) report(ctx context.Context, groups []ioProgressGroup) {
+func (t *ioProgressTracker) report(_ context.Context, groups []ioProgressGroup) {
 	for _, group := range groups {
 		message := group.operation
 		if details := strings.Join(groupDetails(group.details), ";"); details != "" {
@@ -341,7 +343,11 @@ func (t *ioProgressTracker) report(ctx context.Context, groups []ioProgressGroup
 		} else {
 			message += fmt.Sprintf(" | active=%d | elapsed=%s", group.count, time.Since(group.started).Round(time.Second))
 		}
-		ReportProgressMessage(ctx, group.component, message)
+		// Heartbeats are high-frequency transient observability. Write them to
+		// the process log only: ReportProgressMessage routes through the
+		// ProgressMessageCallback, which persists every message to the task log
+		// table and grows without bound for long-running parses.
+		common.Info(group.component + ": " + message)
 	}
 }
 
