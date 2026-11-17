@@ -1,5 +1,3 @@
-name: docker
-
 include:
   - ./docker-compose-base.yml
 
