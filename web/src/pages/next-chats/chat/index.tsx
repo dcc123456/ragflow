@@ -3,6 +3,7 @@ import { useShowEmbedModal } from '@/components/embed-dialog/use-show-embed-dial
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { SharedFrom } from '@/constants/chat';
+import { ChatEvaluationButton } from '@/ee/pages/next-chats/chat/evaluation-button';
 import { useSetModalState } from '@/hooks/common-hooks';
 import {
   useFetchSessionManually,
@@ -96,7 +97,8 @@ export default function Chat() {
           ></Sessions>
 
           <section className="flex-1 min-w-0 min-h-0 flex flex-col">
-            <header className="p-5 flex justify-end">
+            <header className="p-5 flex justify-end gap-4">
+              <ChatEvaluationButton />
               <Button
                 variant="ghost"
                 onClick={showEmbedModal}
