@@ -14,6 +14,8 @@
 //  For commercial licensing inquiries: sales@infiniflow.ai
 //
 
+//go:build ee
+
 package service
 
 import (

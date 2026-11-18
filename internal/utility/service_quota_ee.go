@@ -43,6 +43,50 @@ type ServiceFeatures struct {
 	AnalyticsLog  bool `json:"analytics_log"`
 }
 
+func (f *ServiceFeatures) IsSingleTenantEnabled() bool {
+	return f.SingleTenant
+}
+
+func (f *ServiceFeatures) IsRBACEnabled() bool {
+	return f.RBAC
+}
+
+func (f *ServiceFeatures) IsGroupAndShareEnabled() bool {
+	return f.GroupAndShare
+}
+
+func (f *ServiceFeatures) IsDeepDocProEnabled() bool {
+	return f.DeepDocPro
+}
+
+func (f *ServiceFeatures) IsDeepDocGPUEnabled() bool {
+	return f.DeepDocGPU
+}
+
+func (f *ServiceFeatures) IsWPSEnabled() bool {
+	return f.WPS
+}
+
+func (f *ServiceFeatures) IsCADEnabled() bool {
+	return f.CAD
+}
+
+func (f *ServiceFeatures) IsEvaluationEnabled() bool {
+	return f.Evaluation
+}
+
+func (f *ServiceFeatures) IsMultiModalEnabled() bool {
+	return f.MultiModal
+}
+
+func (f *ServiceFeatures) IsStatsEnabled() bool {
+	return f.Stats
+}
+
+func (f *ServiceFeatures) IsAnalyticsLogEnabled() bool {
+	return f.AnalyticsLog
+}
+
 func NewServiceFeatures(features map[string]bool) ServiceFeatures {
 	f := ServiceFeatures{}
 	for feature, enable := range features {
@@ -74,10 +118,10 @@ func NewServiceFeatures(features map[string]bool) ServiceFeatures {
 	return f
 }
 
-func (f ServiceFeatures) ToMap() map[string]interface{} {
+func (f *ServiceFeatures) ToMap() map[string]interface{} {
 	out := make(map[string]interface{})
-	t := reflect.TypeOf(f)
-	v := reflect.ValueOf(f)
+	t := reflect.TypeOf(*f)
+	v := reflect.ValueOf(*f)
 	for i := 0; i < t.NumField(); i++ {
 		jsonName := strings.Split(t.Field(i).Tag.Get("json"), ",")[0]
 		if jsonName == "" || jsonName == "-" {
