@@ -34,6 +34,7 @@ import (
 	"ragflow/internal/entity"
 	"ragflow/internal/ingestion/component"
 	"ragflow/internal/ingestion/component/schema"
+	"ragflow/internal/parser/cadsource"
 	"ragflow/internal/storage"
 )
 
@@ -44,31 +45,9 @@ const (
 	cadChunkImageDataPrefix = "data:image/png;base64,"
 )
 
-// cadArtifactDecorator attaches a rendered B image to every chunk that still
-// has stable layout provenance, and generates the document-level preview PDF
-// and thumbnail during ingestion. The outer imageUploadDecorator uploads chunk
-// images through the existing img_id contract, so no new image route is
-// introduced.
-type cadArtifactDecorator struct {
-	inner runtime.Component
-}
-
-func (d *cadArtifactDecorator) Invoke(ctx context.Context, db *gorm.DB, inputs map[string]any) (map[string]any, error) {
-	out, err := d.inner.Invoke(ctx, db, inputs)
-	if err != nil || out == nil {
-		return out, err
-	}
-	// The chunker reports input failures through _ERROR. The outer
-	// imageUploadDecorator promotes it to an error; skip artifact generation
-	// here so a failed chunker does not pay for CAD parsing or rendering.
-	if msg, _ := out["_ERROR"].(string); strings.TrimSpace(msg) != "" {
-		return out, nil
-	}
-	upstream, err := decodeChunkerFromUpstream(inputs)
-	if err != nil {
-		common.Warn("CADChunker: decode image upstream: " + err.Error())
-		return out, nil
-	}
+// attachCADArtifacts renders chunk images and the document preview using the
+// sheet identities already assigned by the CAD parser.
+func attachCADArtifacts(ctx context.Context, db *gorm.DB, inputs map[string]any, upstream schema.ChunkerFromUpstream, sheets []cadsource.Sheet, out map[string]any, chunks []schema.ChunkDoc) (map[string]any, error) {
 	data, name, err := fetchCADSource(ctx, db, upstream)
 	if err != nil {
 		common.Warn("CADChunker: fetch source: " + err.Error())
@@ -82,17 +61,14 @@ func (d *cadArtifactDecorator) Invoke(ctx context.Context, db *gorm.DB, inputs m
 		common.Warn("CADChunker: parse source: " + err.Error())
 		return out, nil
 	}
-	chunks, hasChunks := schema.GetChunks(out)
-	if hasChunks && len(chunks) > 0 {
-		if err := renderCADChunkImages(ctx, docCAD, chunks); err != nil {
-			if ctx.Err() != nil {
-				return nil, ctx.Err()
-			}
-			common.Warn("CADChunker: render chunk images: " + err.Error())
+	if err := renderCADChunkImages(ctx, docCAD, chunks); err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
 		}
-		out["chunks"] = chunks
+		common.Warn("CADChunker: render chunk images: " + err.Error())
 	}
-	if err := generateCADPreviewArtifacts(ctx, db, inputs, upstream, docCAD); err != nil {
+	out["chunks"] = chunks
+	if err := generateCADPreviewArtifacts(ctx, db, inputs, upstream, docCAD, sheets, chunks); err != nil {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
@@ -161,7 +137,7 @@ func renderCADChunkImage(doc *cad.Document, meta cadChunkImageProvenance) (strin
 // thumbnail during ingestion, before the document is marked complete. Preview
 // rendering is best-effort: a failure or panic must not fail the ingestion
 // task that already produced the chunks.
-func generateCADPreviewArtifacts(ctx context.Context, db *gorm.DB, inputs map[string]any, upstream schema.ChunkerFromUpstream, docCAD *cad.Document) (err error) {
+func generateCADPreviewArtifacts(ctx context.Context, db *gorm.DB, inputs map[string]any, upstream schema.ChunkerFromUpstream, docCAD *cad.Document, sheets []cadsource.Sheet, chunks []schema.ChunkDoc) (err error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			err = fmt.Errorf("CAD preview panic: %v", recovered)
@@ -184,7 +160,7 @@ func generateCADPreviewArtifacts(ctx context.Context, db *gorm.DB, inputs map[st
 	if store == nil {
 		return fmt.Errorf("storage not initialized")
 	}
-	result, err := buildCADPreview(ctx, docCAD, cadPreviewPageWidth)
+	result, err := buildCADPreview(ctx, docCAD, sheets, cadPreviewPageWidth)
 	if err != nil {
 		return err
 	}
@@ -195,6 +171,9 @@ func generateCADPreviewArtifacts(ctx context.Context, db *gorm.DB, inputs map[st
 	thumbKey := cadThumbnailKey(docID)
 	if err := store.Put(ctx, kbID, previewKey, result.PDF); err != nil {
 		return fmt.Errorf("store preview PDF: %w", err)
+	}
+	for _, diagnostic := range attachCADPreviewPositions(chunks, result) {
+		runtime.ReportProgressMessage(ctx, "CADChunker", cadDiagnosticMessage(diagnostic))
 	}
 	if len(result.Thumbnail) > 0 {
 		if err := store.Put(ctx, kbID, thumbKey, result.Thumbnail); err != nil {
@@ -238,6 +217,7 @@ func fetchCADSource(ctx context.Context, db *gorm.DB, upstream schema.ChunkerFro
 
 type cadChunkImageProvenance struct {
 	layoutID string
+	sheetID  string
 	bbox     [4]float64
 }
 
@@ -253,6 +233,7 @@ func cadChunkImageMeta(ck schema.ChunkDoc) (cadChunkImageProvenance, bool) {
 	var payload struct {
 		CAD struct {
 			LayoutID string     `json:"layout_id"`
+			SheetID  string     `json:"sheet_id"`
 			BBox     [4]float64 `json:"bbox"`
 		} `json:"cad"`
 	}
@@ -261,9 +242,10 @@ func cadChunkImageMeta(ck schema.ChunkDoc) (cadChunkImageProvenance, bool) {
 	}
 	meta := cadChunkImageProvenance{
 		layoutID: strings.TrimSpace(payload.CAD.LayoutID),
+		sheetID:  payload.CAD.SheetID,
 		bbox:     payload.CAD.BBox,
 	}
-	if meta.layoutID == "" || meta.bbox[2] <= meta.bbox[0] || meta.bbox[3] <= meta.bbox[1] {
+	if meta.layoutID == "" || !cadValidBounds(meta.bbox) {
 		return cadChunkImageProvenance{}, false
 	}
 	return meta, true

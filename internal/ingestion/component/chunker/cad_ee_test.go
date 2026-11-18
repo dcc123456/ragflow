@@ -379,11 +379,11 @@ func TestCADChunkerZeroText(t *testing.T) {
 	ctx := runtime.WithProgressMessageCallback(context.Background(), func(_, message string) {
 		messages = append(messages, message)
 	})
-	out, handled, err := chunkCAD(ctx, upstream)
+	out, drawing, err := chunkCAD(ctx, upstream)
 	if err != nil {
 		t.Fatalf("chunkCAD: %v", err)
 	}
-	if !handled {
+	if drawing == nil {
 		t.Fatal("chunkCAD did not claim the CAD payload")
 	}
 	chunksOut, _ := out["chunks"].([]map[string]any)
@@ -523,12 +523,12 @@ func TestCADChunkerSourceCoverage(t *testing.T) {
 // TestCADChunkerMissingPayload verifies the fallback contract: no structured
 // payload means the generic text path keeps the document.
 func TestCADChunkerMissingPayload(t *testing.T) {
-	out, handled, err := chunkCAD(context.Background(), schema.ChunkerFromUpstream{Name: "drawing.dxf"})
+	out, drawing, err := chunkCAD(context.Background(), schema.ChunkerFromUpstream{Name: "drawing.dxf"})
 	if err != nil {
 		t.Fatalf("chunkCAD: %v", err)
 	}
-	if handled || out != nil {
-		t.Fatalf("handled = %v, out = %+v; want false/nil", handled, out)
+	if drawing != nil || out != nil {
+		t.Fatalf("handled = %v, out = %+v; want false/nil", drawing != nil, out)
 	}
 }
 
@@ -545,11 +545,11 @@ func TestCADChunkerInvalidPayload(t *testing.T) {
 	ctx := runtime.WithProgressMessageCallback(context.Background(), func(_, message string) {
 		messages = append(messages, message)
 	})
-	_, handled, err := chunkCAD(ctx, upstream)
+	_, drawing, err := chunkCAD(ctx, upstream)
 	if err != nil {
 		t.Fatalf("chunkCAD: %v", err)
 	}
-	if handled {
+	if drawing != nil {
 		t.Fatal("malformed payload must not be handled")
 	}
 	if !containsMessage(messages, "cad_payload_invalid") {
@@ -581,11 +581,11 @@ func TestCADChunkerFromParsedDXF(t *testing.T) {
 		FileType: "cad",
 		File:     &meta,
 	}
-	out, handled, err := chunkCAD(context.Background(), upstream)
+	out, drawing, err := chunkCAD(context.Background(), upstream)
 	if err != nil {
 		t.Fatalf("chunkCAD: %v", err)
 	}
-	if !handled {
+	if drawing == nil {
 		t.Fatal("chunkCAD did not claim the parsed CAD document")
 	}
 	chunks, _ := out["chunks"].([]map[string]any)

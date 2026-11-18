@@ -26,7 +26,7 @@ import "testing"
 // TestBuildComponentParams_GoldenCoversAllTemplates stays in lockstep in both
 // builds.
 func init() {
-	builtinComponentParamsGolden["cad"] = `{"CADChunker:SpatialSheet":{},"Extractor:AutoExtractDefault":{"keywords":{"top_n":0},"llm_id":"","metadata":{"built_in_metadata":[],"enabled":false,"metadata":[]},"questions":{"top_n":0},"summary":{"enabled":false},"tags":{"tag_file_id":"","top_n":0}},"File":{},"Parser:PaperTrail":{"cad":{},"enable_vision_enhancement":false,"vlm":{"llm_id":""}},"Tokenizer:IndexText":{"fields":"text","filename_embd_weight":0.1,"search_method":["embedding","full_text"]}}`
+	builtinComponentParamsGolden["cad"] = `{"CADChunker:SpatialSheet":{"vision":{"enabled":false,"llm_id":"","system_prompt":""}},"Extractor:AutoExtractDefault":{"keywords":{"top_n":0},"llm_id":"","metadata":{"built_in_metadata":[],"enabled":false,"metadata":[]},"questions":{"top_n":0},"summary":{"enabled":false},"tags":{"tag_file_id":"","top_n":0}},"File":{},"Parser:PaperTrail":{"cad":{},"enable_vision_enhancement":false,"vlm":{"llm_id":""}},"Tokenizer:IndexText":{"fields":"text","filename_embd_weight":0.1,"search_method":["embedding","full_text"]}}`
 }
 
 func TestBuildComponentParams_CAD(t *testing.T) { assertTemplateComponentParams(t, "cad") }

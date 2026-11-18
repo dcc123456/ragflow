@@ -236,21 +236,20 @@ var (
 	}
 )
 
-// chunkCAD consumes the parser's structured CAD payload. The handled result is
-// false when the payload is absent or invalid.
-func chunkCAD(ctx context.Context, upstream schema.ChunkerFromUpstream) (map[string]any, bool, error) {
+// chunkCAD returns the parsed drawing with the chunks so rendering can reuse its sheet identities.
+func chunkCAD(ctx context.Context, upstream schema.ChunkerFromUpstream) (map[string]any, *cadsource.Drawing, error) {
 	raw, ok := cadPayload(upstream)
 	if !ok {
 		runtime.ReportProgressMessage(ctx, "CADChunker",
 			"WARNING: cad_payload_missing: falling back to generic text chunking")
-		return nil, false, nil
+		return nil, nil, nil
 	}
 
 	var doc cadsource.Drawing
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		runtime.ReportProgressMessage(ctx, "CADChunker",
 			"WARNING: cad_payload_invalid: falling back to generic text chunking: "+err.Error())
-		return nil, false, nil
+		return nil, nil, nil
 	}
 
 	chunks, diagnostics := buildCADChunks(&doc, defaultCADChunkerConfig(), cadDocumentName(upstream))
@@ -260,9 +259,9 @@ func chunkCAD(ctx context.Context, upstream schema.ChunkerFromUpstream) (map[str
 	docs, err := cadChunkDocs(chunks)
 	if err != nil {
 		runtime.ReportProgressMessage(ctx, "CADChunker", cadDiagnosticMessage(cadDiagnostic{Code: "cad_metadata_serialize_failed", Detail: err.Error()}))
-		return nil, true, fmt.Errorf("CADChunker: serialize provenance: %w", err)
+		return nil, &doc, fmt.Errorf("CADChunker: serialize provenance: %w", err)
 	}
-	return chunkOutputs(docs), true, nil
+	return chunkOutputs(docs), &doc, nil
 }
 
 // cadPayload returns the structured CAD document the parser put on

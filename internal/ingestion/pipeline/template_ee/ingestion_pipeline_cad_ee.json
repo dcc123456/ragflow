@@ -51,7 +51,13 @@
                 ],
                 "obj": {
                     "component_name": "CADChunker",
-                    "params": {}
+                    "params": {
+                        "vision": {
+                            "enabled": false,
+                            "llm_id": "",
+                            "system_prompt": ""
+                        }
+                    }
                 },
                 "upstream": [
                     "Parser:PaperTrail"
@@ -182,7 +188,14 @@
                 {
                     "data": {
                         "label": "CADChunker",
-                        "name": "CAD Chunker"
+                        "name": "CAD Chunker",
+                        "form": {
+                            "vision": {
+                                "enabled": false,
+                                "llm_id": "",
+                                "system_prompt": ""
+                            }
+                        }
                     },
                     "id": "CADChunker:SpatialSheet",
                     "position": {

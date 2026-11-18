@@ -83,9 +83,9 @@ func TestCADMetadataOverflowFailsTaskWithDiagnostic(t *testing.T) {
 	}
 	var messages []string
 	ctx := runtime.WithProgressMessageCallback(t.Context(), func(component, message string) { messages = append(messages, component+": "+message) })
-	out, handled, err := chunkCAD(ctx, schema.ChunkerFromUpstream{File: &schema.ChunkerFileMeta{Extra: map[string]json.RawMessage{"cad": raw}}})
-	if err == nil || !handled || out != nil {
-		t.Fatalf("invalid metadata reported success: handled=%v error=%v output=%v", handled, err, out)
+	out, drawing, err := chunkCAD(ctx, schema.ChunkerFromUpstream{File: &schema.ChunkerFileMeta{Extra: map[string]json.RawMessage{"cad": raw}}})
+	if err == nil || drawing == nil || out != nil {
+		t.Fatalf("invalid metadata reported success: handled=%v error=%v output=%v", drawing != nil, err, out)
 	}
 	if !strings.Contains(strings.Join(messages, "\n"), "cad_metadata_serialize_failed") {
 		t.Fatalf("serialization failure not reported: %v", messages)

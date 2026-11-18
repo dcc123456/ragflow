@@ -4,17 +4,76 @@ package chunker
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 
 	"ragflow/internal/entity"
 	"ragflow/internal/ingestion/component/schema"
+	"ragflow/internal/ingestion/task/indexdoc"
+	"ragflow/internal/parser/cadsource"
 	"ragflow/internal/storage"
 )
+
+type cadThumbnailFailStore struct{ storage.Storage }
+
+func (s cadThumbnailFailStore) Put(ctx context.Context, bucket, key string, data []byte, tenantID ...string) error {
+	if key == cadThumbnailKey("doc1") {
+		return errors.New("thumbnail upload failed")
+	}
+	return s.Storage.Put(ctx, bucket, key, data, tenantID...)
+}
+
+func TestCADArtifactAttachesPreviewPositionsWhenThumbnailFails(t *testing.T) {
+	factory := storage.GetStorageFactory()
+	original := factory.GetStorage()
+	store := storage.NewMemoryStorage()
+	factory.SetStorage(cadThumbnailFailStore{Storage: store})
+	t.Cleanup(func() { factory.SetStorage(original) })
+	if err := store.Put(t.Context(), "kb1", "source.dxf", []byte(cadImageTestDXF)); err != nil {
+		t.Fatal(err)
+	}
+	drawing, err := cadsource.Extract(t.Context(), "drawing.dxf", []byte(cadImageTestDXF))
+	if err != nil {
+		t.Fatal(err)
+	}
+	component := &cadChunkerComponent{}
+	out, err := component.Invoke(t.Context(), nil, map[string]any{
+		"name": "drawing.dxf", "bucket": "kb1", "path": "source.dxf", "kb_id": "kb1", "doc_id": "doc1",
+		"output_format": "json", "json": []any{}, "file": map[string]any{"name": "drawing.dxf", "cad": drawing},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	chunks, ok := schema.GetChunks(out)
+	if !ok || len(chunks) != 1 {
+		t.Fatalf("chunks=%+v", out)
+	}
+	var positions [][]float64
+	if err := json.Unmarshal(chunks[0].Positions, &positions); err != nil {
+		t.Fatalf("chunk has no preview highlight position: %v", err)
+	}
+	if len(positions) != 1 || len(positions[0]) != 5 || positions[0][0] != 1 || positions[0][2] <= positions[0][1] || positions[0][4] <= positions[0][3] {
+		t.Fatalf("invalid highlight position: %v", positions)
+	}
+	wire := indexdoc.NormalizeChunks(out)
+	if _, err := indexdoc.ProcessChunksForPipeline(wire, "doc1", "drawing.dxf", time.Unix(0, 0)); err != nil {
+		t.Fatal(err)
+	}
+	stored, ok := wire[0]["position_int"].([][]int)
+	if !ok || len(stored) != 1 || stored[0][0] != 1 || stored[0][2] <= stored[0][1] || stored[0][4] <= stored[0][3] {
+		t.Fatalf("highlight lost at index boundary: %+v", wire[0])
+	}
+	if _, err := store.Get(t.Context(), "kb1", cadPreviewKey("doc1")); err != nil {
+		t.Fatal(err)
+	}
+}
 
 const cadImageTestDXF = `0
 SECTION
@@ -118,7 +177,7 @@ func TestGenerateCADPreviewArtifacts(t *testing.T) {
 		t.Fatal(err)
 	}
 	inputs := map[string]any{"kb_id": "kb1", "doc_id": "doc1"}
-	if err := generateCADPreviewArtifacts(t.Context(), nil, inputs, schema.ChunkerFromUpstream{}, doc); err != nil {
+	if err := generateCADPreviewArtifacts(t.Context(), nil, inputs, schema.ChunkerFromUpstream{}, doc, []cadsource.Sheet{{ID: "s0", Layout: "model", Source: "fallback"}}, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -172,7 +231,7 @@ func TestGenerateCADPreviewArtifactsUpdatesThumbnail(t *testing.T) {
 		t.Fatal(err)
 	}
 	inputs := map[string]any{"kb_id": "kb1", "doc_id": "doc1"}
-	if err := generateCADPreviewArtifacts(t.Context(), db, inputs, schema.ChunkerFromUpstream{}, doc); err != nil {
+	if err := generateCADPreviewArtifacts(t.Context(), db, inputs, schema.ChunkerFromUpstream{}, doc, []cadsource.Sheet{{ID: "s0", Layout: "model", Source: "fallback"}}, nil); err != nil {
 		t.Fatal(err)
 	}
 

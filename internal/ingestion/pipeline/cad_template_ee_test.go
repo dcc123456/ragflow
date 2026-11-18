@@ -19,15 +19,14 @@
 package pipeline
 
 import (
+	"reflect"
 	"testing"
 
 	chunkerpkg "ragflow/internal/ingestion/component/chunker"
 )
 
-// CADChunker has no user-editable params; its spatial defaults live in the
-// chunker package rather than componentParamSchemaKeys.
 func init() {
-	componentParamWhitelistExemptions[chunkerpkg.ComponentNameCADChunker] = "no user-editable params; spatial defaults live in the chunker package"
+	componentParamWhitelistExemptions[chunkerpkg.ComponentNameCADChunker] = "editable keys come from the CAD template defaults"
 }
 
 // The task golden tests cover node IDs and defaults. This check ensures the
@@ -49,5 +48,22 @@ func TestCADTemplateUsesCADChunker(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("CADChunker components = %d, want 1", count)
+	}
+}
+
+func TestCADTemplateSavesVisionConfig(t *testing.T) {
+	dsl, err := LoadBuiltinDSL("cad")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const id = "CADChunker:SpatialSheet"
+	vision := map[string]any{"enabled": true, "llm_id": "vision1", "system_prompt": "visible geometry"}
+	config, err := BuildParserConfig([]byte(dsl), map[string]any{id: map[string]any{"vision": vision}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	params, ok := config[id].(map[string]any)
+	if !ok || !reflect.DeepEqual(params["vision"], vision) {
+		t.Fatalf("vision config lost when saving the CAD template: %#v", config)
 	}
 }
