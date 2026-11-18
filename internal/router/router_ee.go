@@ -48,6 +48,10 @@ func RegisterEENoAuthRouter(engine *gin.Engine, apiNoAuth *gin.RouterGroup, r *R
 	// For EE
 	apiNoAuth.GET("/auth/login/channels", r.userHandler.GetLoginChannels)
 	apiNoAuth.GET("/auth/login/:channel", r.userHandler.OAuthLogin)
+	// JSON initiate for the embedded QR login flow (e.g. the Feishu SDK):
+	// returns the authorization parameters instead of redirecting, so the
+	// login page can render the provider's QR code on the card itself.
+	apiNoAuth.GET("/auth/login/:channel/initiate", r.userHandler.OAuthLoginInitiate)
 	apiNoAuth.GET("/auth/oauth/:channel/callback", r.userHandler.OAuthChannelCallback)
 	apiNoAuth.GET("/auth/oauth/callback", r.userHandler.OAuthCallback)
 	apiNoAuth.POST("/auth/register/captcha", r.userHandler.Captcha)

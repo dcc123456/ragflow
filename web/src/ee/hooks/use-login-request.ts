@@ -18,6 +18,7 @@ import message from '@/components/ui/message';
 import { Authorization } from '@/constants/authorization';
 import userService, {
   getLoginChannels,
+  initiateChannelLogin,
   loginWithChannel,
   loginWithLdap,
   type LoginWithLdapInput,
@@ -46,6 +47,9 @@ export interface ILoginChannel {
   channel: string;
   display_name: string;
   icon: string;
+  // Public provider id; present on SSO channels so the login page can embed
+  // the provider's QR login widget (the Feishu SDK renders its code from it).
+  client_id?: string;
 }
 
 export const useLoginChannels = () => {
@@ -104,6 +108,21 @@ export const useLoginWithChannel = () => {
     login: mutateAsync,
     loginLdap,
   };
+};
+
+// Initiates the embedded QR login flow for an SSO channel: fetches the
+// authorize parameters (state baked into auth_url) without navigating away,
+// so the login card can render the provider's QR code in place.
+export const useChannelLoginInitiate = () => {
+  const { isPending: loading, mutateAsync } = useMutation({
+    mutationKey: ['loginChannelInitiate'],
+    mutationFn: async (channel: string) => {
+      const initiation = await initiateChannelLogin(channel);
+      return initiation;
+    },
+  });
+
+  return { loading, initiate: mutateAsync };
 };
 
 export type EmailLoginParams = {

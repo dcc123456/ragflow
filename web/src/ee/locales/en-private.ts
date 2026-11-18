@@ -15,6 +15,9 @@ export default {
     },
     login: {
       signInWith: 'Sign in with {{name}}',
+      feishuQrTitle: 'Scan the QR code with your Feishu app',
+      feishuQrFailed:
+        'Failed to load the QR code. Use the Feishu icon below to sign in instead.',
       usernameLabel: 'Username',
       usernamePlaceholder: 'Please input username',
       ldapServerLabel: 'LDAP server',

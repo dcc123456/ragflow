@@ -292,6 +292,8 @@ export default {
     },
     login: {
       licenseExpired: '许可证已过期。请联系管理员续期。',
+      feishuQrTitle: '请使用飞书 App 扫码登录',
+      feishuQrFailed: '二维码加载失败，请改用下方飞书图标登录。',
       confirmPasswordError: '密码和确认密码必须相同',
       captchaPlaceholder: '请输入验证码',
       back: '返回',

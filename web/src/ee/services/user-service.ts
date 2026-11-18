@@ -138,6 +138,28 @@ export const getLoginChannels = () => request.get(api.loginChannels);
 export const loginWithChannel = (channel: string) =>
   (window.location.href = api.loginChannel(channel));
 
+// Payload of GET /auth/login/:channel/initiate, the JSON counterpart of
+// loginWithChannel: the state is generated server-side and already written to
+// the HttpOnly state cookie, so the callback's CSRF check is satisfied no
+// matter which flow started it. client_id and auth_url are public and feed
+// the embedded Feishu QR widget; client_secret is never included.
+export type ChannelLoginInitiation = {
+  channel: string;
+  state: string;
+  auth_url: string;
+  client_id?: string;
+  redirect_uri?: string;
+};
+
+export const initiateChannelLogin = async (
+  channel: string,
+): Promise<ChannelLoginInitiation | undefined> => {
+  const { data: res = {} } = await request.get(
+    api.loginChannelInitiate(channel),
+  );
+  return res.data;
+};
+
 export type LoginWithLdapInput = {
   serverName: string;
   username: string;

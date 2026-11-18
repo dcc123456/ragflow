@@ -30,6 +30,11 @@ type LoginChannel struct {
 	Channel     string `json:"channel"`
 	DisplayName string `json:"display_name"`
 	Icon        string `json:"icon"`
+	// ClientID is the provider-issued application id, which is public
+	// information. The login page needs it to embed a provider's QR login
+	// widget — the Feishu SDK renders its code from it — without first
+	// navigating to the redirect route. LDAP channels leave it empty.
+	ClientID string `json:"client_id,omitempty"`
 }
 
 // GetLoginChannels gets all enabled authentication channels. The result is
@@ -42,11 +47,12 @@ func (s *UserService) GetLoginChannels() ([]*LoginChannel, common.ErrorCode, err
 	ctx := context.Background()
 	configured := loadSSOChannels(ctx)
 	channels := make([]*LoginChannel, 0, len(configured))
-	for channel := range configured {
+	for channel, cfg := range configured {
 		channels = append(channels, &LoginChannel{
 			Channel:     channel,
 			DisplayName: strings.Title(channel),
 			Icon:        "sso",
+			ClientID:    cfg.ClientID,
 		})
 	}
 	// Directory servers log in with a form of their own rather than by

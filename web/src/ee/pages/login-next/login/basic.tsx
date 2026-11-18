@@ -2,7 +2,7 @@ import { keyBy } from 'lodash';
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { t } from 'i18next';
-import { useCallback, useEffect, useId } from 'react';
+import { useCallback, useEffect, useId, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router';
 import z from 'zod';
@@ -21,13 +21,16 @@ import { useTranslate } from '@/hooks/common-hooks';
 import SvgIcon from '@/components/svg-icon';
 import { Button } from '@/components/ui/button';
 import {
+  useChannelLoginInitiate,
   useLogin,
   useLoginChannels,
   useLoginWithChannel,
 } from '@/ee/hooks/use-login-request';
+import type { ChannelLoginInitiation } from '@/ee/services/user-service';
 import { useSystemConfig } from '@/hooks/use-system-request';
 import { isLicenseError, rsaPsw } from '@/ee/utils';
 import RememberMeCheckbox from '@/ee/pages/login-next/components/RememberMeCheckbox';
+import FeishuQrLogin from '@/ee/pages/login-next/login/feishu-qr-login';
 
 import { useAuth } from '@/hooks/auth-hooks';
 import { SSO_CLOUD_IDP_PROVIDERS } from '@/ee/pages/admin/sso-providers/cloud-idp';
@@ -58,6 +61,10 @@ export default function BasicLogin({ onLicenseError }: BasicLoginProps) {
   const { login, loading: loginLoading } = useLogin();
   const { config } = useSystemConfig();
   const { currentChannelType, typeGroupedChannels } = useLoginChannels();
+  const { initiate: initiateChannel } = useChannelLoginInitiate();
+  // Non-null while the Feishu QR code is embedded in the card; the form and
+  // SSO icon row are replaced by the code until the user backs out.
+  const [feishuQr, setFeishuQr] = useState<ChannelLoginInitiation | null>(null);
   const redirectTo =
     searchParams.get('redirect') ||
     (location.state as { redirectTo?: string } | null)?.redirectTo ||
@@ -83,6 +90,32 @@ export default function BasicLogin({ onLicenseError }: BasicLoginProps) {
   const allowRegister = config?.registerEnabled !== 0;
   const email = form.watch('email');
 
+  // The Feishu channel embeds the official QR SDK on the card itself instead
+  // of leaving the page: initiate fetches the authorize parameters (the state
+  // cookie is written server-side), the widget renders the code from them.
+  // Any failure — config incomplete, SDK unreachable — falls back to the
+  // original full-page redirect flow.
+  const handleChannelClick = useCallback(
+    async (channel: string) => {
+      if (channel !== 'lark') {
+        loginWithChannel(channel);
+        return;
+      }
+
+      try {
+        const initiation = await initiateChannel(channel);
+        if (initiation?.client_id && initiation.auth_url) {
+          setFeishuQr(initiation);
+          return;
+        }
+      } catch (e) {
+        console.error('Feishu QR login initiate failed:', e);
+      }
+      loginWithChannel(channel);
+    },
+    [initiateChannel, loginWithChannel],
+  );
+
   const onSubmit = useCallback(
     async (data: SchemaType) => {
       try {
@@ -107,6 +140,15 @@ export default function BasicLogin({ onLicenseError }: BasicLoginProps) {
     },
     [navigate, login, onLicenseError, redirectTo],
   );
+
+  if (feishuQr) {
+    return (
+      <FeishuQrLogin
+        authUrl={feishuQr.auth_url}
+        onBack={() => setFeishuQr(null)}
+      />
+    );
+  }
 
   return (
     <Form {...form}>
@@ -214,7 +256,7 @@ export default function BasicLogin({ onLicenseError }: BasicLoginProps) {
               <div
                 className="cursor-pointer"
                 key={ch.channel}
-                onClick={() => loginWithChannel(ch.channel)}
+                onClick={() => handleChannelClick(ch.channel)}
               >
                 {IconComponent ? (
                   <IconComponent className="size-6" />

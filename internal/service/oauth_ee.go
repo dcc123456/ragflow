@@ -83,10 +83,17 @@ func oauthStateKey(channel, state string) string {
 // The returned state must also be set as a short-lived cookie on the caller
 // so the callback can perform a CSRF check that ties the state token to the
 // browser that initiated the flow.
+//
+// ClientID and RedirectURI carry the provider parameters a SPA needs to
+// embed a QR login widget (the Feishu SDK renders its code from client_id
+// and points its goto at the authorization URL) without navigating away
+// first. Both are public information.
 type OAuthLoginInit struct {
 	State        string
 	AuthURL      string
 	Channel      string
+	ClientID     string
+	RedirectURI  string
 	CookieMaxAge time.Duration
 }
 
@@ -123,6 +130,8 @@ func (s *UserService) OAuthLoginInitiate(ctx context.Context, channel string, kv
 		State:        state,
 		AuthURL:      authURL,
 		Channel:      channel,
+		ClientID:     cfg.ClientID,
+		RedirectURI:  cfg.RedirectURI,
 		CookieMaxAge: oauthStateTTL,
 	}, common.CodeSuccess, nil
 }

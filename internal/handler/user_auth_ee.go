@@ -196,6 +196,52 @@ func (h *UserHandler) OAuthLogin(c *gin.Context) {
 	c.Redirect(http.StatusFound, init.AuthURL)
 }
 
+// oauthLoginInitiateResponse is the JSON payload of the embedded QR login
+// initiate endpoint. auth_url is the provider's authorization URL with the
+// state already baked in; client_id and redirect_uri carry the parameters a
+// provider QR widget (the Feishu SDK) needs to render the code on the page.
+type oauthLoginInitiateResponse struct {
+	Channel     string `json:"channel"`
+	State       string `json:"state"`
+	AuthURL     string `json:"auth_url"`
+	ClientID    string `json:"client_id,omitempty"`
+	RedirectURI string `json:"redirect_uri,omitempty"`
+}
+
+// OAuthLoginInitiate serves GET /auth/login/:channel/initiate. It is the JSON
+// counterpart of OAuthLogin for the embedded QR login flow: instead of
+// redirecting the whole browser to the provider, the SPA embeds the provider's
+// QR widget and only navigates once the user confirms the scan. The state is
+// generated and persisted by the same OAuthLoginInitiate service call and is
+// written to the same HttpOnly cookie, so the callback's CSRF check runs
+// unchanged no matter which flow started it.
+func (h *UserHandler) OAuthLoginInitiate(c *gin.Context) {
+	channel := c.Param("channel")
+	if channel == "" {
+		common.Respond(c, http.StatusBadRequest, common.CodeArgumentError, nil, "channel is required")
+		return
+	}
+
+	init, code, err := h.userService.OAuthLoginInitiate(c.Request.Context(), channel, kvrocks.Get())
+	if err != nil {
+		if errors.Is(err, service.ErrOAuthInvalidChannel) {
+			common.RespondError(c, common.CodeDataError, err.Error())
+			return
+		}
+		common.RespondError(c, code, err.Error())
+		return
+	}
+
+	setOAuthStateCookie(c, channel, init.State, int(init.CookieMaxAge.Seconds()))
+	common.RespondSuccess(c, &oauthLoginInitiateResponse{
+		Channel:     init.Channel,
+		State:       init.State,
+		AuthURL:     init.AuthURL,
+		ClientID:    init.ClientID,
+		RedirectURI: init.RedirectURI,
+	}, "success")
+}
+
 // ldapLogin serves the directory branch of GET /auth/login/:channel. The login
 // form sends the credentials as query parameters and expects the same `?auth=`
 // redirect the OAuth callback produces, because the SPA reads the token off the

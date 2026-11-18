@@ -18,6 +18,10 @@ export default {
   exposeApi: '/api/v1/expose-api',
   loginChannels: `${restAPIv1}/auth/login/channels`,
   loginChannel: (channel: string) => `${restAPIv1}/auth/login/${channel}`,
+  // JSON counterpart of loginChannel for the embedded QR login flow: returns
+  // the authorize parameters instead of redirecting the browser.
+  loginChannelInitiate: (channel: string) =>
+    `${restAPIv1}/auth/login/${channel}/initiate`,
   loginGetCaptcha: '/api/v1/auth/password/forgot/captcha',
   loginSendVerifyCode: '/api/v1/auth/password/forgot/otp',
   loginVerifyEmail: '/api/v1/auth/password/forgot/otp/verify',
