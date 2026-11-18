@@ -472,6 +472,12 @@ export default {
       },
       resourceType: { group: '群组', mcp: 'MCP', invitation: '邀请' },
       settingsForm: {
+        apiKey: {
+          title: 'API 密钥',
+          description:
+            '设置每个租户的 API 密钥数量上限。降低上限不会使现有密钥失效。',
+          maxCount: '每个租户的密钥上限',
+        },
         sensitiveWordFilter: {
           title: '敏感词过滤',
           description: '在聊天、搜索和智能对话中拦截包含已配置敏感词的问题。',

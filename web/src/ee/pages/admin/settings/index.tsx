@@ -20,6 +20,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 
 import Spotlight from '@/components/spotlight';
 
+import ApiKeyFormGroup from './form-group/api-key';
 import EmailVerificationFormGroup from './form-group/email-verification';
 import ExposeApiFormGroup from './form-group/expose-api';
 import ExposeModelProviderFormGroup from './form-group/expose-model-provider';
@@ -39,6 +40,7 @@ const schema = z.object({
   exposeModelProvider: ExposeModelProviderFormGroup.schema,
   exposeApi: ExposeApiFormGroup.schema,
   emailVerification: EmailVerificationFormGroup.schema,
+  apiKey: ApiKeyFormGroup.schema,
 });
 
 export type AdminSettingsFormValues = z.infer<typeof schema>;
@@ -61,6 +63,7 @@ function AdminSettings() {
       exposeApi: ExposeApiFormGroup.mapValuesFromData(variables),
       emailVerification:
         EmailVerificationFormGroup.mapValuesFromData(variables),
+      apiKey: ApiKeyFormGroup.mapValuesFromData(variables),
     };
   }, [variables]);
 
@@ -123,6 +126,7 @@ function AdminSettings() {
                         ...EmailVerificationFormGroup.mapValuesToData(
                           data.emailVerification,
                         ),
+                        ...ApiKeyFormGroup.mapValuesToData(data.apiKey),
                       });
                       if (data.sensitiveWordFilter.file) {
                         const uploadResponse =
@@ -155,6 +159,8 @@ function AdminSettings() {
                     <ExposeApiFormGroup />
                     <hr className="border-border-button" />
                     <EmailVerificationFormGroup />
+                    <hr className="border-border-button" />
+                    <ApiKeyFormGroup />
                   </form>
                 </Form>
               </div>

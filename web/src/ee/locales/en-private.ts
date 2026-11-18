@@ -367,6 +367,12 @@ export default {
       },
       settingsSubtitle: 'Manage system-wide configurations.',
       settingsForm: {
+        apiKey: {
+          title: 'API keys',
+          description:
+            'Set the maximum number of API keys per tenant. Existing keys remain valid when the limit is lowered.',
+          maxCount: 'Maximum keys per tenant',
+        },
         smtp: {
           title: 'SMTP',
           description:

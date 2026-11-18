@@ -295,6 +295,10 @@ declare namespace AdminServiceEe {
       'email_verification.enabled': 'bool';
     }>;
 
+    type ApiKey = Utilities.DefineVariables<{
+      'api_key.max_count': 'integer';
+    }>;
+
     type SensitiveWordFilter = Utilities.DefineVariables<{
       'sensitive_word_filter.enabled': 'bool';
       'sensitive_word_filter.response': 'string';
@@ -376,6 +380,7 @@ declare namespace AdminServiceEe {
     SystemVariables.ExposeModelProvider &
     SystemVariables.ExposeApi &
     SystemVariables.EmailVerification &
+    SystemVariables.ApiKey &
     SystemVariables.SensitiveWordFilter &
     PrefixKeys<SystemVariables.Mail, 'mail'> &
     PrefixKeys<SystemVariables.SSO.IDP.Google, 'google|sso'> &
