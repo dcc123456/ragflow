@@ -40,6 +40,8 @@ export function PrivilegeManagementDialog({
   initialValues,
 }: IModalProps<any> & { initialValues: IPrivilegeManagementInitialValues }) {
   const { t } = useTranslation();
+  const resourceType =
+    initialValues.resourceType || PermissionResourceType.KnowledgeBase;
   const {
     showAddCollaboratorDialog,
     hideAddCollaboratorDialog,
@@ -47,9 +49,6 @@ export function PrivilegeManagementDialog({
     onOk,
     loading,
   } = useAddCollaboratorDialog(initialValues);
-
-  const resourceType =
-    initialValues.resourceType || PermissionResourceType.KnowledgeBase;
 
   const isDocumentResourceType =
     resourceType === PermissionResourceType.Document;
@@ -212,6 +211,7 @@ export function PrivilegeManagementDialog({
           loading={loading}
           tenantId={initialValues.tenant_id}
           canGrantManage={canGrantManage}
+          resourceType={resourceType}
         ></AddCollaboratorDialog>
       )}
     </Dialog>

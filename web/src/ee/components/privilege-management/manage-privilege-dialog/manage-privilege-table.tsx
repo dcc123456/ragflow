@@ -150,6 +150,7 @@ export function ManagePrivilegeTable({
             <PermissionCell
               permissions={row.original.permissions}
               resourceIds={resourceIds}
+              resourceType={resourceType}
               editable={!checkOwner(row.original.permissions)}
               canGrantManage={canGrantManage}
               onChange={handleChangePermission(row.original)}
@@ -213,6 +214,7 @@ export function ManagePrivilegeTable({
     handleDelete,
     onTransferOwner,
     resourceIds,
+    resourceType,
     t,
     tenantMemberUserIds,
     transferOwnerLoading,

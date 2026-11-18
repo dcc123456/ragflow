@@ -89,6 +89,21 @@ export enum PermissionResourceType {
   ModelInstance = 'model_instance',
 }
 
+export function getAssignableResourcePermissionOptions(
+  resourceType: PermissionResourceType | undefined,
+  canGrantManage: boolean,
+) {
+  return PermissionLevelOptions.filter(({ action }) => {
+    if (
+      resourceType === PermissionResourceType.LLM ||
+      resourceType === PermissionResourceType.ModelInstance
+    ) {
+      return action === Permission.Read;
+    }
+    return canGrantManage || action !== Permission.Manage;
+  });
+}
+
 export enum TenantRole {
   Owner = 'owner',
   Invite = 'invite',

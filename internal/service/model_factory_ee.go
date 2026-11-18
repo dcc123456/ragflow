@@ -96,6 +96,46 @@ func groupNameForUsage(ctx context.Context, groupID string) string {
 	return group.GroupName
 }
 
+func authorizeNonOwnerModelConfiguration(ctx context.Context, provider *entity.TenantModelProvider, instance *entity.TenantModelInstance, models []*entity.TenantModel) error {
+	checker := permission.NewDatabaseChecker(dao.DB)
+	if err := checker.CheckResource(ctx, permission.ResourceRef{Kind: permission.ResourceKindModelProvider, ID: provider.ID}, permission.OperationRead); err != nil {
+		return err
+	}
+	if err := checker.CheckResource(ctx, permission.ResourceRef{Kind: permission.ResourceKindModelInstance, ID: instance.ID}, permission.OperationUse); err != nil {
+		return err
+	}
+	for _, model := range models {
+		if !strings.EqualFold(model.Status, "active") {
+			continue
+		}
+		if err := checker.CheckResource(ctx, permission.ResourceRef{Kind: permission.ResourceKindModel, ID: model.ID}, permission.OperationUse); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func authorizeModelMetadataReadEE(ctx context.Context, identity *modelIdentity) error {
+	if identity == nil || identity.providerEntity == nil || identity.instanceEntity == nil {
+		return fmt.Errorf("%w: incomplete model identity", errModelConfigUnavailable)
+	}
+	// Identity-less internal callers are already restricted by model identity
+	// resolution to the tenant owner's provider configuration.
+	if strings.TrimSpace(permission.UserIDFromContext(ctx)) == "" {
+		return nil
+	}
+	checker := permission.NewDatabaseChecker(dao.DB)
+	for _, ref := range []permission.ResourceRef{
+		{Kind: permission.ResourceKindModelProvider, ID: identity.providerEntity.ID},
+		{Kind: permission.ResourceKindModelInstance, ID: identity.instanceEntity.ID},
+	} {
+		if err := checker.CheckResource(ctx, ref, permission.OperationRead); err != nil {
+			return fmt.Errorf("%w: cannot read model metadata: %w", errModelConfigUnavailable, err)
+		}
+	}
+	return nil
+}
+
 // MarkGroupMemberInactive deactivates the group's currently active,
 // highest-positioned member of the requested type, so that the next resolve
 // of the same gp- reference picks the next member. Call it after an

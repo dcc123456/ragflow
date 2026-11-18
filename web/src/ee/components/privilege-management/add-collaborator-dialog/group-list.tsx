@@ -104,7 +104,7 @@ export function GroupList() {
   };
 
   return (
-    <ul className="m-0 max-h-[min(70vh,calc(100vh_-_22rem))] min-w-0 list-none space-y-0.5 overflow-y-auto p-0">
+    <ul className="m-0 h-full min-h-0 min-w-0 list-none space-y-0.5 overflow-y-auto p-0">
       {tree.map((node) => (
         <GroupTreeItem
           key={node.item.id}

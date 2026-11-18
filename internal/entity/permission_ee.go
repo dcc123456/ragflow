@@ -23,11 +23,11 @@ type Permission struct {
 	ID           string  `gorm:"column:id;primaryKey;size:32" json:"id"`
 	MemberID     *string `gorm:"column:member_id;size:32" json:"member_id,omitempty"`
 	GroupID      *string `gorm:"column:group_id;size:32" json:"group_id,omitempty"`
-	TenantID     string  `gorm:"column:tenant_id;size:32;not null" json:"tenant_id"`
-	ResourceType string  `gorm:"column:resource_type;size:32;not null" json:"resource_type"`
-	ResourceID   *string `gorm:"column:resource_id;size:255" json:"resource_id,omitempty"`
+	TenantID     string  `gorm:"column:tenant_id;size:32;not null;index:idx_permission_resource_access,priority:1" json:"tenant_id"`
+	ResourceType string  `gorm:"column:resource_type;size:32;not null;index:idx_permission_resource_access,priority:2" json:"resource_type"`
+	ResourceID   *string `gorm:"column:resource_id;size:255;index:idx_permission_resource_access,priority:3" json:"resource_id,omitempty"`
 	Permission   int32   `gorm:"column:permission;not null;default:0" json:"permission"`
-	Status       *string `gorm:"column:status;size:1" json:"status,omitempty"`
+	Status       *string `gorm:"column:status;size:1;index:idx_permission_resource_access,priority:4" json:"status,omitempty"`
 	BaseModel
 }
 

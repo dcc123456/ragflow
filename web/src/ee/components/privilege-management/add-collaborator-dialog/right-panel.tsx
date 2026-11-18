@@ -18,7 +18,7 @@ export function RoleLabel({ label }: { label: string }) {
 
 export function RightPanel({ list, click }: RightPanelProps) {
   return (
-    <ul className="space-y-2 overflow-auto max-h-[70vh]">
+    <ul className="h-full min-h-0 space-y-2 overflow-y-auto">
       {list.map((x) => (
         <li
           key={x.id}

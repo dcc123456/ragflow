@@ -9,7 +9,14 @@ import { useFetchTenantInfo } from '@/hooks/use-user-setting-request';
 import { IProviderInstance } from '@/interfaces/database/llm';
 import { ProviderInstanceCard } from '@/pages/user-setting/setting-model/instance-card/provider-instance-card';
 import { KeyRound } from 'lucide-react';
-import { type ComponentProps, useCallback, useState } from 'react';
+import {
+  type ComponentProps,
+  useCallback,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
 type PrivilegeDialogInitialValues = ComponentProps<
@@ -35,6 +42,9 @@ export function ProviderInstanceCardWithPrivilege({
   const { data: tenantInfo } = useFetchTenantInfo();
   const [permissionTarget, setPermissionTarget] =
     useState<PrivilegeDialogInitialValues | null>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [permissionActionsContainer, setPermissionActionsContainer] =
+    useState<HTMLElement | null>(null);
 
   const showInstancePermissions = useCallback(() => {
     const tenantId = tenantInfo?.tenant_id;
@@ -54,29 +64,47 @@ export function ProviderInstanceCardWithPrivilege({
   ]);
 
   const operatorPermission = instance.operator_permission ?? 0;
-  const canManagePermissions =
-    hasResourcePermission(operatorPermission, Permission.Manage) ||
-    hasResourcePermission(operatorPermission, Permission.Owner);
+  const canManagePermissions = Boolean(
+    tenantInfo?.tenant_id &&
+    instance.id &&
+    (hasResourcePermission(operatorPermission, Permission.Manage) ||
+      hasResourcePermission(operatorPermission, Permission.Owner)),
+  );
+
+  useLayoutEffect(() => {
+    if (!canManagePermissions) {
+      setPermissionActionsContainer(null);
+      return;
+    }
+
+    const deleteButton = cardRef.current?.querySelector<HTMLButtonElement>(
+      '[data-testid="instance-delete"]',
+    );
+    setPermissionActionsContainer(deleteButton?.parentElement ?? null);
+  }, [canManagePermissions, instance.id]);
 
   return (
-    <div className="relative">
-      {tenantInfo?.tenant_id && instance.id && canManagePermissions && (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          className="absolute right-3 top-3 z-20"
-          aria-label={t('permission.permissionManagement')}
-          onClick={showInstancePermissions}
-        >
-          <KeyRound />
-        </Button>
-      )}
+    <div ref={cardRef} className="relative">
       <ProviderInstanceCard
         providerName={providerName}
         instance={instance}
         defaultOpen={defaultOpen}
       />
+      {canManagePermissions &&
+        permissionActionsContainer &&
+        createPortal(
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="order-first"
+            aria-label={t('permission.permissionManagement')}
+            onClick={showInstancePermissions}
+          >
+            <KeyRound />
+          </Button>,
+          permissionActionsContainer,
+        )}
       {permissionTarget && (
         <PrivilegeManagementDialog
           hideModal={() => setPermissionTarget(null)}

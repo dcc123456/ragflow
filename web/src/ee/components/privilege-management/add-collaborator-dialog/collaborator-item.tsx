@@ -8,7 +8,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import {
   MouseEvent,
-  MouseEventHandler,
   PropsWithChildren,
   ReactNode,
   useCallback,
@@ -17,13 +16,11 @@ import {
 } from 'react';
 import {
   CheckedListContext,
-  DepartmentContext,
   MemberContext,
 } from '@/ee/components/privilege-management/context';
 import { CollaboratorItem as ICollaboratorItem } from '@/ee/components/privilege-management/interface';
 import { PrivilegeAvatar } from '@/ee/components/privilege-management/privilege-avatar';
 import { PrivilegeLabel } from '@/ee/components/privilege-management/privilege-label';
-import { useSwitchBreadcrumb } from '@/ee/components/privilege-management/add-collaborator-dialog/use-select-collaborator';
 
 type LeftCollaboratorItemProps = {
   item: ICollaboratorItem;
@@ -229,60 +226,6 @@ export function LeftMemberItem({
       ) : (
         <LeftPrivilegeLabel item={item}></LeftPrivilegeLabel>
       )}
-    </ItemWrapper>
-  );
-}
-
-type LeftDepartmentItemProps = LeftCollaboratorItemProps &
-  Pick<ReturnType<typeof useSwitchBreadcrumb>, 'clickCollaborator'>;
-
-export function LeftDepartmentItem({
-  item,
-  clickCollaborator,
-}: LeftDepartmentItemProps) {
-  const { handleClick: click } = useContext(DepartmentContext);
-  const permissionItem = usePermissionItem(item.id);
-  const isOwner = hasResourceOwnerPermission(permissionItem?.permissions);
-
-  const checkedListMap = useContext(CheckedListContext);
-  const checkedList = checkedListMap.departmentCheckedList;
-
-  const checked = useMemo(() => {
-    const x = checkedList.find((x) => x.id === item.id);
-    if (x) {
-      return x.checked;
-    }
-    return false;
-  }, [checkedList, item.id]);
-
-  const nextItem = useMemo(() => {
-    return { ...item, checked };
-  }, [checked, item]);
-
-  const handleClick = useCallback(() => {
-    if (isOwner) {
-      return;
-    }
-    click(item.id, !checked);
-  }, [checked, click, isOwner, item.id]);
-
-  const handleArrowClick: MouseEventHandler<HTMLButtonElement> = useCallback(
-    (e) => {
-      e.stopPropagation();
-      clickCollaborator(item);
-    },
-    [clickCollaborator, item],
-  );
-
-  return (
-    <ItemWrapper onClick={handleClick}>
-      <CollaboratorItem item={nextItem} showCheckbox></CollaboratorItem>
-      <div className="flex items-center">
-        <LeftPrivilegeLabel item={item}></LeftPrivilegeLabel>
-        <Button variant="ghost" size={'icon'} onClick={handleArrowClick}>
-          <ChevronRight />
-        </Button>
-      </div>
     </ItemWrapper>
   );
 }

@@ -353,3 +353,37 @@ func ensureTenantRole(db *gorm.DB, tenantID string) (int32, error) {
 	}
 	return role.ID, nil
 }
+
+// GrantTestResourcePermission adds an explicit resource grant to an enterprise test fixture.
+func GrantTestResourcePermission(db *gorm.DB, tenantID, resourceType, resourceID, userID string, actions ...string) error {
+	if db == nil {
+		return errors.New("grant test resource permission: database is nil")
+	}
+	var membership entity.UserTenant
+	if err := db.Where("tenant_id = ? AND user_id = ? AND status = ?", tenantID, userID, entity.TenantMembershipStatusJoined).Take(&membership).Error; err != nil {
+		return fmt.Errorf("load test resource member %q: %w", userID, err)
+	}
+	var mask int32
+	for _, action := range actions {
+		switch action {
+		case "read":
+			mask |= entity.ResourcePermissionRead
+		case "write":
+			mask |= entity.ResourcePermissionWrite
+		case "manage":
+			mask |= entity.ResourcePermissionManage
+		case "owner":
+			mask |= entity.ResourcePermissionOwner
+		default:
+			return fmt.Errorf("unknown test resource permission %q", action)
+		}
+	}
+	if mask == 0 {
+		return errors.New("grant test resource permission: permission mask is empty")
+	}
+	memberID, resourceIDValue, status := membership.ID, resourceID, string(entity.StatusValid)
+	return db.Create(&entity.Permission{
+		ID: common.GenerateToken(), MemberID: &memberID, TenantID: tenantID,
+		ResourceType: resourceType, ResourceID: &resourceIDValue, Permission: mask, Status: &status,
+	}).Error
+}

@@ -1,9 +1,5 @@
-import { TenantRole, TeamRole, TeamRoleList } from '@/ee/constants/team';
+import { TenantRole, TeamRole } from '@/ee/constants/team';
 import { ITenantGroup } from '@/ee/interfaces/database/team';
-import {
-  useFetchDepartmentList,
-  useFetchDepartmentMemberList,
-} from '@/ee/hooks/use-team';
 import {
   useFetchTenantInfo,
   useListTenantUser,
@@ -30,60 +26,16 @@ export function useSelectCollaborator() {
     );
   }, []);
 
-  const selectAll = useCallback((checked: boolean) => {
+  const selectAll = useCallback((checked: boolean, ids?: string[]) => {
+    const selectedIds = ids ? new Set(ids) : undefined;
     setList((pre) => {
-      return pre.map((x) => ({ ...x, checked }));
+      return pre.map((item) =>
+        !selectedIds || selectedIds.has(item.id) ? { ...item, checked } : item,
+      );
     });
   }, []);
 
   return { list, setList, handleClick, selectAll };
-}
-
-export function useSwitchBreadcrumb() {
-  const [breadcrumbs, setBreadcrumbs] = useState<CollaboratorItem[]>([]);
-  const latestBreadcrumb = useMemo(() => {
-    return breadcrumbs.at(-1)?.id;
-  }, [breadcrumbs]);
-  const firstBreadcrumb = useMemo(() => {
-    return breadcrumbs.at(0)?.id;
-  }, [breadcrumbs]);
-  const secondBreadcrumb = useMemo(() => {
-    return breadcrumbs.at(1)?.id;
-  }, [breadcrumbs]);
-
-  const handleCollaboratorClick = useCallback((item: CollaboratorItem) => {
-    setBreadcrumbs((pre) => {
-      const nextBreadcrumbs = [
-        ...pre,
-        {
-          label: item.label,
-          id: item.id,
-        },
-      ];
-
-      if (pre.length === 0) {
-        nextBreadcrumbs.unshift({ id: 'team', label: 'Team' });
-      }
-
-      return nextBreadcrumbs;
-    });
-  }, []);
-
-  const handleBreadcrumbClick = useCallback((idx: number) => {
-    setBreadcrumbs((pre) => {
-      return pre.slice(0, idx === 0 ? idx : idx + 1);
-    });
-  }, []);
-
-  return {
-    breadcrumbs,
-    latestBreadcrumb,
-    firstBreadcrumb,
-    secondBreadcrumb,
-    setBreadcrumbs,
-    clickCollaborator: handleCollaboratorClick,
-    clickBreadcrumb: handleBreadcrumbClick,
-  };
 }
 
 export function useOperateMember(tenantId: string) {
@@ -148,84 +100,6 @@ export function useOperateGroup(tenantId: string) {
   };
 }
 
-export function useOperateDepartment(tenantId: string) {
-  const { handleClick, list, setList, selectAll } = useSelectCollaborator();
-  const { data: tenantInfo } = useFetchTenantInfo();
-  const { data, setFetchDepartmentListParams } = useFetchDepartmentList(
-    tenantId || tenantInfo.tenant_id,
-  );
-  const {
-    data: departmentMemberList,
-    setTeamId,
-    setId,
-    departmentId,
-  } = useFetchDepartmentMemberList();
-
-  useEffect(() => {
-    const arr = data.map((x) => ({
-      id: x.department_id,
-      label: x.name,
-      checked: false,
-      permission: 0,
-      role: TeamRole.Department,
-      avatar: x.avatar,
-    }));
-    const memberList = departmentMemberList.map((x) => ({
-      id: x.member_id,
-      label: x.nickname,
-      checked: false,
-      permission: 0,
-      isMember: true,
-      role: TeamRole.Member,
-      avatar: x.avatar,
-    }));
-    setList(arr.concat(departmentId ? memberList : []));
-  }, [data, departmentId, departmentMemberList, setList]);
-
-  useEffect(() => {
-    setTeamId(tenantInfo.tenant_id);
-  }, [setTeamId, tenantInfo.tenant_id]);
-
-  return {
-    handleDepartmentClick: handleClick,
-    departmentList: list,
-    setDepartmentList: setList,
-    setFetchDepartmentListParams,
-    setId,
-    selectAllDepartment: selectAll,
-    departmentMemberList: list.filter((x) => x.role === TeamRole.Member),
-    pureDepartmentList: list.filter((x) => x.role === TeamRole.Department),
-  };
-}
-
-export type UseOperateDepartmentType = ReturnType<typeof useOperateDepartment>;
-
-export type UseWatchBreadcrumbChangeType = {
-  latestBreadcrumb?: string;
-} & Pick<ReturnType<typeof useFetchDepartmentMemberList>, 'setId'> &
-  Pick<
-    ReturnType<typeof useFetchDepartmentList>,
-    'setFetchDepartmentListParams'
-  >;
-
-export function useWatchBreadcrumbChange({
-  latestBreadcrumb,
-  setId,
-  setFetchDepartmentListParams,
-}: UseWatchBreadcrumbChangeType) {
-  useEffect(() => {
-    if (latestBreadcrumb && TeamRoleList.every((x) => x !== latestBreadcrumb)) {
-      setId(latestBreadcrumb);
-      setFetchDepartmentListParams({ parentId: latestBreadcrumb });
-    }
-
-    if (TeamRoleList.some((x) => x === latestBreadcrumb)) {
-      setId('');
-      setFetchDepartmentListParams({ parentId: '' });
-    }
-  }, [latestBreadcrumb, setFetchDepartmentListParams, setId]);
-}
-
 export function useSelectCheckedList(list: CollaboratorItem[]) {
   return useMemo(() => {
     const nextList = list.filter((x) => x.checked);
@@ -238,25 +112,19 @@ export type HandleClickType = ReturnType<
 >['handleClick'];
 
 type UseHandleRightItemClickType = {
-  handleDepartmentClick: HandleClickType;
   handleMemberClick: HandleClickType;
   handleGroupClick: HandleClickType;
 };
 
 export function useHandleRightItemClick({
-  handleDepartmentClick,
   handleGroupClick,
   handleMemberClick,
 }: UseHandleRightItemClickType) {
-  const ClickMap: Record<TeamRole, HandleClickType> = {
-    [TeamRole.Department]: handleDepartmentClick,
-    [TeamRole.Group]: handleGroupClick,
-    [TeamRole.Member]: handleMemberClick,
-  };
   return (item: CollaboratorItem) => {
-    if (item.role) {
-      const click = ClickMap[item.role];
-      click(item.id, false);
+    if (item.role === TeamRole.Member) {
+      handleMemberClick(item.id, false);
+    } else if (item.role === TeamRole.Group) {
+      handleGroupClick(item.id, false);
     }
   };
 }
