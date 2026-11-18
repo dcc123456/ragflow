@@ -7,7 +7,7 @@ import { useFetchCurrentPlan } from '@/ee/pages/price/hook/use-price-hooks';
 import { PrivateRoutes } from '@/ee/private-routes';
 import { isBillingEnabled } from '@/ee/services/billingStatus';
 import { Routes } from '@/routes';
-import { ReceiptText } from 'lucide-react';
+import { ReceiptText, Unplug } from 'lucide-react';
 import { ReactNode, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -19,8 +19,8 @@ export type SettingMenuEntry = {
 };
 
 /**
- * Extends the upstream settings menu with the enterprise entries: billing when
- * billing is active, and hiding the model-provider page when it is not exposed.
+ * Extends the upstream settings menu with billing when it is active, and the
+ * model provider entry when that page is exposed.
  */
 export function useSettingMenuItems<T extends SettingMenuEntry>(
   items: T[],
@@ -38,6 +38,14 @@ export function useSettingMenuItems<T extends SettingMenuEntry>(
         icon: <ReceiptText className="size-[1em]" />,
         label: t('setting.billing'),
         key: PrivateRoutes.Billing,
+      });
+    }
+
+    if (exposeModelProvider) {
+      menus.push({
+        icon: <Unplug className="size-[1em]" />,
+        label: t('setting.model'),
+        key: Routes.Model,
       });
     }
 
