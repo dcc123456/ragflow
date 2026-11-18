@@ -145,6 +145,13 @@ func (s *ServerStatusStore) UpdateStatus(serverName string, status *common.BaseM
 			Features:  s.CurrentLicense.Features,
 		}
 		serverStatusResponse = fileSyncerResponse.ToMap()
+	case common.ServerTypeChatter:
+		var chatterStatus utility.CPUServerStatus
+		if err = json.Unmarshal(extData, &chatterStatus); err != nil {
+			return nil, err
+		}
+		common.Info("Update Chatter server status", zap.String("status", chatterStatus.PrintAll()))
+		serverStatusResponse = map[string]interface{}{}
 	case common.ServerTypeDeepDocCPU:
 		// DeepDoc CPU server
 		if s.CurrentLicense.DeepDocCPUQuota.Count > 0 {

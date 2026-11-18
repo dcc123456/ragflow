@@ -20,18 +20,68 @@ package admin
 
 import (
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 
 	"ragflow/internal/common"
+	"ragflow/internal/server"
+	"ragflow/internal/service"
 	"ragflow/internal/utility"
 
 	"github.com/gin-gonic/gin"
 )
+
+func TestChatterHeartbeat(t *testing.T) {
+	previousStore := GlobalServerStatusStore
+	GlobalServerStatusStore = &ServerStatusStore{
+		servers: make(map[string]*common.BaseMessage),
+		CurrentLicense: &utility.LicenseV2{
+			ValidFrom:  time.Now().Add(-time.Hour),
+			ValidUntil: time.Now().Add(time.Hour),
+		},
+		LicenseCode: common.CodeLicenseValid,
+	}
+	t.Cleanup(func() { GlobalServerStatusStore = previousStore })
+
+	router := gin.New()
+	router.POST("/api/v1/admin/reports", (&Handler{service: &Service{}}).Reports)
+	httpServer := httptest.NewServer(router)
+	t.Cleanup(httpServer.Close)
+	host, port, err := net.SplitHostPort(httpServer.Listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(t.TempDir(), "service_conf.yaml")
+	if err := os.WriteFile(configPath, []byte("{}\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("RAGFLOW_ADMIN_HOST", host)
+	t.Setenv("RAGFLOW_ADMIN_HTTP_PORT", port)
+	if err := server.Init(configPath); err != nil {
+		t.Fatal(err)
+	}
+
+	client := service.NewAdminClient(common.ServerTypeChatter, "chatter-test", host, 0)
+	if err := client.SendHeartbeat(); err != nil {
+		t.Fatalf("send Chatter heartbeat: %v", err)
+	}
+	status, ok := GlobalServerStatusStore.GetStatus("chatter-test")
+	if !ok || status.ServerType != common.ServerTypeChatter {
+		t.Fatalf("stored Chatter status = %+v, present = %t", status, ok)
+	}
+	cpu, ok := status.Ext.(map[string]any)
+	if !ok || cpu["core_num"] != float64(runtime.NumCPU()) {
+		t.Fatalf("stored CPU status = %#v", status.Ext)
+	}
+}
 
 func TestReportsPreservesHeartbeatResponse(t *testing.T) {
 	gin.SetMode(gin.TestMode)

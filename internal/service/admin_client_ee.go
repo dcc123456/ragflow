@@ -35,7 +35,7 @@ func (h *AdminClient) EnrichMessage(message *common.BaseMessage) (*common.BaseMe
 	var err error
 
 	switch h.serverType {
-	case common.ServerTypeAPI, common.ServerTypeIngestion, common.ServerTypeFileSyncer, common.ServerTypeDeepDocCPU:
+	case common.ServerTypeAPI, common.ServerTypeIngestion, common.ServerTypeFileSyncer, common.ServerTypeChatter, common.ServerTypeDeepDocCPU:
 		message.Ext, err = fingerprint.NewCPUServerStatus()
 	case common.ServerTypeDeepDocGPU:
 		message.Ext, err = fingerprint.NewGPUServerStatus()

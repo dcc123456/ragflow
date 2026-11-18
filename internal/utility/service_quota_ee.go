@@ -275,6 +275,10 @@ func UpdateServiceQuota(serverType common.ServerType, payload []byte) error {
 		common.Info("FileSyncer server heartbeat response", zap.Any("resp", resp))
 		updateSyncerQuota(resp)
 
+	case common.ServerTypeChatter:
+		// Chatter reports health but has no service quota to update.
+		return nil
+
 	case common.ServerTypeDeepDocCPU:
 		var resp DeepDocCPUHeartbeatResponse
 		if err := json.Unmarshal(payload, &resp); err != nil {

@@ -73,7 +73,7 @@ services:
 
   ragflow-cpu:
     <<: *ragflow
-    command: ["--api", "--disable-chat-channels"]
+    command: ["--api"]
     environment:
       <<: *ragflow-environment
     ports:
