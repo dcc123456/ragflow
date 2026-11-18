@@ -306,7 +306,7 @@ func extractLicenseV2(licenseStr string) (*utility.LicenseV2, map[string]interfa
 	result["DeepDocGPU count"] = licenseV2.DeepDocGPUQuota.Count
 	result["DeepDocCPU count"] = licenseV2.DeepDocCPUQuota.Count
 
-	result["Features"] = licenseV2.GetFeatures()
+	result["Features"] = licenseV2.Features
 
 	return licenseV2, result, nil
 }

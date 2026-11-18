@@ -297,9 +297,9 @@ func (s *Service) DeleteSoftFingerprint(ctx context.Context) error {
 	return errors.New("delete soft fingerprint is not supported")
 }
 
-func (s *Service) ListFeatures(ctx context.Context) (map[string]interface{}, error) {
-	result := map[string]interface{}{}
-	return result, nil
+func (s *Service) ListFeatures(ctx context.Context) (map[string]bool, error) {
+	features := GlobalServerStatusStore.GetFeatures()
+	return features, nil
 }
 
 // ShowUserActivity show user activity for enterprise edition

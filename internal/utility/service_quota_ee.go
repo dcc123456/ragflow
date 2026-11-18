@@ -20,6 +20,7 @@ package utility
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
@@ -29,42 +30,62 @@ import (
 )
 
 type ServiceFeatures struct {
-	Workflow     bool `json:"workflow_enable"`
-	Chat         bool `json:"chat_enable"`
-	File         bool `json:"file_enable"`
-	Search       bool `json:"search_enable"`
-	Model        bool `json:"model_enable"`
-	UserInTenant bool `json:"user_in_tenant_enable"`
-	RBAC         bool `json:"rbac_enable"`
-	Group        bool `json:"group_enable"`
-	Evaluation   bool `json:"evaluation_enable"`
+	SingleTenant  bool `json:"single_tenant"`
+	RBAC          bool `json:"rbac"`
+	GroupAndShare bool `json:"group_and_share"`
+	DeepDocPro    bool `json:"deepdoc_pro"`
+	DeepDocGPU    bool `json:"deepdoc_gpu"`
+	WPS           bool `json:"wps"`
+	CAD           bool `json:"cad"`
+	Evaluation    bool `json:"evaluation"`
+	MultiModal    bool `json:"multi_modal"`
+	Stats         bool `json:"stats"`
+	AnalyticsLog  bool `json:"analytics_log"`
 }
 
-func NewServiceFeatures(features []string) ServiceFeatures {
+func NewServiceFeatures(features map[string]bool) ServiceFeatures {
 	f := ServiceFeatures{}
-	for _, feature := range features {
+	for feature, enable := range features {
 		switch strings.ToLower(feature) {
-		case "workflow":
-			f.Workflow = true
-		case "chat":
-			f.Chat = true
-		case "file":
-			f.File = true
-		case "search":
-			f.Search = true
-		case "model":
-			f.Model = true
-		case "userintenant":
-			f.UserInTenant = true
+		case "single_tenant":
+			f.SingleTenant = enable
 		case "rbac":
-			f.RBAC = true
-		case "group":
-			f.Group = true
+			f.RBAC = enable
+		case "group_and_share":
+			f.GroupAndShare = enable
+		case "deepdoc_pro":
+			f.DeepDocPro = enable
+		case "deepdoc_gpu":
+			f.DeepDocGPU = enable
+		case "wps":
+			f.WPS = enable
+		case "cad":
+			f.CAD = enable
 		case "evaluation":
-			f.Evaluation = true
+			f.Evaluation = enable
+		case "multi_modal":
+			f.MultiModal = enable
+		case "stats":
+			f.Stats = enable
+		case "analytics_log":
+			f.AnalyticsLog = enable
 		}
 	}
 	return f
+}
+
+func (f ServiceFeatures) ToMap() map[string]interface{} {
+	out := make(map[string]interface{})
+	t := reflect.TypeOf(f)
+	v := reflect.ValueOf(f)
+	for i := 0; i < t.NumField(); i++ {
+		jsonName := strings.Split(t.Field(i).Tag.Get("json"), ",")[0]
+		if jsonName == "" || jsonName == "-" {
+			continue
+		}
+		out[jsonName] = v.Field(i).Interface()
+	}
+	return out
 }
 
 type APIServiceQuota struct {
@@ -112,7 +133,7 @@ type ServiceQuota struct {
 
 // GetAPIServiceQuota returns the API server quota snapshot, or nil when this
 // process is not an API server.
-func GetAPIServiceQuota() any {
+func GetAPIServiceQuota() *APIServiceQuota {
 	if serviceQuotaInstance == nil || serviceQuotaInstance.apiServiceQuota == nil {
 		return nil
 	}

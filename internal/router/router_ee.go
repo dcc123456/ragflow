@@ -228,7 +228,7 @@ func ToggleGroup() gin.HandlerFunc {
 
 func ToggleEvaluation() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if quota, ok := utility.GetAPIServiceQuota().(*utility.APIServiceQuota); ok && !quota.Features.Evaluation {
+		if quota := utility.GetAPIServiceQuota(); !quota.Features.Evaluation {
 			common.Respond(c, 403, common.CodeForbidden, nil, "Evaluation is not enabled")
 			c.Abort()
 			return

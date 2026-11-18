@@ -18,9 +18,15 @@ package service
 
 import (
 	"context"
+	"ragflow/internal/common"
+	"ragflow/internal/utility"
 )
 
 // ListFeatures get system features
 func (s *SystemService) ListFeatures(ctx context.Context) (map[string]interface{}, error) {
-	return nil, nil
+	apiServiceQuota := utility.GetAPIServiceQuota()
+	if apiServiceQuota == nil {
+		return nil, common.ErrNotFound
+	}
+	return apiServiceQuota.Features.ToMap(), nil
 }

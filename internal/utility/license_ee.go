@@ -258,16 +258,6 @@ func (v *LicenseV2) PrintAll() {
 	}
 }
 
-func (v *LicenseV2) GetFeatures() []string {
-	var features []string
-	for featureName, enabled := range v.Features {
-		if enabled {
-			features = append(features, featureName)
-		}
-	}
-	return features
-}
-
 // DecodeLicenseV2 decrypts the license using the private key
 func DecodeLicenseV2(licenseStr string) (*LicenseV2, error) {
 	// Decode base64

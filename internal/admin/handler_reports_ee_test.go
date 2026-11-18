@@ -50,7 +50,7 @@ func TestReportsPreservesHeartbeatResponse(t *testing.T) {
 			status:  http.StatusOK,
 			code:    common.CodeLicenseValid,
 			message: "License valid",
-			data:    map[string]any{"cpu_num": float64(2), "max_concurrency": float64(4), "features": []any{"RBAC"}},
+			data:    map[string]any{"cpu_num": float64(2), "max_concurrency": float64(4), "features": map[string]bool{"RBAC": true}},
 		},
 		{
 			name:    "service error retains code and message",

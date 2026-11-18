@@ -643,9 +643,9 @@ func (fc *FingerprintCollector) NewGPUServerStatus() (*GPUServerStatus, error) {
 }
 
 type APIServerHeartbeatResponse struct {
-	CPUNum         int      `json:"cpu_num"`
-	MaxConcurrency int      `json:"max_concurrency"`
-	Features       []string `json:"features"`
+	CPUNum         int             `json:"cpu_num"`
+	MaxConcurrency int             `json:"max_concurrency"`
+	Features       map[string]bool `json:"features"`
 }
 
 func (a *APIServerHeartbeatResponse) ToMap() map[string]interface{} {
@@ -657,9 +657,9 @@ func (a *APIServerHeartbeatResponse) ToMap() map[string]interface{} {
 }
 
 type IngestorHeartbeatResponse struct {
-	CPUNum    int      `json:"cpu_num"`
-	WorkerNum int      `json:"worker_num"`
-	Features  []string `json:"features"`
+	CPUNum    int             `json:"cpu_num"`
+	WorkerNum int             `json:"worker_num"`
+	Features  map[string]bool `json:"features"`
 }
 
 func (i *IngestorHeartbeatResponse) ToMap() map[string]interface{} {
@@ -671,9 +671,9 @@ func (i *IngestorHeartbeatResponse) ToMap() map[string]interface{} {
 }
 
 type FileSyncerHeartbeatResponse struct {
-	CPUNum    int      `json:"cpu_num"`
-	WorkerNum int      `json:"worker_num"`
-	Features  []string `json:"features"`
+	CPUNum    int             `json:"cpu_num"`
+	WorkerNum int             `json:"worker_num"`
+	Features  map[string]bool `json:"features"`
 }
 
 func (f *FileSyncerHeartbeatResponse) ToMap() map[string]interface{} {
@@ -685,10 +685,10 @@ func (f *FileSyncerHeartbeatResponse) ToMap() map[string]interface{} {
 }
 
 type DeepDocCPUHeartbeatResponse struct {
-	CPUNum         int      `json:"cpu_num"`
-	MaxConcurrency int      `json:"max_concurrency"`
-	WorkerNum      int      `json:"worker_num"`
-	Features       []string `json:"features"`
+	CPUNum         int             `json:"cpu_num"`
+	MaxConcurrency int             `json:"max_concurrency"`
+	WorkerNum      int             `json:"worker_num"`
+	Features       map[string]bool `json:"features"`
 }
 
 func (d *DeepDocCPUHeartbeatResponse) ToMap() map[string]interface{} {
@@ -701,11 +701,11 @@ func (d *DeepDocCPUHeartbeatResponse) ToMap() map[string]interface{} {
 }
 
 type DeepDocGPUHeartbeatResponse struct {
-	CPUNum         int      `json:"cpu_num"`
-	GPUNum         int      `json:"gpu_num"`
-	MaxConcurrency int      `json:"max_concurrency"`
-	WorkerNum      int      `json:"worker_num"`
-	Features       []string `json:"features"`
+	CPUNum         int             `json:"cpu_num"`
+	GPUNum         int             `json:"gpu_num"`
+	MaxConcurrency int             `json:"max_concurrency"`
+	WorkerNum      int             `json:"worker_num"`
+	Features       map[string]bool `json:"features"`
 }
 
 func (d *DeepDocGPUHeartbeatResponse) ToMap() map[string]interface{} {

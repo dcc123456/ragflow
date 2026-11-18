@@ -99,7 +99,7 @@ func (s *ServerStatusStore) UpdateStatus(serverName string, status *common.BaseM
 		apiServerResponse := utility.APIServerHeartbeatResponse{
 			CPUNum:         s.CurrentLicense.APIQuota.CPUNum,
 			MaxConcurrency: s.CurrentLicense.APIQuota.MaxConcurrency,
-			Features:       s.CurrentLicense.GetFeatures(),
+			Features:       s.CurrentLicense.Features,
 		}
 		serverStatusResponse = apiServerResponse.ToMap()
 
@@ -121,7 +121,7 @@ func (s *ServerStatusStore) UpdateStatus(serverName string, status *common.BaseM
 		ingestorResponse := utility.IngestorHeartbeatResponse{
 			CPUNum:    s.CurrentLicense.IngestorQuota.CPUNum,
 			WorkerNum: s.CurrentLicense.IngestorQuota.WorkerNum,
-			Features:  s.CurrentLicense.GetFeatures(),
+			Features:  s.CurrentLicense.Features,
 		}
 		serverStatusResponse = ingestorResponse.ToMap()
 	case common.ServerTypeFileSyncer:
@@ -142,7 +142,7 @@ func (s *ServerStatusStore) UpdateStatus(serverName string, status *common.BaseM
 		fileSyncerResponse := utility.FileSyncerHeartbeatResponse{
 			CPUNum:    s.CurrentLicense.SyncerQuota.CPUNum,
 			WorkerNum: s.CurrentLicense.SyncerQuota.WorkerNum,
-			Features:  s.CurrentLicense.GetFeatures(),
+			Features:  s.CurrentLicense.Features,
 		}
 		serverStatusResponse = fileSyncerResponse.ToMap()
 	case common.ServerTypeDeepDocCPU:
@@ -164,7 +164,7 @@ func (s *ServerStatusStore) UpdateStatus(serverName string, status *common.BaseM
 			CPUNum:         s.CurrentLicense.DeepDocCPUQuota.CPUNum,
 			MaxConcurrency: s.CurrentLicense.DeepDocCPUQuota.MaxConcurrency,
 			WorkerNum:      s.CurrentLicense.DeepDocCPUQuota.WorkerNum,
-			Features:       s.CurrentLicense.GetFeatures(),
+			Features:       s.CurrentLicense.Features,
 		}
 		serverStatusResponse = deepDocCPUResponse.ToMap()
 	case common.ServerTypeDeepDocGPU:
@@ -187,7 +187,7 @@ func (s *ServerStatusStore) UpdateStatus(serverName string, status *common.BaseM
 			GPUNum:         s.CurrentLicense.DeepDocGPUQuota.GPUNum,
 			MaxConcurrency: s.CurrentLicense.DeepDocGPUQuota.MaxConcurrency,
 			WorkerNum:      s.CurrentLicense.DeepDocGPUQuota.WorkerNum,
-			Features:       s.CurrentLicense.GetFeatures(),
+			Features:       s.CurrentLicense.Features,
 		}
 		serverStatusResponse = deepDocGPUResponse.ToMap()
 	default:
@@ -273,4 +273,10 @@ func (s *ServerStatusStore) GetLicenseCode() common.ErrorCode {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.LicenseCode
+}
+
+func (s *ServerStatusStore) GetFeatures() map[string]bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.CurrentLicense.Features
 }
