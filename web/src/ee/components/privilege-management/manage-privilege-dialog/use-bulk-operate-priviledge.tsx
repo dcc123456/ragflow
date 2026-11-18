@@ -2,7 +2,8 @@ import { UseRowSelectionType } from '@/hooks/logic-hooks/use-row-selection';
 import {
   LabelMap,
   Permission,
-  PermissionLevelOptions,
+  PermissionResourceType,
+  getAssignableResourcePermissionOptions,
 } from '@/ee/constants/team';
 import { IPermission } from '@/ee/interfaces/database/team';
 import { RowSelectionState } from '@tanstack/react-table';
@@ -48,8 +49,9 @@ export function useBulkOperatePrivilege({
   );
 
   const list = [
-    ...PermissionLevelOptions.filter(
-      ({ action }) => canGrantManage || action !== Permission.Manage,
+    ...getAssignableResourcePermissionOptions(
+      initialValues.resourceType || PermissionResourceType.KnowledgeBase,
+      canGrantManage,
     ).map(({ action, value }) => ({
       id: LabelMap[action],
       label: t(`permission.${LabelMap[action]}`),

@@ -19,6 +19,7 @@
 package service
 
 import (
+	"errors"
 	"testing"
 
 	"ragflow/internal/entity"
@@ -26,7 +27,7 @@ import (
 	"ragflow/internal/permission"
 )
 
-func TestCheckDocumentAccessAcceptsDirectDocumentGrantAndDatasetGrant(t *testing.T) {
+func TestCheckDocumentAccessRequiresDatasetAndDocumentGrants(t *testing.T) {
 	db := testutil.SetupTestDB(t,
 		&entity.Tenant{}, &entity.User{}, &entity.UserTenant{}, &entity.Role{}, &entity.RoleResource{},
 		&entity.Knowledgebase{}, &entity.Document{}, &entity.Permission{}, &entity.GroupInfo{}, &entity.GroupMember{},
@@ -83,11 +84,8 @@ func TestCheckDocumentAccessAcceptsDirectDocumentGrantAndDatasetGrant(t *testing
 		t.Fatalf("share document: %v", err)
 	}
 	ctx := permission.WithIdentity(t.Context(), "member-user", tenantID)
-	if err := CheckDocumentAccess(ctx, docID, kbID, permission.OperationRead); err != nil {
-		t.Fatalf("direct document read grant was rejected: %v", err)
-	}
-	if err := CheckDocumentAccess(ctx, docID, kbID, permission.OperationUpdate); err == nil {
-		t.Fatal("read-only document grant allowed update")
+	if err := CheckDocumentAccess(ctx, docID, kbID, permission.OperationRead); !errors.Is(err, permission.ErrPermissionDenied) {
+		t.Fatalf("document grant without dataset grant error = %v, want permission denied", err)
 	}
 
 	kbGrantID := kbID
@@ -98,6 +96,15 @@ func TestCheckDocumentAccessAcceptsDirectDocumentGrantAndDatasetGrant(t *testing
 		t.Fatalf("share dataset: %v", err)
 	}
 	if err := CheckDocumentAccess(ctx, docID, kbID, permission.OperationRead); err != nil {
-		t.Fatalf("dataset read grant did not cover its document: %v", err)
+		t.Fatalf("dataset and document read grants were rejected: %v", err)
+	}
+	if err := CheckDocumentAccess(ctx, docID, kbID, permission.OperationUpdate); !errors.Is(err, permission.ErrPermissionDenied) {
+		t.Fatalf("read-only document grant update error = %v, want permission denied", err)
+	}
+	if err := db.Delete(&entity.Permission{}, "id = ?", "document-grant").Error; err != nil {
+		t.Fatalf("remove document grant: %v", err)
+	}
+	if err := CheckDocumentAccess(ctx, docID, kbID, permission.OperationRead); !errors.Is(err, permission.ErrPermissionDenied) {
+		t.Fatalf("dataset grant without document grant error = %v, want permission denied", err)
 	}
 }

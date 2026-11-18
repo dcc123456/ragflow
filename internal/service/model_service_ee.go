@@ -20,15 +20,104 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"ragflow/internal/common"
 	"ragflow/internal/dao"
 	"ragflow/internal/entity"
 	"ragflow/internal/permission"
 	permissionresponse "ragflow/internal/permission/response"
+	"strings"
 
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 )
+
+func (m *ModelProviderService) listModelProvidersForTenantEE(ctx context.Context, query *gorm.DB, tenantID string) ([]*entity.TenantModelProvider, error) {
+	var providers []*entity.TenantModelProvider
+	err := query.WithContext(ctx).
+		Where("tenant_model_provider.tenant_id = ?", tenantID).
+		Find(&providers).Error
+	return providers, err
+}
+
+func (*ModelProviderService) setModelOwnerInfoEE(ctx context.Context, models []map[string]interface{}, providers map[string]*entity.TenantModelProvider) error {
+	ownerIDs := make([]string, 0, len(models))
+	seenOwnerIDs := make(map[string]struct{}, len(models))
+	for _, model := range models {
+		providerID, _ := model["provider_id"].(string)
+		provider := providers[providerID]
+		if provider == nil || provider.UserID == "" {
+			continue
+		}
+		model["user_id"] = provider.UserID
+		if _, exists := seenOwnerIDs[provider.UserID]; exists {
+			continue
+		}
+		seenOwnerIDs[provider.UserID] = struct{}{}
+		ownerIDs = append(ownerIDs, provider.UserID)
+	}
+
+	nicknames, err := dao.NewUserDAO().GetNicknamesByIDs(ctx, dao.DB, ownerIDs)
+	if err != nil {
+		return fmt.Errorf("resolve model owner nicknames: %w", err)
+	}
+	for _, model := range models {
+		providerID, _ := model["provider_id"].(string)
+		provider := providers[providerID]
+		if provider == nil || provider.UserID == "" {
+			continue
+		}
+		if nickname, ok := nicknames[provider.UserID]; ok {
+			model["nickname"] = nickname
+		}
+	}
+	return nil
+}
+
+func queryScopeForAccessUser(ctx context.Context, checker *permission.Checker, query permission.ScopeQuery, accessUserID string) (permission.QueryScope, error) {
+	accessUserID = strings.TrimSpace(accessUserID)
+	currentUserID := strings.TrimSpace(permission.UserIDFromContext(ctx))
+	if accessUserID == "" || accessUserID == currentUserID {
+		return checker.QueryScope(ctx, query)
+	}
+
+	if query.Kind == permission.ResourceKindModelProvider || query.Kind == permission.ResourceKindModelInstance || query.Kind == permission.ResourceKindModel {
+		query.OwnerUserID = accessUserID
+		return checker.QueryScope(ctx, query)
+	}
+
+	currentScope, err := checker.QueryScope(ctx, query)
+	if err != nil {
+		return permission.QueryScope{}, err
+	}
+	accessContext := permission.WithIdentity(ctx, accessUserID, permission.TenantIDFromContext(ctx))
+	accessScope, err := checker.QueryScope(accessContext, query)
+	if errors.Is(err, permission.ErrPermissionDenied) || errors.Is(err, permission.ErrMembershipNotFound) || errors.Is(err, permission.ErrResourceNotFound) {
+		return permission.QueryScope{}, nil
+	}
+	if err != nil {
+		return permission.QueryScope{}, err
+	}
+	return currentScope.Intersect(accessScope), nil
+}
+
+func (m *ModelProviderService) listReadableModelProvidersForUserEE(ctx context.Context, tenantID, userID string) ([]*entity.TenantModelProvider, error) {
+	scope, err := permission.NewDatabaseChecker(dao.DB).QueryScope(ctx, permission.ScopeQuery{
+		TenantID:  tenantID,
+		Kind:      permission.ResourceKindModelProvider,
+		Operation: permission.OperationRead,
+	})
+	if err != nil {
+		return nil, err
+	}
+	var providers []*entity.TenantModelProvider
+	err = scope.Apply(dao.DB.Model(&entity.TenantModelProvider{})).
+		Where("tenant_model_provider.tenant_id = ?", tenantID).
+		Where("tenant_model_provider.user_id = ?", userID).
+		Find(&providers).Error
+	return providers, err
+}
 
 func (m *ModelProviderService) CreateModelGroup(ctx context.Context, userID, groupName string) error {
 	tenantID, err := requireCurrentTenantID(ctx)

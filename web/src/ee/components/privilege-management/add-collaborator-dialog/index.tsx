@@ -1,4 +1,5 @@
 import { ButtonLoading } from '@/components/ui/button';
+import { SelectWithSearch } from '@/components/originui/select-with-search';
 import {
   Dialog,
   DialogContent,
@@ -6,35 +7,32 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { SelectWithSearch } from '@/components/originui/select-with-search';
 import {
   LabelMap,
   Permission,
-  PermissionLevelOptions,
+  PermissionResourceType,
   TeamRole,
+  getAssignableResourcePermissionOptions,
 } from '@/ee/constants/team';
-import { IModalProps } from '@/interfaces/common';
-import { IUpdatePermission } from '@/ee/interfaces/request/team';
-import { uniqBy } from 'lodash';
-import { Eye, ShieldCheck, SquarePen, UserPlus } from 'lucide-react';
-import { useCallback, useMemo, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import {
   CheckedListContext,
-  DepartmentContext,
   GroupContext,
   MemberContext,
 } from '@/ee/components/privilege-management/context';
-import { mapCollaboratorId } from '@/ee/components/privilege-management/utils';
 import { LeftPanel } from '@/ee/components/privilege-management/add-collaborator-dialog/left-panel';
 import { RightPanel } from '@/ee/components/privilege-management/add-collaborator-dialog/right-panel';
 import {
   useCacheCheckedList,
   useHandleRightItemClick,
-  useOperateDepartment,
   useOperateGroup,
   useOperateMember,
 } from '@/ee/components/privilege-management/add-collaborator-dialog/use-select-collaborator';
+import { mapCollaboratorId } from '@/ee/components/privilege-management/utils';
+import { IUpdatePermission } from '@/ee/interfaces/request/team';
+import { IModalProps } from '@/interfaces/common';
+import { Eye, ShieldCheck, SquarePen, UserPlus } from 'lucide-react';
+import { useCallback, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 function getPermissionIcon(permission: Permission) {
   if (permission === Permission.Read) {
@@ -55,70 +53,39 @@ export function AddCollaboratorDialog({
   loading,
   tenantId,
   canGrantManage,
+  resourceType,
 }: IModalProps<Partial<IUpdatePermission>> & {
   tenantId: string;
   canGrantManage: boolean;
+  resourceType: PermissionResourceType;
 }) {
   const { t } = useTranslation();
-  const [value, setValue] = useState<string>(
-    PermissionLevelOptions[0].value.toString(),
-  );
+  const [value, setValue] = useState<string>(Permission.Read.toString());
 
   const { memberList } = useOperateMember(tenantId);
   const { groupList, handleGroupClick, selectAllGroup } =
     useOperateGroup(tenantId);
   const {
-    departmentList,
-    setId,
-    setFetchDepartmentListParams,
-    pureDepartmentList,
-    departmentMemberList,
-  } = useOperateDepartment(tenantId);
-
-  const currentMemberList = useMemo(() => {
-    // Usually departmentMemberList is a subset of memberList
-    return uniqBy(memberList.concat(departmentMemberList), 'id');
-  }, [departmentMemberList, memberList]);
-
-  const {
     cacheCheckedItem: cacheMemberCheckedItem,
     checkedList: memberCheckedList,
     cacheCheckedList: cacheMemberCheckedList,
-  } = useCacheCheckedList(currentMemberList);
-
-  const {
-    cacheCheckedItem: cacheDepartmentCheckedItem,
-    checkedList: departmentCheckedList,
-    cacheCheckedList: cacheDepartmentCheckedList,
-  } = useCacheCheckedList(pureDepartmentList);
+  } = useCacheCheckedList(memberList);
 
   const selectAll = useCallback(
-    (role: TeamRole, checked: boolean) => {
+    (role: TeamRole, checked: boolean, ids: string[]) => {
       if (role === TeamRole.Group) {
-        selectAllGroup(checked);
+        selectAllGroup(checked, ids);
       }
       if (role === TeamRole.Member) {
-        cacheMemberCheckedList(checked);
-      }
-
-      if (role === TeamRole.Department) {
-        cacheMemberCheckedList(
-          checked,
-          mapCollaboratorId(departmentMemberList),
-        );
-        cacheDepartmentCheckedList(checked);
+        cacheMemberCheckedList(checked, ids);
       }
     },
-    [
-      cacheDepartmentCheckedList,
-      cacheMemberCheckedList,
-      departmentMemberList,
-      selectAllGroup,
-    ],
+    [cacheMemberCheckedList, selectAllGroup],
   );
 
-  const options = PermissionLevelOptions.filter(
-    ({ action }) => canGrantManage || action !== Permission.Manage,
+  const options = getAssignableResourcePermissionOptions(
+    resourceType,
+    canGrantManage,
   ).map(({ action, value }) => ({
     label: (
       <div className="flex items-center gap-2">
@@ -130,65 +97,34 @@ export function AddCollaboratorDialog({
   }));
 
   const clickMember = useCallback(
-    (id: string, value?: boolean) => {
-      cacheMemberCheckedItem(id, value);
+    (id: string, checked?: boolean) => {
+      cacheMemberCheckedItem(id, checked);
     },
     [cacheMemberCheckedItem],
   );
 
-  const memberContextValue = useMemo(() => {
-    return {
-      list: memberList,
-      handleClick: clickMember,
-    };
-  }, [clickMember, memberList]);
-
-  const groupContextValue = useMemo(() => {
-    return {
-      list: groupList,
-      handleClick: handleGroupClick,
-    };
-  }, [groupList, handleGroupClick]);
-
-  const clickDepartment = useCallback(
-    (id: string, value?: boolean) => {
-      cacheDepartmentCheckedItem(id, value);
-    },
-    [cacheDepartmentCheckedItem],
+  const memberContextValue = useMemo(
+    () => ({ list: memberList, handleClick: clickMember }),
+    [clickMember, memberList],
   );
-
-  const departmentContextValue = useMemo(() => {
-    return {
-      list: departmentList,
-      handleClick: clickDepartment,
-      setId,
-      setFetchDepartmentListParams,
-    };
-  }, [clickDepartment, departmentList, setFetchDepartmentListParams, setId]);
-
-  const groupCheckedList = useMemo(() => {
-    return groupList.filter((x) => x.checked);
-  }, [groupList]);
-
-  const nextCheckedList = useMemo(() => {
-    return {
-      departmentCheckedList,
-      memberCheckedList,
-      groupCheckedList,
-    };
-  }, [departmentCheckedList, groupCheckedList, memberCheckedList]);
-
-  const flatCheckedList = useMemo(() => {
-    return [
-      ...memberCheckedList,
-      ...departmentCheckedList,
-      ...groupCheckedList,
-    ];
-  }, [departmentCheckedList, groupCheckedList, memberCheckedList]);
-
+  const groupContextValue = useMemo(
+    () => ({ list: groupList, handleClick: handleGroupClick }),
+    [groupList, handleGroupClick],
+  );
+  const groupCheckedList = useMemo(
+    () => groupList.filter((item) => item.checked),
+    [groupList],
+  );
+  const checkedList = useMemo(
+    () => ({ groupCheckedList, memberCheckedList }),
+    [groupCheckedList, memberCheckedList],
+  );
+  const selectedCollaborators = useMemo(
+    () => [...memberCheckedList, ...groupCheckedList],
+    [groupCheckedList, memberCheckedList],
+  );
   const clickRightItem = useHandleRightItemClick({
     handleMemberClick: clickMember,
-    handleDepartmentClick: clickDepartment,
     handleGroupClick,
   });
 
@@ -196,10 +132,9 @@ export function AddCollaboratorDialog({
     onOk?.({
       permission: Number(value),
       member_list: mapCollaboratorId(memberCheckedList),
-      department_list: mapCollaboratorId(departmentCheckedList),
       group_list: mapCollaboratorId(groupCheckedList),
     });
-  }, [departmentCheckedList, groupCheckedList, memberCheckedList, onOk, value]);
+  }, [groupCheckedList, memberCheckedList, onOk, value]);
 
   return (
     <Dialog open onOpenChange={hideModal}>
@@ -210,23 +145,18 @@ export function AddCollaboratorDialog({
             {t('permission.addCollaborator')}
           </DialogTitle>
         </DialogHeader>
-        <section className="flex min-w-0 overflow-hidden rounded-lg border divide-x">
-          <div className="min-w-0 flex-1 p-4">
-            <CheckedListContext.Provider value={nextCheckedList}>
+        <section className="flex h-[min(58vh,540px)] min-h-[320px] min-w-0 overflow-hidden rounded-lg border divide-x">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col p-4">
+            <CheckedListContext.Provider value={checkedList}>
               <MemberContext.Provider value={memberContextValue}>
-                <DepartmentContext.Provider value={departmentContextValue}>
-                  <GroupContext.Provider value={groupContextValue}>
-                    <LeftPanel selectAll={selectAll}></LeftPanel>
-                  </GroupContext.Provider>
-                </DepartmentContext.Provider>
+                <GroupContext.Provider value={groupContextValue}>
+                  <LeftPanel selectAll={selectAll} />
+                </GroupContext.Provider>
               </MemberContext.Provider>
             </CheckedListContext.Provider>
           </div>
-          <div className="min-w-0 flex-1 p-4">
-            <RightPanel
-              list={flatCheckedList}
-              click={clickRightItem}
-            ></RightPanel>
+          <div className="min-h-0 min-w-0 flex-1 overflow-hidden p-4">
+            <RightPanel list={selectedCollaborators} click={clickRightItem} />
           </div>
         </section>
         <DialogFooter className="min-w-0 gap-2 sm:justify-between sm:space-x-0">
@@ -236,13 +166,13 @@ export function AddCollaboratorDialog({
               onChange={setValue}
               value={value}
               triggerClassName="min-w-0"
-            ></SelectWithSearch>
+            />
           </div>
           <ButtonLoading
             type="submit"
             onClick={handleOk}
             loading={loading}
-            disabled={flatCheckedList.length === 0}
+            disabled={selectedCollaborators.length === 0}
             className="w-full shrink-0 sm:w-auto"
           >
             {t('common.save')}

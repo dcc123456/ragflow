@@ -7,9 +7,9 @@ import {
 } from '@/components/ui/dropdown-menu';
 import {
   LabelMap,
-  Permission,
-  PermissionLevelOptions,
+  PermissionResourceType,
   getResourcePermissionActions,
+  getAssignableResourcePermissionOptions,
 } from '@/ee/constants/team';
 import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -17,6 +17,7 @@ import { useTranslation } from 'react-i18next';
 type PermissionCellProps = {
   permissions: Record<string, number>;
   resourceIds: string[];
+  resourceType: PermissionResourceType;
   editable: boolean;
   canGrantManage: boolean;
   onChange: (permission: number) => void;
@@ -25,6 +26,7 @@ type PermissionCellProps = {
 export function PermissionCell({
   permissions,
   resourceIds,
+  resourceType,
   editable,
   canGrantManage,
   onChange,
@@ -78,8 +80,9 @@ export function PermissionCell({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent>
-        {PermissionLevelOptions.filter(
-          ({ action }) => canGrantManage || action !== Permission.Manage,
+        {getAssignableResourcePermissionOptions(
+          resourceType,
+          canGrantManage,
         ).map(({ action, value }) => {
           return (
             <DropdownMenuItem

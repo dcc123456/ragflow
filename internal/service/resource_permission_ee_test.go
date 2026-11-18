@@ -337,7 +337,7 @@ func TestModelProviderPermissionExpandsToExistingInstances(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatalf("seed model instances: %v", err)
 	}
-	permission := entity.ResourcePermissionRead | entity.ResourcePermissionWrite
+	permission := entity.ResourcePermissionRead
 	if err := NewTenantService().UpdateResourcePermissions(resourcePermissionTestContext(t), "owner", "tenant-permission", ResourcePermissionUpdateRequest{
 		ResourceType: "llm", ResourceIDs: []string{"DeepSeek"}, Permission: &permission, MemberList: []string{"reader-link"},
 	}); err != nil {

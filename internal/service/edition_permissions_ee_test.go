@@ -60,7 +60,7 @@ func TestMCPServerPermissionsUsePolicyAcrossServiceOperations(t *testing.T) {
 	if _, code, err := service.GetMCPServer(ctx, "team-server"); err == nil || code != common.CodeNotFound || !errors.Is(err, permission.ErrPermissionDenied) {
 		t.Fatalf("member direct read should be hidden: code=%d err=%v", code, err)
 	}
-	listed, code, err := service.ListMCPServers(ctx, "team", nil, "", 0, 0, "create_time", false)
+	listed, code, err := service.ListMCPServers(ctx, "team", "", nil, "", 0, 0, "create_time", false)
 	if err != nil || code != common.CodeSuccess || len(listed.MCPServers) != 0 || listed.Total != 0 {
 		t.Fatalf("member list should hide an unshared server: response=%#v code=%d err=%v", listed, code, err)
 	}

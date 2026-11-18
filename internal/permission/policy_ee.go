@@ -497,7 +497,12 @@ func (p *enterprisePolicy) Scope(ctx context.Context, query ScopeQuery) (Scope, 
 	if _, err := p.loadMembership(ctx); err != nil {
 		return Scope{}, err
 	}
-	refs, err := p.source.ListResourceRefs(ctx, query.Kind, query.Parent)
+	var refs []ResourceRef
+	if query.Kind == ResourceKindChat || query.Kind == ResourceKindSearchApp {
+		refs, err = p.listTenantResourceRefs(ctx, query.Kind)
+	} else {
+		refs, err = p.source.ListResourceRefs(ctx, query.Kind, query.Parent)
+	}
 	if err != nil {
 		return Scope{}, fmt.Errorf("permission: list resource candidates: %w", err)
 	}
@@ -525,6 +530,37 @@ func (p *enterprisePolicy) Scope(ctx context.Context, query ScopeQuery) (Scope, 
 		scope.Mode = ScopeIDs
 	}
 	return scope, nil
+}
+
+func (p *enterprisePolicy) listTenantResourceRefs(ctx context.Context, kind ResourceKind) ([]ResourceRef, error) {
+	tenantID := strings.TrimSpace(TenantIDFromContext(ctx))
+	if tenantID == "" {
+		return nil, ErrMembershipNotFound
+	}
+
+	var ids []string
+	var err error
+	switch kind {
+	case ResourceKindChat:
+		err = p.db.WithContext(ctx).Model(&entity.Chat{}).
+			Where("tenant_id = ? AND status = ?", tenantID, string(entity.StatusValid)).
+			Pluck("id", &ids).Error
+	case ResourceKindSearchApp:
+		err = p.db.WithContext(ctx).Model(&entity.Search{}).
+			Where("tenant_id = ? AND status = ?", tenantID, string(entity.StatusValid)).
+			Pluck("id", &ids).Error
+	default:
+		return nil, ErrInvalidPermission
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	refs := make([]ResourceRef, 0, len(ids))
+	for _, id := range ids {
+		refs = append(refs, ResourceRef{Kind: kind, ID: id})
+	}
+	return refs, nil
 }
 
 func (p *enterprisePolicy) FilterResources(ctx context.Context, refs []ResourceRef, operation Operation) ([]ResourceRef, error) {
@@ -555,16 +591,25 @@ func (p *enterprisePolicy) FilterResources(ctx context.Context, refs []ResourceR
 }
 
 func (p *enterprisePolicy) QueryScope(ctx context.Context, query ScopeQuery) (QueryScope, bool, error) {
+	if (query.Kind == ResourceKindModelProvider || query.Kind == ResourceKindModelInstance || query.Kind == ResourceKindModel) && strings.TrimSpace(query.TenantID) != "" {
+		ctx = WithIdentity(ctx, UserIDFromContext(ctx), strings.TrimSpace(query.TenantID))
+	}
 	var err error
 	ctx, err = p.withTenantContext(ctx)
 	if err != nil {
 		return QueryScope{}, true, err
+	}
+	if query.Kind == ResourceKindModelProvider || query.Kind == ResourceKindModelInstance || query.Kind == ResourceKindModel {
+		return p.modelResourceReadQueryScope(ctx, query)
 	}
 	if query.Kind == ResourceKindMCPServer {
 		if query.Operation != OperationRead || query.Parent.ID != "" || query.Parent.Kind != "" || query.Entry != nil {
 			return QueryScope{}, false, nil
 		}
 		return p.mcpServerReadQueryScope(ctx)
+	}
+	if query.Kind == ResourceKindDocument {
+		return p.documentReadQueryScope(ctx, query)
 	}
 	if query.Kind != ResourceKindFile || query.Operation != OperationRead ||
 		query.Parent.Kind != ResourceKindFolder || strings.TrimSpace(query.Parent.ID) == "" || query.Entry != nil {
@@ -597,6 +642,169 @@ func (p *enterprisePolicy) QueryScope(ctx context.Context, query ScopeQuery) (Qu
 		return query.Where("file.tenant_id = ?", TenantIDFromContext(ctx)).
 			Where("EXISTS (?) OR ((file.created_by = ? OR (file.created_by = '' AND ?)) AND NOT EXISTS (?))",
 				grant, UserIDFromContext(ctx), membership.RoleValue == "owner", ownerGrant)
+	}}, true, nil
+}
+
+func (p *enterprisePolicy) documentReadQueryScope(ctx context.Context, query ScopeQuery) (QueryScope, bool, error) {
+	if query.Operation != OperationRead || query.Parent.Kind != ResourceKindDataset ||
+		strings.TrimSpace(query.Parent.ID) == "" || query.Entry != nil {
+		return QueryScope{}, false, nil
+	}
+	if err := p.CheckResource(ctx, query.Parent, OperationRead); err != nil {
+		return QueryScope{}, true, err
+	}
+	membership, err := p.loadMembership(ctx)
+	if err != nil {
+		return QueryScope{}, true, err
+	}
+	tenantID := membership.Membership.TenantID
+	membershipID := membership.Membership.ID
+	userID := UserIDFromContext(ctx)
+	datasetID := query.Parent.ID
+	const readableDocumentPermissions = entity.ResourcePermissionRead | entity.ResourcePermissionWrite | entity.ResourcePermissionManage | entity.ResourcePermissionOwner
+	db := p.db.WithContext(ctx)
+	groupMembership := db.Table("group_member AS document_scope_group_member").
+		Select("1").
+		Joins("JOIN group_info AS document_scope_group ON document_scope_group.id = document_scope_group_member.group_id").
+		Where("document_scope_group_member.group_id = document_scope_grant.group_id AND document_scope_group_member.member_id = ? AND document_scope_group_member.status = ? AND document_scope_group.tenant_id = ? AND document_scope_group.status = ?",
+			membershipID, string(entity.StatusValid), tenantID, string(entity.StatusValid))
+	documentGrant := db.Table("permission AS document_scope_grant").
+		Select("1").
+		Where("document_scope_grant.tenant_id = ? AND document_scope_grant.resource_type = ? AND document_scope_grant.resource_id = document.id AND document_scope_grant.status = ? AND (document_scope_grant.permission & ?) <> 0",
+			tenantID, "document", string(entity.StatusValid), readableDocumentPermissions).
+		Where("((document_scope_grant.member_id = ? AND (document_scope_grant.group_id IS NULL OR document_scope_grant.group_id = '')) OR ((document_scope_grant.member_id IS NULL OR document_scope_grant.member_id = '') AND document_scope_grant.group_id IS NOT NULL AND document_scope_grant.group_id <> '' AND EXISTS (?)))",
+			membershipID, groupMembership)
+	documentOwnerGrant := db.Table("permission AS document_scope_owner_grant").
+		Select("1").
+		Where("document_scope_owner_grant.tenant_id = ? AND document_scope_owner_grant.resource_type = ? AND document_scope_owner_grant.resource_id = document.id AND document_scope_owner_grant.status = ? AND (document_scope_owner_grant.permission & ?) <> 0 AND document_scope_owner_grant.member_id IS NOT NULL AND document_scope_owner_grant.member_id <> ''",
+			tenantID, "document", string(entity.StatusValid), entity.ResourcePermissionOwner)
+	return QueryScope{apply: func(query *gorm.DB) *gorm.DB {
+		return query.Where("document.kb_id = ?", datasetID).
+			Where("EXISTS (?) OR ((document.user_id = ? OR (document.user_id = '' AND document.created_by = ?)) AND NOT EXISTS (?))",
+				documentGrant, userID, userID, documentOwnerGrant)
+	}}, true, nil
+}
+
+func (p *enterprisePolicy) modelResourceReadQueryScope(ctx context.Context, query ScopeQuery) (QueryScope, bool, error) {
+	ownerUserID := strings.TrimSpace(query.OwnerUserID)
+	currentUserID := strings.TrimSpace(UserIDFromContext(ctx))
+	if ownerUserID != "" && ownerUserID != currentUserID {
+		query.OwnerUserID = ""
+		currentScope, handled, err := p.modelResourceReadQueryScope(ctx, query)
+		if err != nil {
+			return QueryScope{}, true, err
+		}
+		if !handled {
+			return QueryScope{}, true, nil
+		}
+
+		ownerCtx := WithIdentity(ctx, ownerUserID, TenantIDFromContext(ctx))
+		ownerScope, handled, err := p.modelResourceReadQueryScope(ownerCtx, query)
+		if errors.Is(err, ErrMembershipNotFound) || errors.Is(err, ErrPermissionDenied) {
+			return QueryScope{}, true, nil
+		}
+		if err != nil {
+			return QueryScope{}, true, err
+		}
+		if !handled {
+			return QueryScope{}, true, nil
+		}
+		return QueryScope{apply: func(dbQuery *gorm.DB) *gorm.DB {
+			return ownerScope.Apply(currentScope.Apply(dbQuery))
+		}}, true, nil
+	}
+	if query.Entry != nil || (query.Parent.ID == "") != (query.Parent.Kind == "") {
+		return QueryScope{}, false, nil
+	}
+	switch query.Kind {
+	case ResourceKindModelProvider:
+		if query.Parent.ID != "" || query.Operation != OperationRead {
+			return QueryScope{}, false, nil
+		}
+	case ResourceKindModelInstance:
+		if (query.Operation != OperationRead && query.Operation != OperationUse) || (query.Parent.ID != "" && query.Parent.Kind != ResourceKindModelProvider) {
+			return QueryScope{}, false, nil
+		}
+	case ResourceKindModel:
+		if (query.Operation != OperationRead && query.Operation != OperationUse) ||
+			(query.Parent.ID != "" && query.Parent.Kind != ResourceKindModelProvider && query.Parent.Kind != ResourceKindModelInstance) {
+			return QueryScope{}, false, nil
+		}
+	default:
+		return QueryScope{}, false, nil
+	}
+
+	membership, err := p.loadMembership(ctx)
+	if err != nil {
+		return QueryScope{}, true, err
+	}
+	featureMask, err := p.effectiveFeatureMask(ctx, UserIDFromContext(ctx), membership, "model_provider")
+	if err != nil {
+		return QueryScope{}, true, err
+	}
+	if featureMask&entity.RoleActionEnable == 0 {
+		return QueryScope{}, true, nil
+	}
+
+	tenantID := membership.Membership.TenantID
+	userID := UserIDFromContext(ctx)
+	membershipID := membership.Membership.ID
+	db := p.db.WithContext(ctx)
+	applyInstanceAccess := func(query *gorm.DB, instanceAlias, providerAlias string) *gorm.DB {
+		groupMembership := db.Table("group_member AS model_scope_group_member").
+			Select("1").
+			Joins("JOIN group_info AS model_scope_group ON model_scope_group.id = model_scope_group_member.group_id").
+			Where("model_scope_group_member.group_id = model_scope_grant.group_id AND model_scope_group_member.member_id = ? AND model_scope_group_member.status = ? AND model_scope_group.tenant_id = ? AND model_scope_group.status = ?",
+				membershipID, string(entity.StatusValid), tenantID, string(entity.StatusValid))
+		grants := db.Table("permission AS model_scope_grant").
+			Select("1").
+			Where("model_scope_grant.tenant_id = ? AND model_scope_grant.resource_type = ? AND model_scope_grant.resource_id = "+instanceAlias+".id AND model_scope_grant.status = ? AND (model_scope_grant.permission & ?) <> 0",
+				tenantID, "model_instance", string(entity.StatusValid), entity.ResourcePermissionRead|entity.ResourcePermissionOwner).
+			Where("((model_scope_grant.member_id = ? AND (model_scope_grant.group_id IS NULL OR model_scope_grant.group_id = '')) OR (model_scope_grant.group_id IS NOT NULL AND model_scope_grant.group_id <> '' AND (model_scope_grant.member_id IS NULL OR model_scope_grant.member_id = '') AND EXISTS (?)))",
+				membershipID, groupMembership)
+		ownerGrant := db.Table("permission AS model_scope_owner_grant").
+			Select("1").
+			Where("model_scope_owner_grant.tenant_id = ? AND model_scope_owner_grant.resource_type = ? AND model_scope_owner_grant.resource_id = "+instanceAlias+".id AND model_scope_owner_grant.status = ? AND (model_scope_owner_grant.permission & ?) <> 0",
+				tenantID, "model_instance", string(entity.StatusValid), entity.ResourcePermissionOwner)
+		return query.Where("(EXISTS (?) OR ("+providerAlias+".user_id = ? AND NOT EXISTS (?)))", grants, userID, ownerGrant)
+	}
+
+	kind := query.Kind
+	parent := query.Parent
+	return QueryScope{apply: func(query *gorm.DB) *gorm.DB {
+		switch kind {
+		case ResourceKindModelProvider:
+			readableInstance := db.Table("tenant_model_instance AS model_scope_instance").
+				Select("1").
+				Joins("JOIN tenant_model_provider AS model_scope_provider ON model_scope_provider.id = model_scope_instance.provider_id").
+				Where("model_scope_provider.id = tenant_model_provider.id AND model_scope_provider.tenant_id = ?", tenantID)
+			readableInstance = applyInstanceAccess(readableInstance, "model_scope_instance", "model_scope_provider")
+			return query.Where("tenant_model_provider.tenant_id = ?", tenantID).
+				Where("(tenant_model_provider.user_id = ? OR EXISTS (?))", userID, readableInstance)
+		case ResourceKindModelInstance:
+			readableProvider := db.Table("tenant_model_provider AS model_scope_provider").
+				Select("1").
+				Where("model_scope_provider.id = tenant_model_instance.provider_id AND model_scope_provider.tenant_id = ?", tenantID)
+			if parent.ID != "" {
+				readableProvider = readableProvider.Where("model_scope_provider.id = ?", parent.ID)
+			}
+			readableProvider = applyInstanceAccess(readableProvider, "tenant_model_instance", "model_scope_provider")
+			return query.Where("EXISTS (?)", readableProvider)
+		case ResourceKindModel:
+			readableInstance := db.Table("tenant_model_instance AS model_scope_instance").
+				Select("1").
+				Joins("JOIN tenant_model_provider AS model_scope_provider ON model_scope_provider.id = model_scope_instance.provider_id").
+				Where("model_scope_instance.id = tenant_model.instance_id AND model_scope_instance.provider_id = tenant_model.provider_id AND model_scope_provider.tenant_id = ?", tenantID)
+			if parent.Kind == ResourceKindModelProvider {
+				readableInstance = readableInstance.Where("model_scope_provider.id = ?", parent.ID)
+			} else if parent.Kind == ResourceKindModelInstance {
+				readableInstance = readableInstance.Where("model_scope_instance.id = ?", parent.ID)
+			}
+			readableInstance = applyInstanceAccess(readableInstance, "model_scope_instance", "model_scope_provider")
+			return query.Where("EXISTS (?)", readableInstance)
+		default:
+			return query.Where("1 = 0")
+		}
 	}}, true, nil
 }
 

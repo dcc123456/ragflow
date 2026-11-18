@@ -20,9 +20,12 @@ package document
 
 import (
 	"context"
+	"ragflow/internal/common"
 	"ragflow/internal/dao"
 	"ragflow/internal/entity"
+	"ragflow/internal/permission/testsupport"
 	"ragflow/internal/service"
+	"strings"
 	"testing"
 
 	"gorm.io/gorm"
@@ -52,6 +55,28 @@ func seedDocumentPreviewMemberAccessEE(t *testing.T, db *gorm.DB) {
 	}).Error; err != nil {
 		t.Fatalf("share dataset with member: %v", err)
 	}
+	grantDocumentTestResource(t, db, "tenant-1", "document", "doc-prev", "user-2", entity.ResourcePermissionRead)
+}
+
+func grantDocumentTestResource(t *testing.T, db *gorm.DB, tenantID, resourceType, resourceID, userID string, mask int32) {
+	t.Helper()
+	var membership entity.UserTenant
+	if err := db.Where("tenant_id = ? AND user_id = ? AND status = ?", tenantID, userID, string(entity.StatusValid)).Take(&membership).Error; err != nil {
+		t.Fatalf("load %s membership for resource grant: %v", userID, err)
+	}
+	memberID, resourceIDValue, status := membership.ID, resourceID, string(entity.StatusValid)
+	if err := db.Create(&entity.Permission{
+		ID: common.GenerateToken(), MemberID: &memberID, TenantID: tenantID,
+		ResourceType: resourceType, ResourceID: &resourceIDValue, Permission: mask, Status: &status,
+	}).Error; err != nil {
+		t.Fatalf("grant %s access to %s %s: %v", userID, resourceType, resourceID, err)
+	}
+}
+
+func grantDocumentTestResourceReadWrite(t *testing.T, db *gorm.DB, tenantID, resourceType, resourceID, userID string) {
+	t.Helper()
+	grantDocumentTestResource(t, db, tenantID, resourceType, resourceID, userID,
+		entity.ResourcePermissionRead|entity.ResourcePermissionWrite)
 }
 
 func assertUploadedDocumentOwnerGrant(t *testing.T, ctx context.Context, documentID string) {
@@ -77,5 +102,40 @@ func assertUploadedDocumentOwnerGrant(t *testing.T, ctx context.Context, documen
 	}
 	if len(listed) != 1 || listed[0].ID != membership.ID || listed[0].Permissions[documentID] != entity.ResourcePermissionOwner {
 		t.Fatalf("uploaded document permissions = %+v, want document OWNER for user-1", listed)
+	}
+}
+
+func TestBatchUpdateDocumentStatusRetainsPartialFailure(t *testing.T) {
+	db := setupServiceTestDB(t)
+	pushServiceDB(t, db)
+	insertTestKB(t, "kb-1", "tenant-1", 1, 0, 0)
+	if err := db.Model(&entity.Knowledgebase{}).Where("id = ?", "kb-1").Update("permission", string(entity.TenantPermissionMe)).Error; err != nil {
+		t.Fatalf("make dataset private: %v", err)
+	}
+	insertTestDoc(t, "owner-doc", "kb-1", 0, 0)
+	insertTestDoc(t, "member-doc", "kb-1", 0, 0)
+	if err := db.Model(&entity.Document{}).Where("id = ?", "member-doc").Updates(map[string]interface{}{"created_by": "member", "user_id": "member"}).Error; err != nil {
+		t.Fatalf("make one document member-owned: %v", err)
+	}
+	valid := string(entity.StatusValid)
+	if err := db.Create(&entity.UserTenant{
+		ID: "member-tenant-1", UserID: "member", TenantID: "tenant-1", Role: "normal", Status: &valid,
+	}).Error; err != nil {
+		t.Fatalf("create tenant member: %v", err)
+	}
+	if err := testsupport.PrepareEnterprisePermissionFixture(db, "tenant-1", "user-1", "member"); err != nil {
+		t.Fatalf("prepare document status permission fixture: %v", err)
+	}
+	grantDocumentTestResourceReadWrite(t, db, "tenant-1", "kb", "kb-1", "member")
+	grantDocumentTestResourceReadWrite(t, db, "tenant-1", "document", "member-doc", "member")
+
+	svc := testDocumentService(t)
+	ctx := documentTestActorContext(t.Context(), "member", "tenant-1")
+	_, code, err := svc.BatchUpdateDocumentStatus(ctx, "kb-1", "1", []string{"member-doc", "owner-doc"})
+	if err == nil {
+		t.Fatal("expected a partial failure")
+	}
+	if code != common.CodeServerError || !strings.Contains(err.Error(), "partial failure:") || !strings.Contains(err.Error(), "owner-doc") || !strings.Contains(err.Error(), "Permission denied") {
+		t.Fatalf("result code/error = %d/%v, want partial failure", code, err)
 	}
 }

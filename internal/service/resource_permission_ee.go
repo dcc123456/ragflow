@@ -184,6 +184,13 @@ func (s *TenantService) UpdateResourcePermissions(ctx context.Context, userID, t
 		if len(resources) > maxPermissionBatchSize {
 			return common.NewCodedError(common.CodeBadRequest, "expanded resource list exceeds 200 items")
 		}
+		for _, resource := range resources {
+			if resource.Type == "model_instance" &&
+				*request.Permission != 0 &&
+				*request.Permission != entity.ResourcePermissionRead {
+				return common.NewCodedError(common.CodeBadRequest, "model instances only support read permission")
+			}
+		}
 
 		targets := make([]resourcePermissionTarget, 0, len(targetIDs))
 		for _, target := range targetIDs {
