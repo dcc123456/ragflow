@@ -997,6 +997,21 @@ func (h *Handler) DeleteSoftFingerprint(c *gin.Context) {
 	common.RespondSuccess(c, nil, "SUCCESS")
 }
 
+func (h *Handler) ListFeatures(c *gin.Context) {
+	common.StartOperationLog(c, "list_admin_features")
+	defer common.FinishOperationLog(c)
+
+	ctx := c.Request.Context()
+
+	features, err := h.service.ListFeatures(ctx)
+	if err != nil {
+		common.RespondError(c, common.CodeServerError, err.Error())
+		return
+	}
+
+	common.RespondSuccess(c, features, "SUCCESS")
+}
+
 type ShowUserActivityRequest struct {
 	Days  int    `json:"days"`
 	Email string `json:"email"`

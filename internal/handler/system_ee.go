@@ -92,3 +92,16 @@ func (h *SystemHandler) GetQuota(c *gin.Context) {
 	}
 	common.RespondSuccess(c, quota, "success")
 }
+
+// ListFeatures /api/v1/system/features [GET]
+func (h *SystemHandler) ListFeatures(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	features, err := h.systemService.ListFeatures(ctx)
+	if err != nil {
+		common.RespondError(c, common.CodeServerError, err.Error())
+		return
+	}
+
+	common.RespondSuccess(c, features, "SUCCESS")
+}
