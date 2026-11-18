@@ -206,7 +206,7 @@ export function MoveGroupDialog({
   return (
     <Dialog open onOpenChange={hideModal}>
       <DialogContent className="sm:max-w-[425px]">
-        <DialogHeader>
+        <DialogHeader className="min-w-0">
           <DialogTitle>{t('common.move')}</DialogTitle>
           <p className="truncate text-sm text-text-secondary">{group.name}</p>
         </DialogHeader>

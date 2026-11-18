@@ -107,7 +107,7 @@ export function GroupFormDialog({
   return (
     <Dialog open onOpenChange={hideModal}>
       <DialogContent className="sm:max-w-[425px]">
-        <DialogHeader>
+        <DialogHeader className="min-w-0">
           <DialogTitle>{title}</DialogTitle>
           {parentGroup && (
             <p className="truncate text-sm text-text-secondary">
