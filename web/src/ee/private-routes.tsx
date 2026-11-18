@@ -5,6 +5,7 @@ import type { ComponentType, ReactNode } from 'react';
 export enum PrivateRoutes {
   Price = '/price',
   Billing = '/billing',
+  ModelGroup = '/model-group',
   EvaluationDetail = '/evaluation-detail',
   Evaluation = '/evaluation',
   Tickets = '/support',
@@ -232,6 +233,19 @@ export const privateRoutes: PrivateRoute[] = [
           },
         ],
         errorElement: <FallbackComponent />,
+      },
+      {
+        // The integrations settings layout is the third pathless child of the
+        // upstream app shell, after the dataset and application nav groups.
+        matchIndex: 3,
+        children: [
+          {
+            path: `${Routes.Integrations}${PrivateRoutes.ModelGroup}`,
+            Component: () =>
+              import('@/ee/pages/user-setting/setting-model-group'),
+            errorElement: <FallbackComponent />,
+          },
+        ],
       },
       {
         path: `${Routes.Files}${PrivateRoutes.EvaluationDetail}/:id`,

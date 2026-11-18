@@ -130,4 +130,9 @@ export default {
   adminGetLicense: '/api/v1/admin/license',
   adminSetLicense: '/api/v1/admin/license',
   adminGetFingerprint: '/api/v1/admin/fingerprint',
+  modelGroups: `${restAPIv1}/models/groups`,
+  modelGroup: (groupName: string) =>
+    `${restAPIv1}/models/groups/${encodeURIComponent(groupName)}`,
+  modelGroupMember: (groupName: string) =>
+    `${restAPIv1}/models/groups/${encodeURIComponent(groupName)}/model`,
 };

@@ -2,7 +2,42 @@
 
 This guide documents the Go implementation of RAGFlow. Use `docker/.env`, `docker/docker-compose.yml`, `Dockerfile`, and `docker/entrypoint.sh` for a Go deployment.
 
-The Go image runs one `bin/ragflow_server` mode per container. Compose starts the API, Admin, Ingestor, and Syncer separately. DeepDoc inference runs in-process in the API and Ingestor; the optional `deepdoc` profile exposes a standalone Go DeepDoc HTTP server. Select an official Go image tag documented in the corresponding release notes, or build the image locally as described below.
+The Go image runs one `bin/ragflow_server` mode per container. Compose starts the API, Admin, Ingestor, Syncer, and Chatter separately. DeepDoc inference runs in-process in the API, Ingestor, and Chatter; the optional `deepdoc` profile exposes a standalone Go DeepDoc HTTP server. Select an official Go image tag documented in the corresponding release notes, or build the image locally as described below.
+
+Compose runs chat channels in the `chatter` container using
+`bin/ragflow_server --chatter`. The API container uses `--disable-chat-channels`
+and reads shared channel runtime status from Kvrocks. Both containers use the
+same service configuration, database, Kvrocks, storage and model resources.
+Use an image built from this checkout with support for both `--chatter` and
+`--disable-chat-channels`; see the [Go image build guide](../docs/develop/build_docker_image.mdx).
+
+To apply this split to an existing Compose deployment, recreate the API and start
+Chatter together:
+
+```bash
+docker compose --env-file docker/.env -f docker/docker-compose.yml up -d ragflow-cpu chatter
+```
+
+If a channel uses inbound webhooks, route its public callback URL to the Chatter
+container and publish the configured listener port there (LINE defaults to
+`3001`, WeCom to `3002`). Bind the listener to `0.0.0.0` inside the container.
+Outbound channel connections do not need published ports.
+
+In separate-process mode, WhatsApp status and QR changes (including logout)
+appear on the next status publication, normally within 10 seconds. Stopping or
+replacing a channel removes its cached status immediately; a crashed chatter
+process loses its cached status after 30 seconds without a refresh.
+
+For a manual deployment, run these commands in separate process supervisors:
+
+```bash
+bin/ragflow_server --api --disable-chat-channels
+bin/ragflow_server --chatter
+```
+
+The binary selects one mode; `--api --chatter` does not launch both processes.
+Run one channel owner per deployment: starting standalone chatter alongside an API
+with embedded channels enabled would connect each channel twice.
 
 <details open>
 <summary><b>📗 Table of Contents</b></summary>
@@ -53,7 +88,7 @@ sudo sysctl -w vm.max_map_count=262144
 
 This change is temporary. To preserve it after a reboot, add `vm.max_map_count=262144` to `/etc/sysctl.conf`.
 
-The `v1.0.0-rc1` tag and later release tags use the Go implementation. The `migrate` service runs database migrations once and exits. Admin starts after migration succeeds and the bundled dependencies are healthy. The API, Ingestor, and Syncer start after Admin is healthy. Open `http://localhost` after the API HTTP health check succeeds.
+The `v1.0.0-rc1` tag and later release tags use the Go implementation. The `migrate` service runs database migrations once and exits. Admin starts after migration succeeds and the bundled dependencies are healthy. The API, Ingestor, Syncer, and Chatter start after Admin is healthy. Open `http://localhost` after the API HTTP health check succeeds.
 
 For local image builds, use the [Go image build guide](../docs/develop/build_docker_image.mdx).
 
@@ -61,7 +96,7 @@ Verify the deployment with:
 
 ```bash
 docker ps
-docker compose -f docker-compose.yml logs --tail 100 ragflow-cpu admin ingestor syncer
+docker compose -f docker-compose.yml logs --tail 100 ragflow-cpu admin ingestor syncer chatter
 curl -f http://localhost/api/v1/system/healthz
 ```
 
@@ -71,10 +106,11 @@ If `SVR_WEB_HTTP_PORT` is not `80`, append the configured port to the URL. In th
 
 | Compose service | Binary arguments | Published ports |
 | --- | --- | --- |
-| `ragflow-cpu` | `--api` | Web `80`/`443`, API `9380` |
+| `ragflow-cpu` | `--api --disable-chat-channels` | Web `80`/`443`, API `9380` |
 | `admin` | `--admin --init-superuser` | Admin `9381` |
 | `ingestor` | `--ingestor` | None |
 | `syncer` | `--syncer` | None |
+| `chatter` | `--chatter` | None by default; publish inbound webhook ports when needed |
 | `deepdoc` (optional profile) | `--deepdoc --port=8000` | Internal `8000` |
 | `migrate` (one-shot) | `--migrate` | None |
 
@@ -227,7 +263,7 @@ In the RAGFlow open-source 1.0 release, DeepDoc uses CPU inference.
 
 ## 🐋 Service configuration
 
-[service_conf.yaml.template](./service_conf.yaml.template) specifies the system-level configuration for the Go API, Admin, Ingestor, and Syncer services. In a dockerized setup, the generated `service_conf.yaml` file is automatically created from this template (replacing all environment variables by their values).
+[service_conf.yaml.template](./service_conf.yaml.template) specifies the system-level configuration for the Go API, Admin, Ingestor, Syncer, and Chatter services. In a dockerized setup, the generated `service_conf.yaml` file is automatically created from this template (replacing all environment variables by their values).
 
 - `api`
   - `host`: The API server's IP address inside the Docker container. Defaults to `0.0.0.0`.

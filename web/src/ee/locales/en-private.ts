@@ -132,6 +132,38 @@ export default {
       requestAdminAddModel:
         'Please contact the administrator to add the model.',
       billing: 'Billing',
+      modelGroup: 'Model Group',
+      modelGroupPage: {
+        title: 'Model groups',
+        newGroup: 'New model group',
+        createTitle: 'Create model group',
+        groupName: 'Group name',
+        nameRequired: 'Enter a group name',
+        nameDuplicate: 'This group name already exists',
+        empty: 'No model groups yet',
+        loading: 'Loading',
+        loadFailed: 'Failed to load model groups',
+        membersLoadFailed: 'Failed to load group members',
+        retry: 'Retry',
+        addMember: 'Add model',
+        addMemberTitle: 'Add model to group',
+        memberAlreadyAdded: 'This model is already in the group',
+        removeMemberTitle: 'Remove model from group?',
+        deleteGroupTitle: 'Delete model group?',
+        deleteGroupDescription:
+          'Only the group is deleted. Provider models are not affected.',
+        modelName: 'Model name',
+        modelType: 'Model type',
+        instanceName: 'Instance name',
+        position: 'Position',
+        status: 'Status',
+      },
+      modelGroupSelector: {
+        direct: 'Model',
+        group: 'Model Group',
+        unavailable: 'Unavailable',
+        pending: 'Model groups are still loading. Wait for loading to finish.',
+      },
     },
     message: {
       deleteIncomplete:

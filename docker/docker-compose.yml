@@ -73,7 +73,7 @@ services:
 
   ragflow-cpu:
     <<: *ragflow
-    command: ["--api"]
+    command: ["--api", "--disable-chat-channels"]
     environment:
       <<: *ragflow-environment
     ports:
@@ -102,6 +102,13 @@ services:
   syncer:
     <<: *ragflow
     command: ["--syncer"]
+    depends_on:
+      admin:
+        condition: service_healthy
+
+  chatter:
+    <<: *ragflow
+    command: ["--chatter"]
     depends_on:
       admin:
         condition: service_healthy
