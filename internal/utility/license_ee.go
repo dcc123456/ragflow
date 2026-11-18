@@ -179,15 +179,7 @@ type LicenseV2 struct {
 	DeepDocGPUQuota DeepDocGPUQuota `json:"deepdoc_gpu_quota"`
 	DataQuota       DataQuota       `json:"data_quota"`
 	TenantQuota     TenantQuota     `json:"tenant_quota"`
-	Workflow        bool            `json:"workflow_enable"`
-	Chat            bool            `json:"chat_enable"`
-	File            bool            `json:"file_enable"`
-	Search          bool            `json:"search_enable"`
-	Model           bool            `json:"model_enable"`
-	UserInTenant    bool            `json:"user_in_tenant_enable"`
-	RBAC            bool            `json:"rbac_enable"`
-	Group           bool            `json:"group_enable"`
-	Evaluation      bool            `json:"evaluation_enable"`
+	Features        map[string]bool `json:"features"`
 }
 
 type APIQuota struct {
@@ -259,45 +251,19 @@ func (v *LicenseV2) PrintAll() {
 	fmt.Printf("DeepDocGPUQuota: %d, GPUs: %d, CPUs: %d, Workers: %d, Concurrency: %d\n", v.DeepDocGPUQuota.Count, v.DeepDocGPUQuota.GPUNum, v.DeepDocGPUQuota.CPUNum, v.DeepDocGPUQuota.WorkerNum, v.DeepDocGPUQuota.MaxConcurrency)
 	fmt.Printf("DataQuota: %d GB\n", v.DataQuota.TotalGB)
 	fmt.Printf("TenantQuota: %d\n", v.TenantQuota.Count)
-	fmt.Printf("Workflow: %v\n", v.Workflow)
-	fmt.Printf("Chat: %v\n", v.Chat)
-	fmt.Printf("File: %v\n", v.File)
-	fmt.Printf("Search: %v\n", v.Search)
-	fmt.Printf("Model: %v\n", v.Model)
-	fmt.Printf("UserInTenant: %v\n", v.UserInTenant)
-	fmt.Printf("RBAC: %v\n", v.RBAC)
-	fmt.Printf("Group: %v\n", v.Group)
-	fmt.Printf("Evaluation: %v\n", v.Evaluation)
+	for featureName, enabled := range v.Features {
+		if enabled {
+			fmt.Printf("%s: %v\n", featureName, enabled)
+		}
+	}
 }
 
 func (v *LicenseV2) GetFeatures() []string {
 	var features []string
-	if v.Workflow {
-		features = append(features, "Workflow")
-	}
-	if v.Chat {
-		features = append(features, "Chat")
-	}
-	if v.File {
-		features = append(features, "File")
-	}
-	if v.Search {
-		features = append(features, "Search")
-	}
-	if v.Model {
-		features = append(features, "Model")
-	}
-	if v.UserInTenant {
-		features = append(features, "UserInTenant")
-	}
-	if v.RBAC {
-		features = append(features, "RBAC")
-	}
-	if v.Group {
-		features = append(features, "Group")
-	}
-	if v.Evaluation {
-		features = append(features, "Evaluation")
+	for featureName, enabled := range v.Features {
+		if enabled {
+			features = append(features, featureName)
+		}
 	}
 	return features
 }

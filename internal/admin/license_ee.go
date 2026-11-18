@@ -170,17 +170,22 @@ func generateTrialLicenseV2(minutes int, fingerprint *utility.Fingerprint) (*uti
 		TenantQuota: utility.TenantQuota{
 			Count: 0,
 		},
-		Workflow:     true,
-		Chat:         true,
-		File:         true,
-		Search:       true,
-		Model:        true,
-		UserInTenant: true,
-		RBAC:         true,
-		Group:        true,
-		Evaluation:   true,
-		Type:         utility.TRIAL,
+		Type: utility.TRIAL,
 	}
+
+	licenseV2.Features = make(map[string]bool)
+
+	licenseV2.Features["single_tenant"] = true
+	licenseV2.Features["rbac"] = true
+	licenseV2.Features["group_and_share"] = true
+	licenseV2.Features["deepdoc_pro"] = true
+	licenseV2.Features["deepdoc_gpu"] = true
+	licenseV2.Features["wps"] = true
+	licenseV2.Features["cad"] = true
+	licenseV2.Features["evaluation"] = true
+	licenseV2.Features["multi_modal"] = true
+	licenseV2.Features["stats"] = true
+	licenseV2.Features["analytics_log"] = true
 
 	licenseV2.ValidUntil = licenseV2.ValidFrom.Add(time.Duration(minutes) * time.Minute)
 	licenseV2.LicenseID = generateLicenseID(string(licenseV2.Type))
