@@ -112,7 +112,9 @@ export function EvaluationList({ selectedRunId, type }: EvaluationListProps) {
       <div className="flex justify-between items-center mb-4 pt-10">
         <div className="space-x-3">
           <span className="text-base">{t('evaluation.title')}</span>
-          <span className="text-text-secondary text-xs">{runList.total}</span>
+          <span className="text-text-secondary text-xs">
+            {filteredRuns.length}
+          </span>
         </div>
         <Button variant={'ghost'} onClick={handleAddClick}>
           <Plus></Plus>
