@@ -13,6 +13,7 @@ import (
 	"ragflow/internal/dao"
 	"ragflow/internal/entity"
 	"ragflow/internal/permission"
+	"reflect"
 	"testing"
 )
 
@@ -78,6 +79,38 @@ func evaluationTestService(t *testing.T) (*EvaluationService, *gorm.DB) {
 		t.Fatal(err)
 	}
 	return NewEvaluationService(), db
+}
+
+func TestEvaluationCollectionExportVisibleFields(t *testing.T) {
+	s, _ := evaluationTestService(t)
+	ctx := permission.WithIdentity(t.Context(), "owner", "tenant")
+	collection, err := s.CreateCollection(ctx, "Cases", "", "chat", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CreateCase(ctx, collection.ID, EvaluationCaseInput{Question: new("what?"), ReferenceAnswer: new("answer")}); err != nil {
+		t.Fatal(err)
+	}
+	data, name, err := s.ExportCollection(ctx, collection.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if name != "Cases.xlsx" {
+		t.Fatalf("filename = %q", name)
+	}
+	book, err := excelize.OpenReader(bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer book.Close()
+	rows, err := book.GetRows("Sheet1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := [][]string{{"question", "reference_answer"}, {"what?", "answer"}}
+	if !reflect.DeepEqual(rows, want) {
+		t.Fatalf("export rows = %v, want %v", rows, want)
+	}
 }
 
 func TestEvaluationTenantIsolationAndInvalidation(t *testing.T) {

@@ -610,13 +610,9 @@ func (s *EvaluationService) ExportCollection(ctx context.Context, id string) ([]
 	}
 	rows := make([][]any, 0, len(cases))
 	for _, c := range cases {
-		timestamp := any("")
-		if c.CreateTime != nil {
-			timestamp = *c.CreateTime
-		}
-		rows = append(rows, []any{c.ID, c.Variable["question"], c.Variable["reference_answer"], timestamp})
+		rows = append(rows, []any{c.Variable["question"], c.Variable["reference_answer"]})
 	}
-	data, err := EvaluationWorkbook([]string{"id", "question", "reference_answer", "create_time"}, rows)
+	data, err := EvaluationWorkbook([]string{"question", "reference_answer"}, rows)
 	return data, value.Name + ".xlsx", err
 }
 
