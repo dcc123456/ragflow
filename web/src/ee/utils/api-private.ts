@@ -127,8 +127,8 @@ export default {
   adminLlmTraceTrends: '/api/v1/admin/llm_trace/stats/trends',
   adminLlmTraceByModel: '/api/v1/admin/llm_trace/stats/by-model',
   adminLlmTraceRecent: '/api/v1/admin/llm_trace/recent',
-  adminGetLicense: '/api/v1/admin/license',
-  adminSetLicense: '/api/v1/admin/license',
+  adminGetLicense: '/api/v1/admin/system/license',
+  adminSetLicense: '/api/v1/admin/system/license',
   adminGetFingerprint: '/api/v1/admin/fingerprint',
   modelGroups: `${restAPIv1}/models/groups`,
   modelGroup: (groupName: string) =>
