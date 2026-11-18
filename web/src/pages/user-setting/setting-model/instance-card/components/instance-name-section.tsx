@@ -79,9 +79,7 @@ export function InstanceNameSection({
         </ConfirmDeleteDialog>
         <InstanceSaveButton onSave={handleSave} saving={saving} />
       </div>
-      {error && (
-        <p className="text-sm font-medium text-state-error">{error}</p>
-      )}
+      {error && <p className="text-sm font-medium text-state-error">{error}</p>}
     </div>
   );
 }
