@@ -145,9 +145,6 @@ func updateAPIServiceQuota(quota APIServerHeartbeatResponse) {
 	serviceQuotaInstance.apiServiceQuota.MaxConcurrency = quota.MaxConcurrency
 	serviceQuotaInstance.apiServiceQuota.Features = NewServiceFeatures(quota.Features)
 	serviceQuotaInstance.LastUpdateTime = time.Now()
-
-	// 0 will disable concurrency limit
-	GetRateLimit().UpdateGlobalConcurrencyLimit(uint64(serviceQuotaInstance.apiServiceQuota.MaxConcurrency))
 }
 
 func updateIngestorQuota(quota IngestorHeartbeatResponse) {

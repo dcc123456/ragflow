@@ -111,7 +111,7 @@ vastbase:
   # explicitly for the bundled private-network deployment.
   ssl_mode: '${VB_SSL_MODE:-}'
 kvrocks:
-  db: 1
+  db: ${KVROCKS_DB:-1}
   username: '${KVROCKS_USERNAME:-}'
   password: '${REDIS_PASSWORD:-infini_rag_flow}'
   host: '${KVROCKS_HOST:-kvrocks}:${KVROCKS_PORT:-6379}'

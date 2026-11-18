@@ -248,11 +248,12 @@ func (dao *BillingSubscriptionDAO) ListScheduledDowngrades(ctx context.Context, 
 	return rows, err
 }
 
-// ListActive returns subscriptions that can still grant paid features.
-func (dao *BillingSubscriptionDAO) ListActive(ctx context.Context, db *gorm.DB) ([]entity.BillingSubscription, error) {
+// ListActivePaid returns active Starter/Pro subscriptions for token rate-limit sync.
+func (dao *BillingSubscriptionDAO) ListActivePaid(ctx context.Context, db *gorm.DB) ([]entity.BillingSubscription, error) {
 	var rows []entity.BillingSubscription
 	err := db.WithContext(ctx).
-		Where("subscription_status IN ?", []string{"active", "trialing"}).
+		Where("subscription_status = ?", "active").
+		Where("LOWER(TRIM(plan_name)) IN ?", []string{"starter", "pro"}).
 		Find(&rows).Error
 	return rows, err
 }

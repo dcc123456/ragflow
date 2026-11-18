@@ -3,29 +3,29 @@
 
   Three-tier rate limiting (T1 → T2 → T3):
 
-    T1 — Per-token rate limiting via Redis token bucket
+    T1 — Per-token rate limiting via Kvrocks token bucket
       1. Extract Bearer token from Authorization header
-      2. Normalize JWT/session tokens to their first segment
-      3. Look up RPM from Redis (billing:ratelimit:token:<token>)
-      4. Enforce per-minute token bucket via Redis Lua EVALSHA
+      2. Normalize v2 login tokens to their second segment
+      3. Look up RPM from Kvrocks (billing:ratelimit:token:<token>)
+      4. Enforce per-minute token bucket via Kvrocks Lua EVALSHA
 
-    T2 — Per-IP rate limiting via Redis (cross-pod accurate)
+    T2 — Per-IP rate limiting via Kvrocks (cross-pod accurate)
       Applied when no token is present, or when T1 encounters an error.
 
     T3 — Per-IP rate limiting via ngx.shared.dict (per-pod, last resort)
-      Applied only when Redis is completely unavailable.
+      Applied only when Kvrocks is completely unavailable.
 
-  Redis keys used:
-    billing:ratelimit:token:<token>      -> rpm  (set by Python sync)
+  Kvrocks keys used:
+    billing:ratelimit:token:<token>      -> rpm  (Starter/Pro only, set by Go billing sync)
     billing:tb:min:<token>               -> {tokens, timestamp}  (per-minute bucket)
-    billing:fb:sec:<ip>                  -> counter  (per-second IP fallback via Redis)
-    billing:fb:min:<ip>                  -> counter  (per-minute IP fallback via Redis)
+    billing:fb:sec:<ip>                  -> counter  (per-second IP fallback via Kvrocks)
+    billing:fb:min:<ip>                  -> counter  (per-minute IP fallback via Kvrocks)
 ]]
 
 local _M                  = {}
 _M._VERSION               = "2.2.0"
 
--- Last Redis error encountered during this request (set by _get_redis,
+-- Last Kvrocks error encountered during this request (set by _get_redis,
 -- read by check() to add diagnostic response header).
 local _last_redis_err     = nil
 
@@ -43,7 +43,7 @@ local FALLBACK_RPM        = 10 -- fallback to 10 per minute per IP
 local FALLBACK_RPS        = 2 -- fall back to 2 per seconds per IP
 
 ---------------------------------------------------------------------------
--- Pre-resolved Redis config (populated once in init_worker)
+-- Pre-resolved Kvrocks config (populated once in init_worker)
 -- NOTE: nginx's env directive only passes listed variables to workers.
 -- We use init_by_lua_block (runs in master) to snapshot env vars into
 -- ngx.shared.dict, so workers can read them reliably via _read_env().
@@ -68,14 +68,14 @@ end
 
 --- Called from init_worker_by_lua_block to snapshot environment variables.
 function _M.init_worker()
-    -- K8s injects <SVC>_SERVICE_HOST with the cluster IP (e.g. REDIS_SERVICE_HOST).
+    -- K8s injects <SVC>_SERVICE_HOST with the cluster IP (e.g. KVROCKS_SERVICE_HOST).
     -- Use it directly to avoid cosocket DNS resolution in init_worker context
     -- (resty.dns.resolver requires cosocket, which is unavailable in init_worker).
-    local host = _read_env("RATELIMIT_REDIS_HOST") or _read_env("REDIS_HOST") or "redis"
+    local host = _read_env("KVROCKS_HOST") or "kvrocks"
 
     -- Prefer K8s-injected service host IP over bare hostname to avoid DNS issues.
-    local k8s_ip = _read_env("REDIS_SERVICE_HOST")
-    if k8s_ip and k8s_ip ~= "" and host == "redis" then
+    local k8s_ip = _read_env("KVROCKS_SERVICE_HOST")
+    if k8s_ip and k8s_ip ~= "" and host == "kvrocks" then
         ngx.log(ngx.NOTICE,
             "rate_limit init_worker: using K8s service IP ", k8s_ip, " instead of ", host)
         host = k8s_ip
@@ -83,9 +83,9 @@ function _M.init_worker()
 
     _redis_config = {
         host     = host,
-        port     = tonumber(_read_env("RATELIMIT_REDIS_PORT") or _read_env("REDIS_PORT")) or 6379,
-        password = _read_env("RATELIMIT_REDIS_PASSWORD") or _read_env("REDIS_PASSWORD") or "",
-        db       = tonumber(_read_env("RATELIMIT_REDIS_DB") or _read_env("REDIS_DB")) or 1,
+        port     = tonumber(_read_env("KVROCKS_PORT")) or 6379,
+        password = _read_env("REDIS_PASSWORD") or "",
+        db       = tonumber(_read_env("KVROCKS_DB")) or 1,
     }
     ngx.log(ngx.NOTICE,
         "rate_limit init_worker: host=", _redis_config.host,
@@ -112,7 +112,7 @@ function _M.init_worker()
     end
 end
 
--- Token bucket Lua script executed inside Redis (same algorithm as Python/Go)
+-- Token bucket Lua script executed inside Kvrocks (Redis-compatible scripting API)
 local TOKEN_BUCKET_SCRIPT = [[
 local key       = KEYS[1]
 local capacity  = tonumber(ARGV[1])
@@ -151,7 +151,7 @@ return {1, tostring(math.floor(tokens))}
 -- Will be populated by init_worker via SCRIPT LOAD
 local _script_sha         = nil
 
--- Fixed-window counter Lua script for per-IP rate limiting (Redis-based).
+-- Fixed-window counter Lua script for per-IP rate limiting (Kvrocks-based).
 -- Atomically increments a counter, sets TTL on first write, returns count + TTL.
 -- KEYS[1]   = counter key (e.g. billing:fb:sec:<ip>)
 -- ARGV[1]   = window TTL in seconds
@@ -221,8 +221,10 @@ _resolve_host = function (host)
         end
         f:close()
     end
-    -- Add public DNS as fallback
-    nameservers[#nameservers + 1] = "8.8.8.8"
+    -- Container service names must use the container's configured DNS servers.
+    if #nameservers == 0 then
+        nameservers[1] = "8.8.8.8"
+    end
 
     local r, err = resolver:new{
         nameservers = nameservers,
@@ -263,10 +265,10 @@ _resolve_host = function (host)
 end
 
 ---------------------------------------------------------------------------
--- Redis connection helpers
+-- Kvrocks connection helpers
 ---------------------------------------------------------------------------
 
---- Get the pre-resolved Redis config (captured during init_worker).
+--- Get the pre-resolved Kvrocks config (captured during init_worker).
 local function _get_redis_config()
     if _redis_config then
         return _redis_config
@@ -274,14 +276,14 @@ local function _get_redis_config()
     -- Fallback: should not happen, but just in case init_worker was not called
     ngx.log(ngx.WARN, "rate_limit: _redis_config not initialized, reading env directly")
     return {
-        host     = os.getenv("RATELIMIT_REDIS_HOST") or os.getenv("REDIS_HOST") or "redis",
-        port     = tonumber(os.getenv("RATELIMIT_REDIS_PORT") or os.getenv("REDIS_PORT")) or 6379,
-        password = os.getenv("RATELIMIT_REDIS_PASSWORD") or os.getenv("REDIS_PASSWORD") or "",
-        db       = tonumber(os.getenv("RATELIMIT_REDIS_DB") or os.getenv("REDIS_DB")) or 1,
+        host     = _read_env("KVROCKS_HOST") or "kvrocks",
+        port     = tonumber(_read_env("KVROCKS_PORT")) or 6379,
+        password = _read_env("REDIS_PASSWORD") or "",
+        db       = tonumber(_read_env("KVROCKS_DB")) or 1,
     }
 end
 
---- Get a Redis connection from pool (or create a new one).
+--- Get a Kvrocks connection from pool (or create a new one).
 --- Returns red, err.  Caller must call _release_redis(red) when done.
 local function _get_redis()
     _last_redis_err = nil  -- reset per-call
@@ -290,8 +292,14 @@ local function _get_redis()
     red:set_timeouts(2000, 2000, 2000) -- 2s connect/read/write
 
     local cfg = _get_redis_config()
-    -- cfg.host is pre-resolved to an IP in init_worker, so cosocket
-    -- connect() should work directly without DNS resolution.
+    -- Startup resolution may still be pending or may have failed. Resolve here
+    -- too, so a worker can recover without an nginx resolver directive.
+    local host, dns_err = _resolve_host(cfg.host)
+    if dns_err then
+        _last_redis_err = dns_err
+        return nil, _last_redis_err
+    end
+    cfg.host = host
     local ok, err = red:connect(cfg.host, cfg.port)
     if not ok then
         _last_redis_err = "connect_failed(" .. cfg.host .. "): " .. (err or "unknown")
@@ -317,7 +325,7 @@ local function _get_redis()
     return red, nil
 end
 
---- Return a Redis connection to the pool.
+--- Return a Kvrocks connection to the pool.
 local function _release_redis(red)
     if not red then return end
     local ok, err = red:set_keepalive(POOL_IDLE, POOL_SIZE)
@@ -349,7 +357,7 @@ local function _run_token_bucket(red, key, capacity, rate, now_sec, cost)
     local res, err = red:evalsha(_script_sha, 1, key,
         tostring(capacity), tostring(rate), tostring(now_sec), tostring(cost))
     if err and err:find("NOSCRIPT") then
-        -- Script flushed from Redis, reload
+        -- Script flushed from Kvrocks, reload
         _script_sha = nil
         if not _ensure_script_sha(red) then
             -- Reload also failed, fallback to plain EVAL
@@ -362,7 +370,7 @@ local function _run_token_bucket(red, key, capacity, rate, now_sec, cost)
     return res, err
 end
 
---- Run the fixed-window IP rate script via Redis EVALSHA (falls back to EVAL).
+--- Run the fixed-window IP rate script via Kvrocks EVALSHA (falls back to EVAL).
 --- Returns {count, ttl} on success, or nil, err on failure.
 local function _run_ip_rate_script(red, key, window_ttl)
     -- Lazy-load script SHA (separate from token-bucket SHA)
@@ -453,7 +461,7 @@ end
 
 ---------------------------------------------------------------------------
 -- T3 — Per-IP rate limiting via ngx.shared.dict (last resort)
--- Only used when Redis is completely unavailable. Per-pod, not cross-pod accurate.
+-- Only used when Kvrocks is completely unavailable. Per-pod, not cross-pod accurate.
 ---------------------------------------------------------------------------
 
 --- Fixed-window counter via ngx.shared.dict.
@@ -510,12 +518,12 @@ local function _t3_local_ip_rate_limit()
 end
 
 ---------------------------------------------------------------------------
--- T2 — Per-IP rate limiting via Redis (cross-pod accurate)
--- Falls back to T3 (ngx.shared.dict) if Redis is down.
+-- T2 — Per-IP rate limiting via Kvrocks (cross-pod accurate)
+-- Falls back to T3 (ngx.shared.dict) if Kvrocks is down.
 ---------------------------------------------------------------------------
 
---- T2: per-IP rate limiting via Redis fixed-window counters.
---- Falls back to T3 if Redis is unavailable.
+--- T2: per-IP rate limiting via Kvrocks fixed-window counters.
+--- Falls back to T3 if Kvrocks is unavailable.
 --- If `red` is provided, reuses that connection (caller must release it).
 --- If `red` is nil, opens and releases its own connection.
 --- Returns true if the request was rejected (429 sent), false otherwise.
@@ -534,7 +542,7 @@ local function _t2_redis_ip_rate_limit(red)
         own_conn = true
     end
 
-    -- Per-second burst via Redis
+    -- Per-second burst via Kvrocks
     local sec_key = "billing:fb:sec:" .. ip
     local res_sec, err_sec = _run_ip_rate_script(red, sec_key, 2) -- TTL = 2s
     if err_sec then
@@ -555,7 +563,7 @@ local function _t2_redis_ip_rate_limit(red)
         return ngx.exit(429)
     end
 
-    -- Per-minute sustained via Redis
+    -- Per-minute sustained via Kvrocks
     local min_key = "billing:fb:min:" .. ip
     local res_min, err_min = _run_ip_rate_script(red, min_key, 120) -- TTL = 120s
     if err_min then
@@ -581,37 +589,25 @@ local function _t2_redis_ip_rate_limit(red)
 end
 
 ---------------------------------------------------------------------------
--- T1 — Per-token rate limiting via Redis token bucket
--- Falls back to T2 (Redis IP) on any error, which in turn falls back to T3.
+-- T1 — Per-token rate limiting via Kvrocks token bucket
+-- Falls back to T2 (Kvrocks IP) on any error, which in turn falls back to T3.
 --
 -- Diagnostic: sets X-RateLimit-Tier header on every request to indicate
 -- which tier handled it and why T1 was skipped:
 --   "T1"          — per-token bucket applied
---   "T2 (ip)"     — per-IP via Redis (no token)
---   "T2 (err)"    — per-IP via Redis (T1 error, e.g. Redis failure)
---   "T3 (local)"  — per-IP via ngx.shared.dict (Redis completely unavailable)
+--   "T2 (ip)"     — per-IP via Kvrocks (no token)
+--   "T2 (err)"    — per-IP via Kvrocks (T1 error, e.g. Kvrocks failure)
+--   "T3 (local)"  — per-IP via ngx.shared.dict (Kvrocks completely unavailable)
 ---------------------------------------------------------------------------
 
---- Normalize auth token. JWT/session tokens use the first encoded segment,
---- which Python stores directly as the rate-limit token key.
+--- Normalize v2 login tokens to their Base64URL-encoded access-token segment.
+--- API/Beta tokens are used directly as the rate-limit token key.
 local function _normalize_token(token)
-    local dot_count = 0
-    local first_dot = 0
-    for i = 1, #token do
-        if token:sub(i, i) == "." then
-            dot_count = dot_count + 1
-            if first_dot == 0 then first_dot = i end
-        end
-    end
-
-    if first_dot > 1 and dot_count >= 2 then
-        return token:sub(1, first_dot - 1)
-    end
-    return token
+    return token:match("^v2%.([^.]+)%.[^.]*%.%d+%.[^.]+$") or token
 end
 
---- Look up RPM for a normalized token from cache → Redis.
---- Missing token-specific Redis entries use DEFAULT_RPM.
+--- Look up RPM for a normalized token from cache → Kvrocks.
+--- Missing token-specific Kvrocks entries use DEFAULT_RPM.
 local function _resolve_token_rpm(token_key, red)
     local cache_key_limits = "rpm:" .. token_key
     local cached_rpm = cache_get(cache_key_limits)
@@ -646,7 +642,7 @@ local function _resolve_token_rpm(token_key, red)
     return rpm, red
 end
 
---- T1: enforce per-token rate limits using Redis token bucket.
+--- T1: enforce per-token rate limits using Kvrocks token bucket.
 --- Returns:
 ---   "ok"            — token rate limit applied and request allowed (no need for T2)
 ---   true            — request rejected (429 already sent)
@@ -744,11 +740,11 @@ function _M.check()
         ngx.header["X-RateLimit-T1-Skip"] = "no_token"
     end
 
-    -- T2: Per-IP rate limiting via Redis (may internally fall back to T3)
+    -- T2: Per-IP rate limiting via Kvrocks (may internally fall back to T3)
     local rejected = _t2_redis_ip_rate_limit(nil)
     if rejected then return end -- 429 already sent
 
-    -- Expose Redis error diagnostics when Redis was unreachable
+    -- Expose Kvrocks error diagnostics when Kvrocks was unreachable
     if _last_redis_err then
         ngx.header["X-RateLimit-Redis-Error"] = _last_redis_err
     end

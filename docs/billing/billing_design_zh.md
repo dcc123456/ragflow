@@ -453,6 +453,10 @@ Billing 任务只在 `HTTP_API_TEST_LEVEL=p3` 时执行：
 
 - 仓库 secrets：`ZHIPU_AI_API_KEY`、`SILICONFLOW_API_KEY`（缺失时任务显式报错退出，不会静默跳过）
 - Go 镜像内已安装 OpenResty，`docker/nginx/rate_limit.lua` 随镜像发布
+- HTTP 限流由 Nginx Lua 执行，Go API/Admin 不再注册全局限流中间件。通过 `RATELIMIT_ENABLED=1` 开启；未开启时保持放行。
+- Lua 与 Go 使用同一 Kvrocks：`KVROCKS_HOST`（默认 `kvrocks`）、`KVROCKS_PORT`（默认 `6379`）、`KVROCKS_DB`（默认 `1`）和 `REDIS_PASSWORD`（与服务配置共用）。原 `RATELIMIT_REDIS_*` 不再使用。
+- 仅 active 的 Starter/Pro 同步每个令牌的 RPM 到 `billing:ratelimit:token:<token>`；登录令牌 TTL 为 24 小时，API/Beta 令牌无 TTL。Trial/Free 不写入 RPM，使用 Lua 硬编码的 10 RPM；套餐降级时删除旧 RPM。Lua 的本地 RPM 缓存最多延迟 60 秒更新。
+- 登录令牌的 `<token>` 为原始 `access_token` 的无填充 Base64URL 编码，不做 JSON 编码；它与签名 `v2` 令牌的第二段一致。Nginx 提取第二段查询 RPM，API/Beta 令牌直接使用原值。
 - 集群内 `docker/.env-go` 的 `BILLING_STRIPE_*`、`BILLING_QUOTA_*` 使用模板默认值；如需小配额回归，改动 `.env-go` 后必须重建容器
 
 ## 12. 术语

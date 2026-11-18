@@ -21,7 +21,6 @@ package billing
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"strconv"
 	"strings"
 	"time"
@@ -38,8 +37,8 @@ const (
 	apiAuthPlanTTL       = 24 * time.Hour
 )
 
-// SyncLoginTokenRateLimit writes the per-minute limit of a login token.
-// Login tokens expire with the session.
+// SyncLoginTokenRateLimit writes the Starter/Pro limit of a login token.
+// Login tokens expire with the session; other plans use the Lua default.
 func (s *Service) SyncLoginTokenRateLimit(ctx context.Context, tenantID, accessToken string) {
 	if s == nil || !s.cfg.Enabled || accessToken == "" {
 		return
@@ -48,25 +47,27 @@ func (s *Service) SyncLoginTokenRateLimit(ctx context.Context, tenantID, accessT
 	if client == nil {
 		return
 	}
-	rpm := s.PlanRateLimit(s.tenantPlanName(ctx, tenantID))
+	rpm, err := s.tenantTokenRateLimit(ctx, tenantID)
+	if err != nil {
+		billingLogger.Warn("resolve login token rate limit failed", zap.String("tenant_id", tenantID), zap.Error(err))
+		return
+	}
+	if rpm == 0 {
+		s.DeleteRateLimitKeys(ctx, loginTokenKey(accessToken))
+		return
+	}
 	if ok := client.Set(ctx, rateLimitTokenPrefix+loginTokenKey(accessToken), strconv.FormatInt(rpm, 10), loginTokenTTL); !ok {
 		billingLogger.Warn("sync login token rate limit failed", zap.String("tenant_id", tenantID))
 	}
 }
 
-// loginTokenKey mirrors the Lua limiter's JWT normalisation: the first JWT
-// segment is base64url(JSON-encoded token), so the stored key must use the same
-// encoding or every session lookup misses.
+// loginTokenKey matches the second segment of a signed v2 login token.
 func loginTokenKey(accessToken string) string {
-	encoded, err := json.Marshal(accessToken)
-	if err != nil {
-		return accessToken
-	}
-	return base64.RawURLEncoding.EncodeToString(encoded)
+	return base64.RawURLEncoding.EncodeToString([]byte(accessToken))
 }
 
-// SyncAPITokenRateLimit writes the per-minute limit of API/Beta tokens.
-// API tokens deliberately have no TTL, matching the Python contract.
+// SyncAPITokenRateLimit writes the Starter/Pro limit of API/Beta tokens.
+// API tokens have no TTL; other plans use the Lua default.
 func (s *Service) SyncAPITokenRateLimit(ctx context.Context, tenantID string, tokens ...string) {
 	if s == nil || !s.cfg.Enabled {
 		return
@@ -75,7 +76,15 @@ func (s *Service) SyncAPITokenRateLimit(ctx context.Context, tenantID string, to
 	if client == nil {
 		return
 	}
-	rpm := s.PlanRateLimit(s.tenantPlanName(ctx, tenantID))
+	rpm, err := s.tenantTokenRateLimit(ctx, tenantID)
+	if err != nil {
+		billingLogger.Warn("resolve api token rate limit failed", zap.String("tenant_id", tenantID), zap.Error(err))
+		return
+	}
+	if rpm == 0 {
+		s.DeleteRateLimitKeys(ctx, tokens...)
+		return
+	}
 	value := strconv.FormatInt(rpm, 10)
 	for _, token := range tokens {
 		if token == "" {
@@ -98,7 +107,9 @@ func (s *Service) DeleteRateLimitKeys(ctx context.Context, tokens ...string) {
 	if len(keys) > 0 {
 		if client := kvrocks.Get(); client != nil {
 			for _, key := range keys {
-				client.Delete(ctx, key)
+				if err := client.GetClient().Del(ctx, key).Err(); err != nil {
+					billingLogger.Warn("delete token rate limit failed", zap.Error(err))
+				}
 			}
 		}
 	}
@@ -139,18 +150,11 @@ func (s *Service) SyncAllAPITokenRateLimit(ctx context.Context) error {
 	if s == nil || !s.cfg.Enabled {
 		return nil
 	}
-	subscriptions, err := s.subscriptionDAO.ListActive(ctx, s.db)
+	subscriptions, err := s.subscriptionDAO.ListActivePaid(ctx, s.db)
 	if err != nil {
 		return err
 	}
 	for _, subscription := range subscriptions {
-		if !strings.EqualFold(subscription.SubscriptionStatus, "active") && subscription.SubscriptionStatus != "" {
-			continue
-		}
-		plan := strings.ToLower(strings.TrimSpace(subscription.PlanName))
-		if plan != "starter" && plan != "pro" {
-			continue
-		}
 		var tokens []string
 		rows, err := s.db.WithContext(ctx).Table("api_token").
 			Select("token, beta").
@@ -221,14 +225,21 @@ func (s *Service) syncTenantTokenLimits(ctx context.Context, tenantID string) {
 	s.SyncAPIAuthPlan(ctx, tenantID)
 }
 
-func (s *Service) tenantPlanName(ctx context.Context, tenantID string) string {
+// tenantTokenRateLimit returns zero when Lua should use its hardcoded default.
+func (s *Service) tenantTokenRateLimit(ctx context.Context, tenantID string) (int64, error) {
 	subscription, err := s.Subscription(ctx, tenantID)
-	if err != nil || subscription == nil || subscription.PlanName == "" {
-		return configTrialName()
+	if err != nil {
+		return 0, err
 	}
-	return subscription.PlanName
-}
-
-func configTrialName() string {
-	return "Trial"
+	if subscription == nil || !strings.EqualFold(strings.TrimSpace(subscription.SubscriptionStatus), "active") {
+		return 0, nil
+	}
+	switch strings.ToLower(strings.TrimSpace(subscription.PlanName)) {
+	case "starter":
+		return s.PlanRateLimit("Starter"), nil
+	case "pro":
+		return s.PlanRateLimit("Pro"), nil
+	default:
+		return 0, nil
+	}
 }

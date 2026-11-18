@@ -61,6 +61,46 @@ func seedSubscription(t *testing.T, db *gorm.DB, tenantID string) {
 	}
 }
 
+func TestListActivePaidSubscriptions(t *testing.T) {
+	db := setupBillingSubscriptionDB(t)
+	for _, tc := range []struct {
+		id, plan, subscriptionStatus string
+	}{
+		{"starter", "Starter", "active"},
+		{"pro", "Pro", "active"},
+		{"normalized", " starter ", "active"},
+		{"trial", "Trial", "active"},
+		{"free", "Free", "active"},
+		{"other", "Enterprise", "active"},
+		{"canceled", "Pro", "canceled"},
+		{"past-due", "Starter", "past_due"},
+		{"trialing", "Starter", "trialing"},
+		{"missing-status", "Pro", ""},
+	} {
+		row := entity.BillingSubscription{
+			ID: tc.id, TenantID: tc.id, PlanName: tc.plan,
+			Status: "active", SubscriptionStatus: tc.subscriptionStatus,
+		}
+		if err := db.Create(&row).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	rows, err := NewBillingSubscriptionDAO().ListActivePaid(context.Background(), db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{"starter": true, "pro": true, "normalized": true}
+	for _, row := range rows {
+		if !want[row.TenantID] {
+			t.Errorf("unexpected subscription: %s", row.TenantID)
+		}
+		delete(want, row.TenantID)
+	}
+	if len(want) != 0 {
+		t.Errorf("missing subscriptions: %v", want)
+	}
+}
+
 // TestUpdateStorageAddonKeepsConvergedColumns covers the race the API used to
 // have: it wrote the add-on from a row snapshot taken before the Stripe call,
 // so a webhook that converged the plan in between was rolled back.

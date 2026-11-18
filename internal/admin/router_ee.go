@@ -21,7 +21,6 @@ package admin
 import (
 	"ragflow/internal/observability"
 	"ragflow/internal/server"
-	"ragflow/internal/utility"
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
@@ -30,7 +29,6 @@ import (
 func SetupEERouter(engine *gin.Engine) {
 	serverName := server.GetServerName()
 	engine.Use(otelgin.Middleware(serverName))
-	engine.Use(utility.GetRateLimit().Middleware())
 	engine.GET("/metrics", gin.WrapH(observability.MetricsHandler()))
 }
 
