@@ -69,7 +69,7 @@ For processes on another host, set `admin.host` and `admin.http_port` in their s
 
 ## Start with Docker Compose
 
-For the Go deployment, use `docker/docker-compose.yml` and its `.env` file. The `admin` service runs `--admin --init-superuser` after the one-shot `migrate` service succeeds. The API (`ragflow-cpu`), Ingestor, and Syncer run in separate containers and start after Admin is healthy. They report heartbeats to `admin:9381` on the Compose network.
+For the Go deployment, use `docker/docker-compose.yml` and its `.env` file. The `admin` service runs `--admin --init-superuser` after the one-shot `migrate` service succeeds. The API (`ragflow-cpu`), Ingestor, Syncer, and Chatter run in separate containers and start after Admin is healthy. The API uses `--disable-chat-channels`, leaving channel connections to `chatter`. They report heartbeats to `admin:9381` on the Compose network.
 
 ```bash
 docker compose --env-file docker/.env -f docker/docker-compose.yml up -d

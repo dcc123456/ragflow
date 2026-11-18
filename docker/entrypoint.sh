@@ -11,7 +11,7 @@ fi
 mode=api
 for arg in "$@"; do
     case "$arg" in
-        --api|--admin|--ingestor|--syncer|--deepdoc|--migrate)
+        --api|--admin|--ingestor|--syncer|--chatter|--deepdoc|--migrate)
             mode="${arg#--}"
             ;;
         --help|-h|--version|-v)
