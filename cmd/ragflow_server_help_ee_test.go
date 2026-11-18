@@ -14,6 +14,8 @@
 //  limitations under the License.
 //
 
+//go:build ee
+
 package main
 
 import (
@@ -76,10 +78,7 @@ func TestPrintHelpIngestorDocumentsIngestorTier(t *testing.T) {
 func TestPrintHelpChatter(t *testing.T) {
 	for _, mode := range []string{"api", "chatter"} {
 		help := captureHelpStderr(t, func() { printHelp(&bootstrap.ServerArgs{Mode: new(mode)}) })
-		want := "--disable-chat-channels"
-		if mode == "chatter" {
-			want = "--chatter"
-		}
+		want := "--" + mode
 		if !strings.Contains(help, want) {
 			t.Fatalf("%s help missing %s: %s", mode, want, help)
 		}

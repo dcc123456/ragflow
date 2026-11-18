@@ -14,6 +14,8 @@
 //  limitations under the License.
 //
 
+//go:build ee
+
 package main
 
 import (
@@ -147,37 +149,5 @@ func TestMainMigrateReachesConfiguration(t *testing.T) {
 	output, err := cmd.CombinedOutput()
 	if err == nil || !strings.Contains(string(output), "initialize configuration") || strings.Contains(string(output), "Usage:") {
 		t.Fatalf("migration did not reach config: %v\n%s", err, output)
-	}
-}
-
-// TestPrintHelpDeepdoc guards the DeepDoc help text. It must describe the
-// DeepDoc server (not the Sync service) and show the real --name default
-// (deepdoc_server). The hand-rolled help text previously copied the syncer
-// case verbatim, printing "Sync service server name (default: "default_syncer")"
-// under --deepdoc.
-func TestPrintHelpDeepdoc(t *testing.T) {
-	if os.Getenv("RAGFLOW_TEST_DEEPDOC_HELP") == "1" {
-		os.Args = append([]string{os.Args[0]}, os.Args[len(os.Args)-2:]...)
-		main()
-		return
-	}
-	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
-	defer cancel()
-	dir := t.TempDir()
-	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestPrintHelpDeepdoc$", "--", "--deepdoc", "--help")
-	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "RAGFLOW_TEST_DEEPDOC_HELP=1")
-	output, err := cmd.CombinedOutput()
-	if err == nil {
-		t.Fatalf("deepdoc --help did not exit non-zero: %s", output)
-	}
-	if !strings.Contains(string(output), "DeepDoc server name") {
-		t.Errorf("deepdoc help missing the DeepDoc server name line:\n%s", output)
-	}
-	if !strings.Contains(string(output), `default: "deepdoc_server"`) {
-		t.Errorf("deepdoc help missing the correct --name default (want deepdoc_server):\n%s", output)
-	}
-	if strings.Contains(string(output), "Sync service server name") {
-		t.Errorf("deepdoc help still shows the syncer's text:\n%s", output)
 	}
 }

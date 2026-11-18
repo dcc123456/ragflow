@@ -14,6 +14,8 @@
 //  limitations under the License.
 //
 
+//go:build ee
+
 package main
 
 import (
@@ -35,12 +37,8 @@ func TestParseArgsStandardSyntaxMatrix(t *testing.T) {
 	}{
 		{"--log-level", "debug"},
 		{"--config", "cfg.yaml"},
-		{"--name", "worker-1"},
 		{"--port", "8080"},
-		{"--admin-host", "1.2.3.4:5678"},
 		{"--deepdoc-inference-concurrency", "4"},
-		{"--ingestor-concurrent-workers", "8"},
-		{"--ingestor-page-concurrency", "4"},
 		{"--deepdoc-inference-cpu-cores", "2"},
 	}
 	for _, c := range cases {
@@ -283,34 +281,34 @@ func TestParseArgsUnknownFlagRejected(t *testing.T) {
 // and the space form.
 func TestParseArgsValueEdgeCases(t *testing.T) {
 	// A value containing '=' keeps everything after the first '='.
-	args, err := parseArgsFrom([]string{"ragflow_server", "--name=foo=bar"})
+	args, err := parseArgsFrom([]string{"ragflow_server", "--config=foo=bar"})
 	if err != nil {
-		t.Fatalf("--name=foo=bar error = %v", err)
+		t.Fatalf("--config=foo=bar error = %v", err)
 	}
-	if args.Name == nil || *args.Name != "foo=bar" {
-		t.Errorf("--name=foo=bar name = %v, want foo=bar", args.Name)
+	if args.ConfigPath == nil || *args.ConfigPath != "foo=bar" {
+		t.Errorf("--config=foo=bar name = %v, want foo=bar", args.ConfigPath)
 	}
 
 	// In the space form the next argument is consumed literally even when it
 	// looks like a flag, and must not be re-parsed as a mode.
-	args, err = parseArgsFrom([]string{"ragflow_server", "--name", "--api"})
+	args, err = parseArgsFrom([]string{"ragflow_server", "--config", "--api"})
 	if err != nil {
-		t.Fatalf("--name --api error = %v", err)
+		t.Fatalf("--config --api error = %v", err)
 	}
-	if args.Name == nil || *args.Name != "--api" {
-		t.Errorf("--name --api name = %v, want --api", args.Name)
+	if args.ConfigPath == nil || *args.ConfigPath != "--api" {
+		t.Errorf("--config --api name = %v, want --api", args.ConfigPath)
 	}
 	if args.Mode != nil {
-		t.Errorf("--name --api mode = %v, want nil", args.Mode)
+		t.Errorf("--config --api mode = %v, want nil", args.Mode)
 	}
 
 	// An explicitly empty string value is a valid (if odd) string value.
-	args, err = parseArgsFrom([]string{"ragflow_server", "--api", "--name="})
+	args, err = parseArgsFrom([]string{"ragflow_server", "--api", "--config="})
 	if err != nil {
-		t.Fatalf("--name= error = %v", err)
+		t.Fatalf("--config= error = %v", err)
 	}
-	if args.Name == nil || *args.Name != "" {
-		t.Errorf("--name= name = %v, want empty string", args.Name)
+	if args.ConfigPath == nil || *args.ConfigPath != "" {
+		t.Errorf("--config= name = %v, want empty string", args.ConfigPath)
 	}
 	args, err = parseArgsFrom([]string{"ragflow_server", "--api", "--config="})
 	if err != nil {
@@ -332,9 +330,9 @@ func TestParseArgsValueEdgeCases(t *testing.T) {
 // be reported as needing a value, in both dash forms.
 func TestParseArgsMissingValue(t *testing.T) {
 	valueFlags := []string{
-		"--log-level", "--config", "--name", "--port", "--admin-host",
-		"--deepdoc-inference-concurrency", "--ingestor-concurrent-workers",
-		"--ingestor-page-concurrency", "--deepdoc-inference-cpu-cores",
+		"--log-level", "--config", "--port",
+		"--deepdoc-inference-concurrency",
+		"--deepdoc-inference-cpu-cores",
 	}
 	for _, flag := range valueFlags {
 		for _, spelling := range []string{flag, "-" + strings.TrimPrefix(flag, "-")} {
@@ -356,7 +354,7 @@ func TestParseArgsMissingValue(t *testing.T) {
 // integer flags, preserving the pre-migration validation rules.
 func TestParseArgsNumericValidation(t *testing.T) {
 	positiveInvalid := []string{"0", "-1", "abc", "1.5"}
-	for _, flag := range []string{"--deepdoc-inference-concurrency", "--ingestor-concurrent-workers", "--ingestor-page-concurrency"} {
+	for _, flag := range []string{"--deepdoc-inference-concurrency"} {
 		for _, v := range positiveInvalid {
 			if _, err := parseArgsFrom([]string{"ragflow_server", "--api", flag + "=" + v}); err == nil {
 				t.Errorf("%s=%s error = nil, want rejection", flag, v)
@@ -390,30 +388,6 @@ func TestParseArgsNumericValidation(t *testing.T) {
 	}
 }
 
-// TestParseArgsAdminHost covers the ip:port split and its failure modes,
-// preserving the pre-migration behavior (including IPv6 rejection, which the
-// SplitN(":", 2) contract implies).
-func TestParseArgsAdminHost(t *testing.T) {
-	args, err := parseArgsFrom([]string{"ragflow_server", "--ingestor", "--admin-host=127.0.0.1:8000"})
-	if err != nil {
-		t.Fatalf("--admin-host=127.0.0.1:8000 error = %v", err)
-	}
-	if args.AdminHost == nil || *args.AdminHost != "127.0.0.1" {
-		t.Errorf("adminHost = %v, want 127.0.0.1", args.AdminHost)
-	}
-	if args.AdminPort == nil || *args.AdminPort != 8000 {
-		t.Errorf("adminPort = %v, want 8000", args.AdminPort)
-	}
-
-	for _, v := range []string{"127.0.0.1", ":8000", "127.0.0.1:", "127.0.0.1:abc", "::1:80", ""} {
-		if _, err := parseArgsFrom([]string{"ragflow_server", "--ingestor", "--admin-host=" + v}); err == nil {
-			t.Errorf("--admin-host=%q error = nil, want rejection", v)
-		}
-	}
-}
-
-// TestParseArgsPresenceSemantics guards the "unspecified vs explicit zero"
-// contract: only flags present on the command line populate bootstrap.ServerArgs.
 func TestParseArgsPresenceSemantics(t *testing.T) {
 	args, err := parseArgsFrom([]string{"ragflow_server", "--api"})
 	if err != nil {
@@ -423,11 +397,7 @@ func TestParseArgsPresenceSemantics(t *testing.T) {
 		"logLevel":                    args.LogLevel != nil,
 		"configPath":                  args.ConfigPath != nil,
 		"port":                        args.Port != nil,
-		"adminHost":                   args.AdminHost != nil,
-		"name":                        args.Name != nil,
 		"deepdocInferenceConcurrency": args.DeepdocInferenceConcurrency != nil,
-		"ingestorConcurrentWorkers":   args.IngestorConcurrentWorkers != nil,
-		"ingestorPageConcurrency":     args.IngestorPageConcurrency != nil,
 		"deepdocInferenceCPUCores":    args.DeepdocInferenceCPUCores != nil,
 	} {
 		if got {
@@ -486,7 +456,7 @@ func TestParseArgsHelpVersion(t *testing.T) {
 // TestParseArgsDoesNotMutateInput: parseArgsFrom must not rewrite the caller's
 // argv slice (parseArgs passes os.Args straight through).
 func TestParseArgsDoesNotMutateInput(t *testing.T) {
-	in := []string{"ragflow_server", "--api", "--port=80", "--name=a=b"}
+	in := []string{"ragflow_server", "--api", "--port=80", "--config=a=b"}
 	want := append([]string(nil), in...)
 	if _, err := parseArgsFrom(in); err != nil {
 		t.Fatalf("parseArgsFrom error = %v", err)
@@ -526,12 +496,12 @@ func TestParseArgsDashValues(t *testing.T) {
 		t.Error("--log-level -x error = nil, want rejection")
 	}
 	// "--" as a value is consumed literally, not treated as the terminator.
-	args, err := parseArgsFrom([]string{"ragflow_server", "--name", "--"})
+	args, err := parseArgsFrom([]string{"ragflow_server", "--config", "--"})
 	if err != nil {
-		t.Fatalf("--name -- error = %v", err)
+		t.Fatalf("--config -- error = %v", err)
 	}
-	if args.Name == nil || *args.Name != "--" {
-		t.Errorf("--name -- name = %v, want --", args.Name)
+	if args.ConfigPath == nil || *args.ConfigPath != "--" {
+		t.Errorf("--config -- name = %v, want --", args.ConfigPath)
 	}
 }
 
@@ -637,23 +607,5 @@ func TestParseArgsChatterSelection(t *testing.T) {
 	}
 	if args.Mode == nil || *args.Mode != "chatter" {
 		t.Fatalf("mode = %v, want chatter", args.Mode)
-	}
-	for _, mode := range []string{"admin", "ingestor", "syncer", "deepdoc", "migrate", "chatter"} {
-		if _, err := parseArgsFrom([]string{"ragflow_server", "--" + mode, "--disable-chat-channels"}); err == nil {
-			t.Errorf("%s accepted API-only --disable-chat-channels", mode)
-		}
-	}
-	for _, flag := range []string{"--disable-chat-channels", "--disable-chat-channels=true", "--disable-chat-channels=false"} {
-		args, err := parseArgsFrom([]string{"ragflow_server", "--api", flag})
-		if err != nil {
-			t.Fatalf("API disable switch: %v", err)
-		}
-		if want := flag != "--disable-chat-channels=false"; args.DisableChatChannels != want {
-			t.Errorf("%s: DisableChatChannels = %v, want %v", flag, args.DisableChatChannels, want)
-		}
-	}
-	args, err = parseArgsFrom([]string{"ragflow_server", "--api"})
-	if err != nil || args.DisableChatChannels {
-		t.Fatalf("default API must keep embedded channels: args=%+v, error=%v", args, err)
 	}
 }

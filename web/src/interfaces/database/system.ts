@@ -11,4 +11,5 @@ export interface ISystemConfig {
   registerEnabled: number | boolean;
   emailVerificationEnabled: boolean;
   upload_size_limit: number;
+  apiKeyMaxCount?: number;
 }

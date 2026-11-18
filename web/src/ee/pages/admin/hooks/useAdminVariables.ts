@@ -1,13 +1,15 @@
 import { pickBy } from 'lodash';
 import { toast } from 'sonner';
 
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 
 import { listVariables, setVariable } from '@/ee/services/admin-service';
+import { SystemConfigKeys } from '@/hooks/use-system-request';
 
 export default function useAdminVariables() {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
   const { data, isFetching, refetch } = useQuery({
     queryKey: ['admin/listVariables'],
     queryFn: async () => {
@@ -34,6 +36,7 @@ export default function useAdminVariables() {
         position: 'top-center',
       });
       refetch();
+      queryClient.invalidateQueries({ queryKey: SystemConfigKeys.config() });
     },
   });
 

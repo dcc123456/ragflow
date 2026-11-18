@@ -36,6 +36,7 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -463,6 +464,10 @@ func newEngine(h *deepDocHandler) *gin.Engine {
 // (operator-switched det/rec, mirroring the Python EE docker), /predict/ocr_det,
 // /predict/ocr_rec and /health until ctx is cancelled, with graceful shutdown.
 func Run(ctx context.Context, port int) error {
+	return run(ctx, port, nil)
+}
+
+func run(ctx context.Context, port int, ready func() error) error {
 	if err := native.InitORT(); err != nil {
 		return fmt.Errorf("InitORT: %w", err)
 	}
@@ -476,9 +481,20 @@ func Run(ctx context.Context, port int) error {
 
 	addr := fmt.Sprintf(":%d", port)
 	srv := &http.Server{Addr: addr, Handler: e}
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("listen DeepDoc server on %s: %w", addr, err)
+	}
+	defer listener.Close()
+
 	common.Info(fmt.Sprintf("Starting DeepDoc HTTP server on %s", addr))
+	if ready != nil {
+		if err := ready(); err != nil {
+			return fmt.Errorf("report DeepDoc readiness: %w", err)
+		}
+	}
 	go func() {
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := srv.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			common.Fatal("DeepDoc server failed", zap.Error(err))
 		}
 	}()

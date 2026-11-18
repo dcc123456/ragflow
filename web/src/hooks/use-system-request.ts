@@ -18,13 +18,17 @@ import { ISystemConfig } from '@/interfaces/database/system';
 import userService from '@/services/user-service';
 import { useQuery } from '@tanstack/react-query';
 
+export const SystemConfigKeys = {
+  config: () => ['systemConfig'] as const,
+};
+
 /**
  * Hook to fetch system configuration including register enable status
  * @returns System configuration with loading status
  */
 export const useSystemConfig = () => {
   const { data, isLoading } = useQuery<ISystemConfig>({
-    queryKey: ['systemConfig'],
+    queryKey: SystemConfigKeys.config(),
     queryFn: async () => {
       const { data = {} } = await userService.getSystemConfig();
       return (

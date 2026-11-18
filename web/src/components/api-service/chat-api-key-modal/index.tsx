@@ -31,6 +31,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { useTranslate } from '@/hooks/common-hooks';
+import { useSystemConfig } from '@/hooks/use-system-request';
 import { IModalProps } from '@/interfaces/common';
 import { formatDate } from '@/utils/date';
 import { Trash2 } from 'lucide-react';
@@ -44,6 +45,7 @@ const ChatApiKeyModal = ({
   const { createToken, removeToken, tokenList, listLoading, creatingLoading } =
     useOperateApiKey(idKey, dialogId);
   const { t } = useTranslate('chat');
+  const { config } = useSystemConfig();
 
   return (
     <>
@@ -92,7 +94,7 @@ const ChatApiKeyModal = ({
               className="w-fit shrink-0"
               onClick={createToken}
               loading={creatingLoading}
-              disabled={tokenList?.length >= 16}
+              disabled={tokenList?.length >= (config?.apiKeyMaxCount ?? 16)}
             >
               {t('createNewKey')}
             </Button>

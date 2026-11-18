@@ -29,5 +29,5 @@ import (
 // enterprise counterpart of stub.go's runDeepDoc. The package resolves the port,
 // and reports the capability as unavailable when this tree is built without cgo.
 func runDeepDoc(ctx context.Context, serverName string, args *bootstrap.ServerArgs) error {
-	return deepdocserver.RunServer(ctx, serverName, args.Port)
+	return deepdocserver.RunServer(ctx, serverName, args.Port, args.Ready)
 }

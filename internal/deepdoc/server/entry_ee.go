@@ -38,7 +38,7 @@ const DefaultPort = 8001
 // The DeepDoc inference server is intentionally standalone: it only needs the
 // statically-linked ONNX Runtime and MODEL_DIR, never the full RAGFlow
 // infrastructure (DB/engine/cache/storage/MQ).
-func RunServer(ctx context.Context, serverName string, port *int) error {
+func RunServer(ctx context.Context, serverName string, port *int, ready func() error) error {
 	listenPort := DefaultPort
 	if port != nil && *port > 0 {
 		listenPort = *port
@@ -48,5 +48,5 @@ func RunServer(ctx context.Context, serverName string, port *int) error {
 	infnative.InitCPUEE()
 
 	common.Info(fmt.Sprintf("Starting EE DeepDoc inference server %s on port %d", serverName, listenPort))
-	return Run(ctx, listenPort)
+	return run(ctx, listenPort, ready)
 }

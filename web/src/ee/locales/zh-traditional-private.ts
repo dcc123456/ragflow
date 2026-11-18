@@ -155,6 +155,14 @@ export default {
       switchTenant: '切換租戶',
     },
     admin: {
+      settingsForm: {
+        apiKey: {
+          title: 'API 金鑰',
+          description:
+            '設定每個租戶的 API 金鑰數量上限。降低上限不會使現有金鑰失效。',
+          maxCount: '每個租戶的金鑰上限',
+        },
+      },
       resourceType: { group: '群組', mcp: 'MCP', invitation: '邀請' },
       tenants: '租戶',
       defaultTenantRole: '預設租戶角色',

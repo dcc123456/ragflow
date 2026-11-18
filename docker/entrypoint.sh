@@ -4,11 +4,7 @@ set -e
 
 cd /ragflow
 
-if [[ $# -eq 0 ]]; then
-    set -- --api
-fi
-
-mode=api
+mode=standalone
 for arg in "$@"; do
     case "$arg" in
         --api|--admin|--ingestor|--syncer|--chatter|--deepdoc|--migrate)
@@ -56,9 +52,9 @@ if [[ "$mode" == "migrate" ]]; then
     fi
 fi
 
-if [[ "$mode" == "api" ]]; then
+if [[ "$mode" == "api" || "$mode" == "standalone" ]]; then
     echo "Starting nginx..."
-    sed -i "s|http://127.0.0.1:9381|http://$RAGFLOW_ADMIN_HOST:$RAGFLOW_ADMIN_HTTP_PORT|g" /etc/nginx/conf.d/ragflow.conf
+    sed -i "s|http://127.0.0.1:9381|http://${RAGFLOW_ADMIN_HOST:-127.0.0.1}:${RAGFLOW_ADMIN_HTTP_PORT:-9381}|g" /etc/nginx/conf.d/ragflow.conf
     env -u LD_LIBRARY_PATH /usr/sbin/nginx -c /etc/nginx/nginx.conf
 fi
 
