@@ -27,16 +27,15 @@ import (
 	"strconv"
 
 	"ragflow/internal/common"
+	"ragflow/internal/server/admin"
+	apipkg "ragflow/internal/server/api"
 	"ragflow/internal/server/bootstrap"
+	chatterpkg "ragflow/internal/server/chatter"
+	ingestorpkg "ragflow/internal/server/ingestor"
+	syncerpkg "ragflow/internal/server/syncer"
 )
 
-func init() {
-	registerEditionFlags = registerEnterpriseFlags
-	printHelp = printEnterpriseHelp
-	runEdition = runEnterprise
-}
-
-func registerEnterpriseFlags(fs *flag.FlagSet, args *bootstrap.ServerArgs) func() error {
+func registerFlags(fs *flag.FlagSet, args *bootstrap.ServerArgs) func() error {
 	var modes []string
 	var port, concurrency, cpuCores int
 	var tier string
@@ -83,7 +82,7 @@ func registerEnterpriseFlags(fs *flag.FlagSet, args *bootstrap.ServerArgs) func(
 	}
 }
 
-func printEnterpriseHelp(args *bootstrap.ServerArgs) {
+func printHelp(args *bootstrap.ServerArgs) {
 	if args.Mode == nil {
 		fmt.Fprintf(os.Stderr, "Usage: %s --api|--admin|--ingestor|--syncer|--chatter|--deepdoc [OPTIONS]\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "       %s --migrate [OPTIONS]\n\n", os.Args[0])
@@ -106,12 +105,29 @@ func printEnterpriseHelp(args *bootstrap.ServerArgs) {
 	}
 }
 
-func runEnterprise(ctx context.Context, cancel context.CancelFunc, args *bootstrap.ServerArgs) error {
+func validateServerMode(args *bootstrap.ServerArgs) error {
 	if args.Mode == nil {
 		printHelp(args)
 		return errors.New("select a server mode")
 	}
-	return runService(ctx, cancel, args)
+	return nil
+}
+
+func runEnterpriseServices(ctx context.Context, cancel context.CancelFunc, args *bootstrap.ServerArgs, services *bootstrap.AgentServices) error {
+	switch *args.Mode {
+	case "admin":
+		return admin.Run(ctx, args)
+	case "api":
+		return apipkg.Run(ctx, *args.Name, args, services)
+	case "ingestor":
+		return ingestorpkg.Run(ctx, cancel, args, services)
+	case "syncer":
+		return syncerpkg.Run(ctx, cancel, args)
+	case "chatter":
+		return chatterpkg.Run(ctx, args, services)
+	default:
+		return fmt.Errorf("invalid server mode: %s", *args.Mode)
+	}
 }
 
 // modeFlag is a boolean flag that records which mode flag was set and in what
