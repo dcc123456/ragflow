@@ -5,7 +5,10 @@ import {
   PermissionResourceType,
   hasResourcePermission,
 } from '@/ee/constants/team';
-import { useFetchTenantInfo } from '@/hooks/use-user-setting-request';
+import {
+  useFetchTenantInfo,
+  useFetchUserInfo,
+} from '@/hooks/use-user-setting-request';
 import { IProviderInstance } from '@/interfaces/database/llm';
 import { ProviderInstanceCard } from '@/pages/user-setting/setting-model/instance-card/provider-instance-card';
 import { KeyRound } from 'lucide-react';
@@ -40,10 +43,13 @@ export function ProviderInstanceCardWithPrivilege({
 }: ProviderInstanceCardWithPrivilegeProps) {
   const { t } = useTranslation();
   const { data: tenantInfo } = useFetchTenantInfo();
+  const { data: userInfo } = useFetchUserInfo();
   const [permissionTarget, setPermissionTarget] =
     useState<PrivilegeDialogInitialValues | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const [permissionActionsContainer, setPermissionActionsContainer] =
+    useState<HTMLElement | null>(null);
+  const [instanceNameContainer, setInstanceNameContainer] =
     useState<HTMLElement | null>(null);
 
   const showInstancePermissions = useCallback(() => {
@@ -72,6 +78,14 @@ export function ProviderInstanceCardWithPrivilege({
   );
 
   useLayoutEffect(() => {
+    setInstanceNameContainer(
+      cardRef.current?.querySelector<HTMLElement>(
+        '[data-testid="instance-name-row"]',
+      ) ?? null,
+    );
+  }, [instance.id]);
+
+  useLayoutEffect(() => {
     if (!canManagePermissions) {
       setPermissionActionsContainer(null);
       return;
@@ -90,6 +104,19 @@ export function ProviderInstanceCardWithPrivilege({
         instance={instance}
         defaultOpen={defaultOpen}
       />
+      {instance.user_id &&
+        instance.user_id !== userInfo?.id &&
+        instance.nickname &&
+        instanceNameContainer &&
+        createPortal(
+          <span
+            className="shrink-0 truncate text-xs text-text-secondary"
+            title={instance.nickname}
+          >
+            {instance.nickname}
+          </span>,
+          instanceNameContainer,
+        )}
       {canManagePermissions &&
         permissionActionsContainer &&
         createPortal(

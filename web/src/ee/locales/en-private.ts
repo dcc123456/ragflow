@@ -151,15 +151,19 @@ export default {
         addMember: 'Add model',
         addMemberTitle: 'Add model to group',
         memberAlreadyAdded: 'This model is already in the group',
+        memberUnavailable: 'Unavailable',
+        memberNoAccess: 'No access',
         removeMemberTitle: 'Remove model from group?',
         deleteGroupTitle: 'Delete model group?',
         deleteGroupDescription:
           'Only the group is deleted. Provider models are not affected.',
+        providerName: 'Provider',
         modelName: 'Model name',
         modelType: 'Model type',
         instanceName: 'Instance name',
         position: 'Position',
         status: 'Status',
+        reorderModel: 'Drag to reorder',
       },
       modelGroupSelector: {
         direct: 'Model',
@@ -366,6 +370,11 @@ export default {
         },
       },
       settingsSubtitle: 'Manage system-wide configurations.',
+      changeOwnPassword: {
+        failed: 'Could not change the password. Please try again.',
+        encryptionFailed:
+          'Could not encrypt the passwords. Try a shorter password.',
+      },
       settingsForm: {
         apiKey: {
           title: 'API keys',

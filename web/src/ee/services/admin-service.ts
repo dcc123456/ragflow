@@ -170,6 +170,19 @@ export const login = (params: EmailLoginParams | LDAPLoginParams) =>
 
 export const logout = () => request.get<ResponseData<boolean>>(API.adminLogout);
 
+export const changeOwnPassword = async (
+  currentPassword: string,
+  newPassword: string,
+) => {
+  const { data } = await requestSilent.put<
+    Pick<ResponseData, 'code' | 'message'>
+  >(API.adminChangeOwnPassword, {
+    current_password: currentPassword,
+    new_password: newPassword,
+  });
+  return data;
+};
+
 export const listUsers = (params?: {
   keyword?: string;
   sort?: 'asc' | 'desc';

@@ -9,6 +9,7 @@ import {
 const group = {
   id: '0123456789abcdef0123456789abcdef',
   tenant_id: 'tenant-1',
+  nickname: 'Owner',
   group_name: 'chat group',
   status: 'active',
 };

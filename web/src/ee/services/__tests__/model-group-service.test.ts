@@ -5,6 +5,7 @@ const mockRequests = {
   remove: jest.fn(),
   addMember: jest.fn(),
   removeMember: jest.fn(),
+  reorderMembers: jest.fn(),
 };
 const mockRegisterNextServer = jest.fn((_methods: unknown) => {
   void _methods;
@@ -24,19 +25,21 @@ const modelGroupService = jest.requireActual<
 describe('modelGroupService', () => {
   beforeEach(() => jest.clearAllMocks());
 
-  it('encodes every dynamic group name', () => {
-    expect(api.modelGroup('a/b ?')).toBe('/api/v1/models/groups/a%2Fb%20%3F');
-    expect(api.modelGroupMember('a/b ?')).toBe(
-      '/api/v1/models/groups/a%2Fb%20%3F/model',
+  it('encodes every dynamic group id', () => {
+    expect(api.modelGroup('group/id ?')).toBe(
+      '/api/v1/models/groups/group%2Fid%20%3F',
+    );
+    expect(api.modelGroupMember('group/id ?')).toBe(
+      '/api/v1/models/groups/group%2Fid%20%3F/model',
     );
   });
 
   it('uses model_id when adding a member', () => {
-    modelGroupService.addMember('team one', { model_id: 'model-1' });
+    modelGroupService.addMember('group-1', { model_id: 'model-1' });
 
     expect(mockRequests.addMember).toHaveBeenCalledWith(
       {
-        url: '/api/v1/models/groups/team%20one/model',
+        url: '/api/v1/models/groups/group-1/model',
         data: { model_id: 'model-1' },
       },
       true,
@@ -45,11 +48,11 @@ describe('modelGroupService', () => {
 
   it('uses composite_model_name when removing a member', () => {
     const body = { composite_model_name: 'chat@default@OpenAI' };
-    modelGroupService.removeMember('team one', body);
+    modelGroupService.removeMember('group-1', body);
 
     expect(mockRequests.removeMember).toHaveBeenCalledWith(
       {
-        url: '/api/v1/models/groups/team%20one/model',
+        url: '/api/v1/models/groups/group-1/model',
         data: body,
       },
       true,

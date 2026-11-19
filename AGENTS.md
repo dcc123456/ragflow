@@ -168,7 +168,7 @@ npm run type-check
 - For backend changes, first run package-scoped `bash build.sh --test ./path/to/package/...`. Run the integration or e2e tier when the changed behavior needs real services or a full pipeline.
 - For frontend changes, prefer the touched-package lint, type-check, or test command.
 - Do not default to raw `go test`, `go build`, or IDE Run/Debug for Go in this repo. They often miss the required CGO flags and native static libraries (`office_oxide`, `pdfium-static`, `pdf_oxide`) that `build.sh` wires correctly.
-- After a Go build, execute the resulting binary's help command for each changed server mode; a successful link alone does not prove the binary starts. On this host, the original `build.sh` selected default LLD 18 and produced binaries that crashed before Go `main`; linking with LLD 20 started successfully. Verify the linker actually selected on Linux before trusting a new binary.
+- After a Go build, execute the resulting binary's help command; a successful link alone does not prove the binary starts. On this host, the original `build.sh` selected default LLD 18 and produced binaries that crashed before Go `main`; linking with LLD 20 started successfully. Verify the linker actually selected on Linux before trusting a new binary.
 - If Go native builds fail, inspect `build.sh` and `internal/development.md` before changing code. Common environment issues are missing downloaded native dependencies or an incompatible `ld.lld` on Linux.
 
 ## Default review checklist

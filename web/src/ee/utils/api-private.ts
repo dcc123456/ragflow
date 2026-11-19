@@ -75,6 +75,7 @@ export default {
   adminAddLlmFactory: '/api/v1/admin/llm/add_llm',
   adminDeleteLlmFactory: '/api/v1/admin/llm/delete_factory',
   adminVariables: '/api/v1/admin/variables',
+  adminChangeOwnPassword: `${restAPIv1}/admin/me/password`,
   adminUploadSensitiveWordFilter: '/api/v1/admin/sensitive-words-file',
   adminDownloadSensitiveWordFilter: '/api/v1/admin/sensitive-words-file',
   adminTestSMTPConnection: '/api/v1/admin/validate_mail',
@@ -135,8 +136,10 @@ export default {
   adminSetLicense: '/api/v1/admin/system/license',
   adminGetFingerprint: '/api/v1/admin/fingerprint',
   modelGroups: `${restAPIv1}/models/groups`,
-  modelGroup: (groupName: string) =>
-    `${restAPIv1}/models/groups/${encodeURIComponent(groupName)}`,
-  modelGroupMember: (groupName: string) =>
-    `${restAPIv1}/models/groups/${encodeURIComponent(groupName)}/model`,
+  modelGroup: (groupId: string) =>
+    `${restAPIv1}/models/groups/${encodeURIComponent(groupId)}`,
+  modelGroupMember: (groupId: string) =>
+    `${restAPIv1}/models/groups/${encodeURIComponent(groupId)}/model`,
+  modelGroupOrder: (groupId: string) =>
+    `${restAPIv1}/models/groups/${encodeURIComponent(groupId)}/order`,
 };

@@ -29,14 +29,18 @@ export default {
         addMember: '新增模型',
         addMemberTitle: '新增模型至群組',
         memberAlreadyAdded: '此模型已在群組中',
+        memberUnavailable: '關聯資源遺失',
+        memberNoAccess: '無權查看',
         removeMemberTitle: '從群組移除模型？',
         deleteGroupTitle: '刪除模型組？',
         deleteGroupDescription: '僅刪除群組，不會影響供應商中的模型。',
+        providerName: '供應商',
         modelName: '模型名稱',
         modelType: '模型類型',
         instanceName: '執行個體名稱',
         position: '位置',
         status: '狀態',
+        reorderModel: '拖曳以重新排序',
       },
       modelGroupSelector: {
         direct: '模型',
@@ -155,6 +159,10 @@ export default {
       switchTenant: '切換租戶',
     },
     admin: {
+      changeOwnPassword: {
+        failed: '無法變更密碼，請再試一次。',
+        encryptionFailed: '無法加密密碼，請嘗試使用較短的密碼。',
+      },
       settingsForm: {
         apiKey: {
           title: 'API 金鑰',

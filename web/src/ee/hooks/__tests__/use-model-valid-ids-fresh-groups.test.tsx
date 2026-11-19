@@ -18,7 +18,7 @@ jest.mock('@/ee/services/model-group-service', () => ({
   __esModule: true,
   default: {
     list: () => mockListModelGroups(),
-    members: (groupName: string) => mockListModelGroupMembers(groupName),
+    members: (groupId: string) => mockListModelGroupMembers(groupId),
   },
 }));
 
@@ -50,6 +50,7 @@ const freshDirectModel = {
 const activeGroup = {
   id: groupId,
   tenant_id: 'tenant-1',
+  nickname: 'Owner',
   group_name: 'chat-group',
   status: 'active',
 };
@@ -114,9 +115,7 @@ describe('useModelValidIds enterprise groups', () => {
     });
     expect(mockListAllAddedModels).toHaveBeenCalledTimes(2);
     expect(mockListModelGroups).toHaveBeenCalled();
-    expect(mockListModelGroupMembers).toHaveBeenCalledWith(
-      activeGroup.group_name,
-    );
+    expect(mockListModelGroupMembers).toHaveBeenCalledWith(activeGroup.id);
     expect(mockGetTenantInfo).not.toHaveBeenCalled();
     queryClient.clear();
   });
@@ -252,9 +251,7 @@ describe('useModelValidIds enterprise groups', () => {
     expect(mockListAllAddedModels).toHaveBeenCalledTimes(2);
     expect(mockGetTenantInfo).toHaveBeenCalledTimes(2);
     expect(mockListModelGroups).toHaveBeenCalled();
-    expect(mockListModelGroupMembers).toHaveBeenCalledWith(
-      activeGroup.group_name,
-    );
+    expect(mockListModelGroupMembers).toHaveBeenCalledWith(activeGroup.id);
     queryClient.clear();
   });
 });

@@ -35,6 +35,7 @@ describe('ModelReferenceLabel', () => {
         {
           id: groupId,
           tenant_id: 'tenant-1',
+          nickname: 'Owner',
           group_name: 'Support chat group',
           status: 'active',
         },

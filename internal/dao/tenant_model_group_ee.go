@@ -25,6 +25,7 @@ import (
 	"ragflow/internal/entity"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // TenantModelGroupDAO tenant model group data access object
@@ -43,6 +44,22 @@ func (dao *TenantModelGroupDAO) GetByID(ctx context.Context, db *gorm.DB, id str
 	}
 	var group entity.TenantModelGroup
 	err := db.WithContext(ctx).Where("id = ?", id).Take(&group).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &group, nil
+}
+
+// GetByIDAndTenantID resolves a group by ID within one tenant.
+func (dao *TenantModelGroupDAO) GetByIDAndTenantID(ctx context.Context, db *gorm.DB, tenantID, id string) (*entity.TenantModelGroup, error) {
+	if len(tenantID) == 0 || len(id) == 0 {
+		return nil, nil
+	}
+	var group entity.TenantModelGroup
+	err := db.WithContext(ctx).Where("tenant_id = ? AND id = ?", tenantID, id).Take(&group).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
 	}
@@ -91,24 +108,6 @@ func (dao *TenantModelGroupDAO) ListByTenantIDAndUserID(ctx context.Context, db 
 		return nil, err
 	}
 	return instances, nil
-}
-
-// GetByGroupName resolves a group by its tenant-scoped name, the same key
-// Create enforces uniqueness on. A group name therefore uniquely identifies a
-// group inside a tenant; user_id is ownership metadata, not part of the key.
-func (dao *TenantModelGroupDAO) GetByGroupName(ctx context.Context, db *gorm.DB, tenantID, groupName string) (*entity.TenantModelGroup, error) {
-	if len(tenantID) == 0 || len(groupName) == 0 {
-		return nil, nil
-	}
-	var group entity.TenantModelGroup
-	tx := db.WithContext(ctx).Where("tenant_id = ? AND group_name = ?", tenantID, groupName).Find(&group)
-	if tx.Error != nil {
-		return nil, tx.Error
-	}
-	if tx.RowsAffected == 0 {
-		return nil, nil
-	}
-	return &group, nil
 }
 
 func (dao *TenantModelGroupDAO) DeleteByIDs(ctx context.Context, db *gorm.DB, ids []string) (int64, error) {
@@ -172,11 +171,54 @@ func (dao *TenantModelGroupMapDAO) ListByGroupID(ctx context.Context, db *gorm.D
 	if len(groupID) == 0 {
 		return instances, nil
 	}
-	err := db.WithContext(ctx).Where("group_id = ?", groupID).Order("position").Find(&instances).Error
+	err := db.WithContext(ctx).Where("group_id = ?", groupID).Order("position ASC, id ASC").Find(&instances).Error
 	if err != nil {
 		return nil, err
 	}
 	return instances, nil
+}
+
+func (dao *TenantModelGroupMapDAO) ReorderByModelIDs(ctx context.Context, db *gorm.DB, groupID string, modelIDs []string) error {
+	if groupID == "" || len(modelIDs) == 0 {
+		return errors.New("group ID and model IDs are required")
+	}
+	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var members []*entity.TenantModelGroupMap
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Select("id", "model_id", "position").
+			Where("group_id = ?", groupID).
+			Order("position ASC, id ASC").
+			Find(&members).Error; err != nil {
+			return err
+		}
+		if len(members) != len(modelIDs) {
+			return errors.New("model IDs must include every group member exactly once")
+		}
+		membersByModelID := make(map[string]*entity.TenantModelGroupMap, len(members))
+		for _, member := range members {
+			membersByModelID[member.ModelID] = member
+		}
+		seen := make(map[string]struct{}, len(modelIDs))
+		for position, modelID := range modelIDs {
+			member := membersByModelID[modelID]
+			if member == nil {
+				return errors.New("model IDs must include every group member exactly once")
+			}
+			if _, exists := seen[modelID]; exists {
+				return errors.New("model IDs must include every group member exactly once")
+			}
+			seen[modelID] = struct{}{}
+			if member.Position == int64(position) {
+				continue
+			}
+			if err := tx.Model(&entity.TenantModelGroupMap{}).
+				Where("id = ? AND group_id = ?", member.ID, groupID).
+				Update("position", position).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 // SetModelStatus overwrites the group-local status of one membership row and

@@ -185,10 +185,10 @@ func (s *TenantService) UpdateResourcePermissions(ctx context.Context, userID, t
 			return common.NewCodedError(common.CodeBadRequest, "expanded resource list exceeds 200 items")
 		}
 		for _, resource := range resources {
-			if resource.Type == "model_instance" &&
+			if (resource.Type == "model_instance" || resource.Type == "model_group") &&
 				*request.Permission != 0 &&
 				*request.Permission != entity.ResourcePermissionRead {
-				return common.NewCodedError(common.CodeBadRequest, "model instances only support read permission")
+				return common.NewCodedError(common.CodeBadRequest, "model resources only support read permission")
 			}
 		}
 
@@ -588,7 +588,7 @@ func requireFeatureSharePermission(ctx context.Context, db *gorm.DB, actor *perm
 	}
 	featureName := map[string]permission.Feature{
 		"kb": "dataset", "document": "dataset", "dialog": "chat", "canvas": "agent",
-		"file": "file", "search": "search", "memory": "memory", "mcp": "mcp",
+		"file": "file", "search": "search", "memory": "memory", "mcp": "mcp", "model_group": "model_provider",
 	}[resourceType]
 	if featureName == "" {
 		return nil
@@ -791,6 +791,10 @@ func updateResourceUserID(tx *gorm.DB, tenantID string, resource permissionResou
 		err = tx.Model(&entity.MCPServer{}).
 			Where("id = ? AND tenant_id = ?", resource.ID, tenantID).
 			Update("user_id", userID).Error
+	case "model_group":
+		err = tx.Model(&entity.TenantModelGroup{}).
+			Where("id = ? AND tenant_id = ?", resource.ID, tenantID).
+			Update("user_id", userID).Error
 	case "model_instance":
 		var instance entity.TenantModelInstance
 		if err := tx.Select("provider_id").Where("id = ? AND status = ?", resource.ID, "active").Take(&instance).Error; err != nil {
@@ -951,6 +955,12 @@ func resolvePermissionResources(db *gorm.DB, tenantID, resourceType, requestedID
 			return nil, permissionResourceNotFound(err)
 		}
 		return []permissionResource{{ID: resource.ID, Type: "mcp", Name: resource.Name, OwnerUserID: resource.UserID}}, nil
+	case "model_group":
+		var resource entity.TenantModelGroup
+		if err := db.Where("id = ? AND tenant_id = ? AND status = ?", requestedID, tenantID, "active").Take(&resource).Error; err != nil {
+			return nil, permissionResourceNotFound(err)
+		}
+		return []permissionResource{{ID: resource.ID, Type: "model_group", Name: resource.GroupName, OwnerUserID: resource.UserID}}, nil
 	case "instance", "model_instance":
 		resource, err := resolveModelInstance(db, tenantID, requestedID)
 		if err != nil {
@@ -1100,7 +1110,7 @@ func resourcePermissionGrantTarget(grant entity.Permission) (string, string) {
 func resourceModuleType(resourceType string) string {
 	return map[string]string{
 		"kb": "Dataset", "dialog": "Chat", "document": "Document", "canvas": "Agent",
-		"file": "File", "memory": "Memory", "search": "Search", "mcp": "MCP", "model_instance": "Model",
+		"file": "File", "memory": "Memory", "search": "Search", "mcp": "MCP", "model_instance": "Model", "model_group": "Model Group",
 		"group": "Group", "tenant": "Tenant",
 	}[resourceType]
 }

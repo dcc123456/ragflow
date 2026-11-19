@@ -17,6 +17,10 @@ let mockRemoveMemberLoading = false;
 
 jest.mock('@/ee/hooks/use-model-group-request', () => ({
   useModelGroupMembers: (...args: unknown[]) => mockMembers(...args),
+  useReorderModelGroupMembers: () => ({
+    loading: false,
+    run: jest.fn().mockResolvedValue(0),
+  }),
   useDeleteModelGroup: () => ({
     loading: mockDeleteGroupLoading,
     run: mockDeleteGroup,
@@ -24,6 +28,10 @@ jest.mock('@/ee/hooks/use-model-group-request', () => ({
   useRemoveModelGroupMember: () => ({
     loading: mockRemoveMemberLoading,
     run: mockRemoveMember,
+  }),
+  useUpdateModelGroupMemberStatus: () => ({
+    loading: false,
+    run: jest.fn().mockResolvedValue(0),
   }),
 }));
 
@@ -44,9 +52,9 @@ jest.mock('@/components/confirm-delete-dialog', () => ({
 }));
 
 jest.mock('../add-model-to-group-dialog', () => ({
-  AddModelToGroupDialog: ({ groupName, members }: any) => (
+  AddModelToGroupDialog: ({ groupId, members }: any) => (
     <div data-testid="add-dialog">
-      {groupName}:{members.length}
+      {groupId}:{members.length}
     </div>
   ),
 }));
@@ -58,6 +66,7 @@ jest.mock('react-i18next', () => ({
 const group = {
   id: 'g1',
   tenant_id: 't1',
+  nickname: 'Owner',
   group_name: 'a/b ?',
   status: 'active',
 };
@@ -111,8 +120,8 @@ describe('ModelGroupList', () => {
     });
     expect(firstTrigger).toHaveAttribute('aria-expanded', 'true');
     expect(secondTrigger).toHaveAttribute('aria-expanded', 'false');
-    expect(mockMembers).toHaveBeenCalledWith(group.group_name, true);
-    expect(mockMembers).toHaveBeenCalledWith(secondGroup.group_name, false);
+    expect(mockMembers).toHaveBeenCalledWith(group.id, true);
+    expect(mockMembers).toHaveBeenCalledWith(secondGroup.id, false);
 
     fireEvent.click(secondTrigger);
     expect(firstTrigger).toHaveAttribute('aria-expanded', 'true');
@@ -130,13 +139,12 @@ describe('ModelGroupList', () => {
       </TooltipProvider>,
     );
 
-    expect(mockMembers).toHaveBeenLastCalledWith(group.group_name, true);
+    expect(mockMembers).toHaveBeenLastCalledWith(group.id, true);
     expect(await screen.findByText('gpt-4')).toBeInTheDocument();
     for (const label of [
       'setting.modelGroupPage.modelName',
       'setting.modelGroupPage.modelType',
       'setting.modelGroupPage.instanceName',
-      'setting.modelGroupPage.position',
       'setting.modelGroupPage.status',
     ]) {
       expect(screen.getByText(label)).toBeInTheDocument();

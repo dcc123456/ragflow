@@ -86,14 +86,18 @@ export default {
         addMember: '添加模型',
         addMemberTitle: '添加模型到分组',
         memberAlreadyAdded: '该模型已在分组中',
+        memberUnavailable: '关联资源缺失',
+        memberNoAccess: '无权查看',
         removeMemberTitle: '从分组中移除模型？',
         deleteGroupTitle: '删除模型组？',
         deleteGroupDescription: '仅删除分组，不会影响供应商中的模型。',
+        providerName: '供应商',
         modelName: '模型名称',
         modelType: '模型类型',
         instanceName: '实例名称',
         position: '位置',
         status: '状态',
+        reorderModel: '拖动以重新排序',
       },
       modelGroupSelector: {
         direct: '模型',
@@ -471,6 +475,10 @@ export default {
         lastSaveAt: '最后保存时间',
       },
       resourceType: { group: '群组', mcp: 'MCP', invitation: '邀请' },
+      changeOwnPassword: {
+        failed: '无法更改密码，请重试。',
+        encryptionFailed: '无法加密密码，请尝试使用较短的密码。',
+      },
       settingsForm: {
         apiKey: {
           title: 'API 密钥',

@@ -20,6 +20,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -30,6 +31,8 @@ import (
 	"ragflow/internal/entity"
 	modelModule "ragflow/internal/entity/models"
 	"ragflow/internal/permission"
+
+	"gorm.io/gorm"
 )
 
 func init() {
@@ -41,25 +44,87 @@ func init() {
 // a second lookup.
 var groupNamesByID sync.Map
 
-// pickGroupModel resolves a gp-<group_id> model reference: the group must
-// belong to the requesting tenant, and the returned model is the
-// highest-positioned active member of the requested type. The downstream
-// checks in resolveModelIdentity (provider/instance ownership, status,
-// resource permissions) still apply to the picked model.
+// pickGroupModel resolves a gp-<group_id> reference to the first active model
+// in position order that matches the requested type and the caller can use.
 func (s *ModelFactory) pickGroupModel(ctx context.Context, tenantID, groupID string, requestedType entity.ModelType) (*entity.TenantModel, error) {
 	group, err := dao.NewTenantModelGroupDAO().GetByID(ctx, dao.DB, groupID)
 	if err != nil {
 		return nil, fmt.Errorf("%w: model group %s lookup failed: %w", errModelConfigUnavailable, groupID, err)
 	}
-	if group == nil || group.TenantID != tenantID {
+	if group == nil || group.TenantID != tenantID || !strings.EqualFold(group.Status, "active") {
 		return nil, fmt.Errorf("%w: model group %s not found", errModelConfigUnavailable, groupID)
 	}
-	model, err := transaction.PickModelFromGroup(ctx, dao.DB, group.ID, requestedType)
-	if err != nil {
-		return nil, fmt.Errorf("%w: picking model from group %q failed: %w", errModelConfigUnavailable, group.GroupName, err)
+	if strings.TrimSpace(permission.UserIDFromContext(ctx)) != "" {
+		if err := authorizeModelGroup(ctx, group, false); err != nil {
+			return nil, fmt.Errorf("%w: model group %s is not available: %w", errModelConfigUnavailable, groupID, err)
+		}
 	}
-	groupNamesByID.Store(groupID, group.GroupName)
-	return model, nil
+	members, err := dao.NewTenantModelGroupMapDAO().ListByGroupID(ctx, dao.DB, group.ID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: listing models in group %q failed: %w", errModelConfigUnavailable, group.GroupName, err)
+	}
+	userID := strings.TrimSpace(permission.UserIDFromContext(ctx))
+	owner, err := s.tenantOwnerMembership(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	checker := permission.NewDatabaseChecker(dao.DB)
+	var lastPermissionErr error
+	for _, member := range members {
+		if member.Status != entity.ModelGroupMapStatusActive {
+			continue
+		}
+		model, err := s.modelDAO.GetByID(ctx, dao.DB, member.ModelID)
+		if errors.Is(err, gorm.ErrRecordNotFound) || err == nil && model == nil {
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("%w: model %s lookup failed: %w", errModelConfigUnavailable, member.ModelID, err)
+		}
+		if !strings.EqualFold(model.Status, "active") || requestedType != 0 && !entity.ModelType(model.ModelType).Has(requestedType) {
+			continue
+		}
+		provider, err := s.modelProviderDAO.GetByID(ctx, dao.DB, model.ProviderID)
+		if errors.Is(err, gorm.ErrRecordNotFound) || err == nil && provider == nil {
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("%w: provider %s lookup failed: %w", errModelConfigUnavailable, model.ProviderID, err)
+		}
+		instance, err := s.modelInstanceDAO.GetByID(ctx, dao.DB, model.InstanceID)
+		if errors.Is(err, gorm.ErrRecordNotFound) || err == nil && instance == nil {
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("%w: instance %s lookup failed: %w", errModelConfigUnavailable, model.InstanceID, err)
+		}
+		if provider.TenantID != tenantID || instance.ProviderID != provider.ID || !strings.EqualFold(instance.Status, "active") {
+			continue
+		}
+		if userID != "" {
+			if provider.UserID != owner.UserID {
+				err = authorizeNonOwnerModelConfiguration(ctx, provider, instance, []*entity.TenantModel{model})
+			} else {
+				err = checker.CheckResource(ctx, permission.ResourceRef{Kind: permission.ResourceKindModelProvider, ID: provider.ID}, permission.OperationRead)
+				if err == nil {
+					err = checker.CheckResource(ctx, permission.ResourceRef{Kind: permission.ResourceKindModelInstance, ID: instance.ID}, permission.OperationUse)
+				}
+				if err == nil {
+					err = checker.CheckResource(ctx, permission.ResourceRef{Kind: permission.ResourceKindModel, ID: model.ID}, permission.OperationUse)
+				}
+			}
+			if err != nil {
+				lastPermissionErr = err
+				continue
+			}
+		}
+		groupNamesByID.Store(groupID, group.GroupName)
+		return model, nil
+	}
+	if lastPermissionErr != nil {
+		return nil, fmt.Errorf("%w: no model in group %q is authorized for this user: %w", errModelConfigUnavailable, group.GroupName, lastPermissionErr)
+	}
+	return nil, fmt.Errorf("%w: model group %q has no available model", errModelConfigUnavailable, group.GroupName)
 }
 
 // attachUsageTemplateEE pre-fills the construction-time usage identity

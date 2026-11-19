@@ -138,7 +138,8 @@ func RegisterEEProtectedRouter(authorized *gin.RouterGroup, r *Router) {
 	// registered here instead of next to the other group routes in router.go,
 	// which the community tree also compiles.
 	models := authorized.Group("/api/v1/models", ToggleModel())
-	models.PATCH("/groups/:group_name/model", r.providerHandler.SetGroupModelStatus)
+	models.PATCH("/groups/:group_id/model", r.providerHandler.SetGroupModelStatus)
+	models.PATCH("/groups/:group_id/order", r.providerHandler.ReorderModelGroupMembers)
 
 	authorized.POST("/api/v1/tenants/:tenant_id/switch", r.tenantHandler.SwitchTenant)
 	authorized.POST("/api/v1/tenants/:tenant_id/invitation-links", r.tenantHandler.CreateTenantInviteLink)

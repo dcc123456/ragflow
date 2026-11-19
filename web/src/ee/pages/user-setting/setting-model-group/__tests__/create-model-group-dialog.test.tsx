@@ -21,6 +21,7 @@ jest.mock('react-i18next', () => ({
 const existingGroup = {
   id: 'g1',
   tenant_id: 't1',
+  nickname: 'Owner',
   group_name: 'existing',
   status: 'active',
 };

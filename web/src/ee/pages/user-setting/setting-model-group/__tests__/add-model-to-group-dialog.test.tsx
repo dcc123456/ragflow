@@ -67,7 +67,7 @@ describe('AddModelToGroupDialog', () => {
   it('uses the direct selector with every member type and no nested groups', () => {
     render(
       <AddModelToGroupDialog
-        groupName="group"
+        groupId="group-id"
         members={[]}
         hideModal={jest.fn()}
       />,
@@ -103,7 +103,7 @@ describe('AddModelToGroupDialog', () => {
     const hideModal = jest.fn();
     render(
       <AddModelToGroupDialog
-        groupName="group"
+        groupId="group-id"
         members={[]}
         hideModal={hideModal}
       />,
@@ -130,7 +130,7 @@ describe('AddModelToGroupDialog', () => {
     const hideModal = jest.fn();
     render(
       <AddModelToGroupDialog
-        groupName="group"
+        groupId="group-id"
         members={[{ model_id: 'model-1' } as any]}
         hideModal={hideModal}
       />,
@@ -152,7 +152,7 @@ describe('AddModelToGroupDialog', () => {
     const hideModal = jest.fn();
     render(
       <AddModelToGroupDialog
-        groupName="group"
+        groupId="group-id"
         members={[]}
         hideModal={hideModal}
       />,
@@ -178,7 +178,7 @@ describe('AddModelToGroupDialog', () => {
     const hideModal = jest.fn();
     render(
       <AddModelToGroupDialog
-        groupName="group"
+        groupId="group-id"
         members={[]}
         hideModal={hideModal}
       />,
