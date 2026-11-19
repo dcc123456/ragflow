@@ -115,4 +115,72 @@ export default {
     attachmentId: number,
   ) =>
     `${webAPI}/ticket/${ticketId}/articles/${articleId}/attachments/${attachmentId}`,
+
+  // chunk version history
+  chunkVersions: (datasetId: string, documentId: string, chunkId: string) =>
+    `${restAPIv1}/datasets/${datasetId}/documents/${documentId}/chunks/${chunkId}/versions`,
+  chunkVersion: (
+    datasetId: string,
+    documentId: string,
+    chunkId: string,
+    version: number,
+  ) =>
+    `${restAPIv1}/datasets/${datasetId}/documents/${documentId}/chunks/${chunkId}/versions/${version}`,
+  chunkVersionDiff: (
+    datasetId: string,
+    documentId: string,
+    chunkId: string,
+    from: number,
+    to?: number,
+  ) => {
+    const params = new URLSearchParams({ from: String(from) });
+    if (to !== undefined) {
+      params.set('to', String(to));
+    }
+    return `${restAPIv1}/datasets/${datasetId}/documents/${documentId}/chunks/${chunkId}/versions/diff?${params.toString()}`;
+  },
+  restoreChunkVersion: (
+    datasetId: string,
+    documentId: string,
+    chunkId: string,
+    version: number,
+  ) =>
+    `${restAPIv1}/datasets/${datasetId}/documents/${documentId}/chunks/${chunkId}/versions/${version}/restore`,
+  // A version's picture stays in storage after it is replaced, but the live
+  // chunk no longer references it, so it is read through the version that
+  // recorded it rather than through the document image endpoint.
+  chunkVersionImage: (
+    datasetId: string,
+    documentId: string,
+    chunkId: string,
+    version: number,
+  ) =>
+    `${restAPIv1}/datasets/${datasetId}/documents/${documentId}/chunks/${chunkId}/versions/${version}/image`,
+
+  // dataset configuration history
+  datasetVersions: (
+    datasetId: string,
+    options?: {
+      before_version?: number;
+      kind?: string;
+      limit?: number;
+    },
+  ) => {
+    const params = new URLSearchParams();
+    if (options?.before_version !== undefined) {
+      params.set('before_version', String(options.before_version));
+    }
+    if (options?.kind) {
+      params.set('kind', options.kind);
+    }
+    if (options?.limit !== undefined) {
+      params.set('limit', String(options.limit));
+    }
+    const query = params.toString();
+    return `${restAPIv1}/datasets/${datasetId}/versions${query ? `?${query}` : ''}`;
+  },
+  datasetVersion: (datasetId: string, version: number) =>
+    `${restAPIv1}/datasets/${datasetId}/versions/${version}`,
+  restoreDatasetVersion: (datasetId: string, version: number) =>
+    `${restAPIv1}/datasets/${datasetId}/versions/${version}/restore`,
 };

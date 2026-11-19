@@ -19,6 +19,7 @@ export enum PrivateRoutes {
   Team = '/team',
   AdminTenants = '/admin/tenants',
   TenantInvitation = '/tenant-invitations/:token',
+  DataSetVersions = '/versions',
 }
 
 export type PrivateRoute = {
@@ -203,6 +204,18 @@ export const privateRoutes: PrivateRoute[] = [
         path: Routes.Files,
         Component: () => import('@/ee/pages/files'),
         errorElement: <FallbackComponent />,
+      },
+      {
+        // The dataset history page is enterprise-only, so the route is declared
+        // here and the page is imported from the enterprise tree; upstream need
+        // not know the path exists.
+        path: Routes.DatasetBase,
+        children: [
+          {
+            path: `${Routes.DatasetBase}${PrivateRoutes.DataSetVersions}/:id`,
+            Component: () => import('@/ee/pages/dataset/versions'),
+          },
+        ],
       },
       {
         // `/team` lives under the third pathless page-layout route.

@@ -27,13 +27,39 @@ import (
 
 	"ragflow/internal/common"
 	"ragflow/internal/dao"
+	"ragflow/internal/engine/history"
+	"ragflow/internal/engine/history/historytest"
 	"ragflow/internal/entity"
 )
+
+// installDatasetTestChunkHistory installs the in-memory store the chunk history
+// bodies live in, and removes it when the test ends.
+//
+// Production hands the store to history from the document engine that owns
+// the connection. A test database has no engine, so without this stand-in every
+// replay and every purge answers "this deployment keeps no chunk history" - a
+// fixture gap that hides the behaviour the test is about.
+func installDatasetTestChunkHistory(t *testing.T) {
+	t.Helper()
+	history.SetChunkStore(historytest.NewChunkStore())
+	t.Cleanup(func() { history.SetChunkStore(nil) })
+}
 
 func datasetTestExtraModels() []interface{} {
 	return []interface{}{
 		&entity.Role{}, &entity.RoleResource{}, &entity.GroupInfo{}, &entity.GroupMember{},
 		&entity.Permission{}, &entity.PermissionChangeLog{},
+		&entity.DatasetVersion{},
+		// The configuration snapshots and document sets the version rows point at.
+		&entity.DatasetConfigSnapshot{},
+		&entity.DatasetDocumentSetSnapshot{},
+		&entity.ChunkVersion{},
+		// A dataset delete collects these too, so every ee test database has to
+		// carry the tables the production schema migrates.
+		&entity.DatasetRemovedDocument{},
+		// The version-keyed states a document-configuration diff reads: the
+		// millisecond-keyed history cannot separate two edits in one millisecond.
+		&entity.DocumentVersion{},
 	}
 }
 
