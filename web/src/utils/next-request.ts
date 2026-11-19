@@ -23,7 +23,7 @@ import authorizationUtil, {
   redirectToLogin,
 } from '@/utils/authorization-util';
 import notification from '@/utils/notification';
-import axios from 'axios';
+import axios, { AxiosResponse } from 'axios';
 import { convertTheKeysOfTheObjectToSnake, isFormData } from './common-util';
 import { setCachedLlmList } from './llm-cache';
 import { addTenantParams } from './llm-util';
@@ -67,9 +67,9 @@ export type ResultCode =
   | 504;
 
 const errorHandler = (error: {
-  response: Response;
+  response: AxiosResponse<{ message?: string }>;
   message: string;
-}): Response => {
+}): AxiosResponse => {
   const { response } = error;
   if (error.message === FAILED_TO_FETCH) {
     notification.error({
@@ -79,15 +79,16 @@ const errorHandler = (error: {
   } else {
     if (response && response.status) {
       const errorText =
-        RetcodeMessage[response.status as ResultCode] || response.statusText;
-      const { status, url } = response;
+        response.data?.message ||
+        RetcodeMessage[response.status as ResultCode] ||
+        response.statusText;
       notification.error({
-        message: `${i18n.t('message.requestError')} ${status}: ${url}`,
+        message: i18n.t('message.requestError'),
         description: errorText,
       });
     }
   }
-  return response ?? ({ data: { code: 1999 } } as unknown as Response);
+  return response ?? ({ data: { code: 1999 } } as AxiosResponse);
 };
 
 // avoid duplicate 401 redirects
