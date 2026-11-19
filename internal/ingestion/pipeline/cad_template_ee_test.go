@@ -19,6 +19,7 @@
 package pipeline
 
 import (
+	"encoding/json"
 	"reflect"
 	"testing"
 
@@ -49,6 +50,55 @@ func TestCADTemplateUsesCADChunker(t *testing.T) {
 	if count != 1 {
 		t.Fatalf("CADChunker components = %d, want 1", count)
 	}
+}
+
+// A new CAD pipeline enables vision enhancement out of the box. An empty
+// llm_id selects the tenant's image2text model; a tenant without one gets a
+// skip warning and the drawing still ingests.
+func TestCADTemplateEnablesVisionByDefault(t *testing.T) {
+	dsl, err := LoadBuiltinDSL("cad")
+	if err != nil {
+		t.Fatal(err)
+	}
+	config, err := BuildParserConfig([]byte(dsl), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const id = "CADChunker:SpatialSheet"
+	params, ok := config[id].(map[string]any)
+	if !ok {
+		t.Fatalf("CADChunker params missing: %#v", config)
+	}
+	vision, ok := params["vision"].(map[string]any)
+	if !ok || vision["enabled"] != true {
+		t.Fatalf("vision defaults = %#v, want enabled", params["vision"])
+	}
+
+	var parsed struct {
+		Graph struct {
+			Nodes []struct {
+				ID   string `json:"id"`
+				Data struct {
+					Form struct {
+						Vision map[string]any `json:"vision"`
+					} `json:"form"`
+				} `json:"data"`
+			} `json:"nodes"`
+		} `json:"graph"`
+	}
+	if err := json.Unmarshal([]byte(dsl), &parsed); err != nil {
+		t.Fatal(err)
+	}
+	for _, node := range parsed.Graph.Nodes {
+		if node.ID != id {
+			continue
+		}
+		if node.Data.Form.Vision["enabled"] != true {
+			t.Fatalf("chunker form vision = %#v, want enabled", node.Data.Form.Vision)
+		}
+		return
+	}
+	t.Fatalf("node %q missing from the template graph", id)
 }
 
 func TestCADTemplateSavesVisionConfig(t *testing.T) {
