@@ -8,12 +8,13 @@ jest.mock('@/ee/services/model-group-service', () => ({
   __esModule: true,
   default: {
     list: () => mockList(),
-    members: (groupName: string) => mockMembers(groupName),
+    members: (groupId: string) => mockMembers(groupId),
   },
 }));
 const goodGroup = {
   id: '0123456789abcdef0123456789abcdef',
   tenant_id: 'tenant-1',
+  nickname: 'Owner',
   group_name: 'good',
   status: 'active',
 };
@@ -62,8 +63,9 @@ describe('useModelGroupOptions', () => {
     mockList.mockResolvedValue({
       data: { code: 0, data: [goodGroup, brokenGroup] },
     });
-    mockMembers.mockImplementation((groupName: string) => {
-      if (groupName === 'broken') return Promise.reject(new Error('failed'));
+    mockMembers.mockImplementation((groupId: string) => {
+      if (groupId === brokenGroup.id)
+        return Promise.reject(new Error('failed'));
       return Promise.resolve({ data: { code: 0, data: [member] } });
     });
   });
@@ -78,8 +80,8 @@ describe('useModelGroupOptions', () => {
     expect(mockList).toHaveBeenCalledTimes(1);
     expect(mockMembers).toHaveBeenCalledTimes(2);
 
-    mockMembers.mockImplementation((groupName: string) => {
-      if (groupName === brokenGroup.group_name) {
+    mockMembers.mockImplementation((groupId: string) => {
+      if (groupId === brokenGroup.id) {
         return Promise.reject(new Error('failed'));
       }
       return Promise.resolve({
@@ -95,14 +97,10 @@ describe('useModelGroupOptions', () => {
     expect(mockList).toHaveBeenCalledTimes(2);
     expect(mockMembers).toHaveBeenCalledTimes(4);
     expect(
-      mockMembers.mock.calls.filter(
-        ([groupName]) => groupName === goodGroup.group_name,
-      ),
+      mockMembers.mock.calls.filter(([groupId]) => groupId === goodGroup.id),
     ).toHaveLength(2);
     expect(
-      mockMembers.mock.calls.filter(
-        ([groupName]) => groupName === brokenGroup.group_name,
-      ),
+      mockMembers.mock.calls.filter(([groupId]) => groupId === brokenGroup.id),
     ).toHaveLength(2);
     queryClient.clear();
   });

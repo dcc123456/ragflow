@@ -115,8 +115,11 @@ func TestModelPermissionsAllowMemberUseButHideInstanceConfiguration(t *testing.T
 	grantServiceTestResource(t, "user-1", "model_instance", "instance-1", "member-1", testResourcePermissionRead)
 	service := NewModelProviderService()
 	providers, code, err := service.ListProvidersOfTenant(ctx)
-	if err != nil || code != common.CodeSuccess || len(providers) != 0 {
-		t.Fatalf("ListProvidersOfTenant() = (%v, %v, %d providers), want success without exposing the owner's provider configuration", code, err, len(providers))
+	if err != nil || code != common.CodeSuccess || len(providers) != 1 || providers[0]["name"] != "OpenAI" {
+		t.Fatalf("ListProvidersOfTenant() = (%v, %v, %v), want the readable provider catalog entry", code, err, providers)
+	}
+	if _, ok := providers[0]["api_key"]; ok {
+		t.Fatalf("ListProvidersOfTenant() exposed an instance API key: %#v", providers[0])
 	}
 
 	instance, showCode, showErr := service.ShowProviderInstance(ctx, "OpenAI", "instance-1")

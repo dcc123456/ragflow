@@ -32,8 +32,8 @@ export function useModelGroupOptions(
   } = useModelGroupList(enabled);
   const { details, membersFetched } = useQueries({
     queries: groups.map((group) => ({
-      queryKey: ModelGroupKeys.detail(group.group_name),
-      queryFn: () => fetchModelGroupMembers(group.group_name),
+      queryKey: ModelGroupKeys.detail(group.id),
+      queryFn: () => fetchModelGroupMembers(group.id),
       enabled,
       gcTime: 0,
     })),
@@ -68,8 +68,8 @@ export function useModelGroupOptions(
         freshGroups.map(async (group): Promise<IModelGroupDetailResult> => {
           try {
             const members = await queryClient.fetchQuery({
-              queryKey: ModelGroupKeys.detail(group.group_name),
-              queryFn: () => fetchModelGroupMembers(group.group_name),
+              queryKey: ModelGroupKeys.detail(group.id),
+              queryFn: () => fetchModelGroupMembers(group.id),
               staleTime: 0,
             });
             return { group, members, isError: false };

@@ -5,7 +5,9 @@ import type {
 import {
   IAddModelToGroupRequest,
   ICreateModelGroupRequest,
+  IReorderModelGroupMembersRequest,
   IRemoveModelFromGroupRequest,
+  IUpdateModelGroupMemberStatusRequest,
 } from '@/ee/interfaces/request/model-group';
 import modelGroupService from '@/ee/services/model-group-service';
 import { normalizeModelTypes } from '@/ee/utils/model-group-util';
@@ -20,8 +22,8 @@ import { useCallback } from 'react';
 export const ModelGroupKeys = {
   all: () => ['modelGroup'] as const,
   list: () => [...ModelGroupKeys.all(), 'list'] as const,
-  detail: (groupName: string) =>
-    [...ModelGroupKeys.all(), 'detail', groupName] as const,
+  detail: (groupId: string) =>
+    [...ModelGroupKeys.all(), 'detail', groupId] as const,
   optionsRoot: () => [...ModelGroupKeys.all(), 'options'] as const,
   options: (modelTypes: string[]) =>
     [...ModelGroupKeys.optionsRoot(), normalizeModelTypes(modelTypes)] as const,
@@ -31,8 +33,8 @@ export const ModelGroupKeys = {
       ...ModelGroupKeys.validIdsRoot(),
       normalizeModelTypes(modelTypes),
     ] as const,
-  action: (action: string, groupName = '') =>
-    [...ModelGroupKeys.all(), 'action', action, groupName] as const,
+  action: (action: string, groupId = '') =>
+    [...ModelGroupKeys.all(), 'action', action, groupId] as const,
 };
 
 async function fetchModelGroupList() {
@@ -40,8 +42,8 @@ async function fetchModelGroupList() {
   if (data.code !== 0) throw new Error(data.message || 'Failed to list groups');
   return data.data ?? [];
 }
-export async function fetchModelGroupMembers(groupName: string) {
-  const { data } = await modelGroupService.members(groupName);
+export async function fetchModelGroupMembers(groupId: string) {
+  const { data } = await modelGroupService.members(groupId);
   if (data.code !== 0)
     throw new Error(data.message || 'Failed to list members');
   return data.data ?? [];
@@ -56,12 +58,12 @@ export function useModelGroupList(enabled = true) {
   });
   return { ...query, loading: query.isFetching && !query.isFetched };
 }
-export function useModelGroupMembers(groupName: string, enabled: boolean) {
+export function useModelGroupMembers(groupId: string, enabled: boolean) {
   const query = useQuery<IModelGroupMember[]>({
-    queryKey: ModelGroupKeys.detail(groupName),
-    queryFn: () => fetchModelGroupMembers(groupName),
+    queryKey: ModelGroupKeys.detail(groupId),
+    queryFn: () => fetchModelGroupMembers(groupId),
     initialData: [],
-    enabled: enabled && !!groupName,
+    enabled: enabled && !!groupId,
     gcTime: 0,
   });
   return { ...query, loading: query.isFetching && !query.isFetched };
@@ -99,40 +101,66 @@ export function useCreateModelGroup() {
     },
   );
 }
-export function useDeleteModelGroup(groupName: string) {
+export function useDeleteModelGroup(groupId: string) {
   return useModelGroupMutation<void>(
     'delete',
-    async () => (await modelGroupService.remove(groupName)).data.code,
+    async () => (await modelGroupService.remove(groupId)).data.code,
     (queryClient) => {
       queryClient.invalidateQueries({ queryKey: ModelGroupKeys.list() });
       queryClient.removeQueries({
-        queryKey: ModelGroupKeys.detail(groupName),
+        queryKey: ModelGroupKeys.detail(groupId),
       });
       invalidateOptionCaches(queryClient);
     },
   );
 }
-export function useAddModelGroupMember(groupName: string) {
+export function useUpdateModelGroupMemberStatus(groupId: string) {
+  return useModelGroupMutation<IUpdateModelGroupMemberStatusRequest>(
+    'updateMemberStatus',
+    async (body) =>
+      (await modelGroupService.updateMemberStatus(groupId, body)).data.code,
+    (queryClient) => {
+      queryClient.invalidateQueries({
+        queryKey: ModelGroupKeys.detail(groupId),
+      });
+      invalidateOptionCaches(queryClient);
+    },
+  );
+}
+export function useAddModelGroupMember(groupId: string) {
   return useModelGroupMutation<IAddModelToGroupRequest>(
     'addMember',
     async (body) =>
-      (await modelGroupService.addMember(groupName, body)).data.code,
+      (await modelGroupService.addMember(groupId, body)).data.code,
     (queryClient) => {
       queryClient.invalidateQueries({
-        queryKey: ModelGroupKeys.detail(groupName),
+        queryKey: ModelGroupKeys.detail(groupId),
       });
       invalidateOptionCaches(queryClient);
     },
   );
 }
-export function useRemoveModelGroupMember(groupName: string) {
+export function useRemoveModelGroupMember(groupId: string) {
   return useModelGroupMutation<IRemoveModelFromGroupRequest>(
     'removeMember',
     async (body) =>
-      (await modelGroupService.removeMember(groupName, body)).data.code,
+      (await modelGroupService.removeMember(groupId, body)).data.code,
     (queryClient) => {
       queryClient.invalidateQueries({
-        queryKey: ModelGroupKeys.detail(groupName),
+        queryKey: ModelGroupKeys.detail(groupId),
+      });
+      invalidateOptionCaches(queryClient);
+    },
+  );
+}
+export function useReorderModelGroupMembers(groupId: string) {
+  return useModelGroupMutation<IReorderModelGroupMembersRequest>(
+    'reorderMembers',
+    async (body) =>
+      (await modelGroupService.reorderMembers(groupId, body)).data.code,
+    (queryClient) => {
+      queryClient.invalidateQueries({
+        queryKey: ModelGroupKeys.detail(groupId),
       });
       invalidateOptionCaches(queryClient);
     },

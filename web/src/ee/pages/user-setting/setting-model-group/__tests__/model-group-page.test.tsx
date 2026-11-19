@@ -17,6 +17,11 @@ jest.mock('@/ee/hooks/use-model-group-request', () => ({
   useDeleteModelGroup: () => ({ loading: false, run: jest.fn() }),
   useAddModelGroupMember: () => ({ loading: false, run: jest.fn() }),
   useRemoveModelGroupMember: () => ({ loading: false, run: jest.fn() }),
+  useReorderModelGroupMembers: () => ({
+    loading: false,
+    run: jest.fn().mockResolvedValue(0),
+  }),
+  useUpdateModelGroupMemberStatus: () => ({ loading: false, run: jest.fn() }),
 }));
 
 jest.mock('@/components/model-tree-select', () => ({
@@ -73,6 +78,7 @@ describe('ModelGroupPage', () => {
         {
           id: 'g1',
           tenant_id: 't1',
+          nickname: 'Owner',
           group_name: 'release',
           status: 'active',
         },

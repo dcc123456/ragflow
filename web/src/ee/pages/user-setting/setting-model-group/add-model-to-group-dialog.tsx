@@ -24,18 +24,18 @@ const ModelGroupMemberModelTypes = [
 ];
 
 export function AddModelToGroupDialog({
-  groupName,
+  groupId,
   members,
   hideModal,
 }: {
-  groupName: string;
+  groupId: string;
   members: IModelGroupMember[];
   hideModal: () => void;
 }) {
   const { t } = useTranslation();
   const [modelId, setModelId] = useState('');
   const submittingRef = useRef(false);
-  const { loading, run } = useAddModelGroupMember(groupName);
+  const { loading, run } = useAddModelGroupMember(groupId);
   const duplicate = members.some((member) => member.model_id === modelId);
 
   const handleModelChange = useCallback((value: string) => {

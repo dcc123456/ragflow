@@ -87,6 +87,7 @@ export enum PermissionResourceType {
   File = 'file',
   Folder = 'folder',
   ModelInstance = 'model_instance',
+  ModelGroup = 'model_group',
 }
 
 export function getAssignableResourcePermissionOptions(
@@ -96,7 +97,8 @@ export function getAssignableResourcePermissionOptions(
   return PermissionLevelOptions.filter(({ action }) => {
     if (
       resourceType === PermissionResourceType.LLM ||
-      resourceType === PermissionResourceType.ModelInstance
+      resourceType === PermissionResourceType.ModelInstance ||
+      resourceType === PermissionResourceType.ModelGroup
     ) {
       return action === Permission.Read;
     }

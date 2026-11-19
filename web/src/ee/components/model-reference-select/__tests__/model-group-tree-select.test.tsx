@@ -22,18 +22,21 @@ jest.mock('react-i18next', () => ({
 const AlphaGroup = {
   id: '0123456789abcdef0123456789abcdef',
   tenant_id: 'tenant-1',
+  nickname: 'Owner',
   group_name: 'Alpha group',
   status: 'active',
 };
 const BetaGroup = {
   id: 'fedcba9876543210fedcba9876543210',
   tenant_id: 'tenant-1',
+  nickname: 'Owner',
   group_name: 'Beta group',
   status: 'active',
 };
 const GammaGroup = {
   id: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
   tenant_id: 'tenant-1',
+  nickname: 'Owner',
   group_name: 'Gamma group',
   status: 'active',
 };
