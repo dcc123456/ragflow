@@ -60,6 +60,10 @@ Each extension point is a **same-path overlay file**: upstream ships it under `w
 | `@/ee/pages/price/global/hook` | no-op upgrade prompts | price/upgrade events and modals |
 | `@/ee/pages/price/hook/use-price-hooks` | empty plan, no-op billing actions | billing plan and checkout requests |
 | `@/ee/pages/user-setting/setting-team/team-management` | component returning `null` | team/department/group management |
+| `@/ee/pages/chunk/parsed-result/add-knowledge/components/knowledge-chunk/components/chunk-creating-modal/chunk-version-entry` | component returning `null` | chunk edit history sheet (version list, preview, restore) mounted by the shared chunk editor |
+| `@/ee/pages/chunk/components/chunk-card/chunk-version-badge` | component returning `null` | `v{n}` badge on the shared chunk card, naming the version the text shown is at |
+| `@/ee/hooks/use-chunk-history-cache` | invalidation callbacks that do nothing | refreshes the chunk version history and the version badge after an edit or a switch |
+| `@/ee/hooks/use-dataset-sidebar-extra-items` | `[]` | version history entry in the dataset sidebar |
 
 Locale and API overlays are merged via `lodash/merge` in the shared file (`src/locales/config.ts`, `src/utils/api.ts`); overlay keys override same-named base keys, new keys are additive.
 

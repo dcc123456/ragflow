@@ -187,6 +187,26 @@ func RegisterEEProtectedRouter(authorized *gin.RouterGroup, r *Router) {
 	// The dataset param enforces tenant scope through the permission engine.
 	datasets := authorized.Group("/api/v1/datasets/:dataset_id", ToggleDataset())
 	datasets.POST("/ingestion/tasks/:task_id/promote", r.documentHandler.PromoteIngestionTask)
+
+	// The chunk editor lists, previews and restores the states a source chunk
+	// went through.
+	chunkVersions := authorized.Group("/api/v1/datasets/:dataset_id/documents/:document_id/chunks/:chunk_id/versions")
+	chunkVersions.GET("", r.chunkHandler.ListChunkVersions)
+	chunkVersions.GET("/diff", r.chunkHandler.DiffChunkVersions)
+	chunkVersions.GET("/:version", r.chunkHandler.GetChunkVersion)
+	chunkVersions.POST("/:version/restore", r.chunkHandler.RestoreChunkVersion)
+	chunkVersions.DELETE("/:version", r.chunkHandler.DeleteChunkVersion)
+	// An old picture is no longer referenced by the live chunk, so the version
+	// that recorded it is what authorizes reading its bytes.
+	chunkVersions.GET("/:version/image", r.chunkHandler.GetChunkVersionImage)
+
+	// A dataset keeps a configuration version per change, and a restore writes a
+	// stored version back. The routes live with the edition that keeps history.
+	datasetVersions := authorized.Group("/api/v1/datasets/:dataset_id/versions")
+	datasetVersions.GET("", r.datasetsHandler.ListDatasetVersions)
+	datasetVersions.GET("/:version", r.datasetsHandler.GetDatasetVersion)
+	datasetVersions.POST("/:version/restore", r.datasetsHandler.RestoreDatasetVersion)
+	datasetVersions.DELETE("/:version", r.datasetsHandler.DeleteDatasetVersion)
 }
 
 func ToggleWorkflow() gin.HandlerFunc {

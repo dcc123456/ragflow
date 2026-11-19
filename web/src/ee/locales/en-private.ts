@@ -6,6 +6,189 @@
  */
 export default {
   translation: {
+    chunk: {
+      versionHistory: 'Version history',
+      latestVersion: 'Latest',
+      noVersions: 'No versions yet. Edit this chunk to start its history.',
+      versionEmpty: 'This version stored no content.',
+      // A removal marker holds no state: both panes say what it records.
+      versionChunkDeleted: 'The chunk is deleted in this version.',
+      restoredFrom: 'Restored from v{{version}}',
+      restoreVersion: 'Restore',
+      restoreVersionTitle: 'Restore v{{version}}?',
+      restoreVersionDescription:
+        'The chunk takes the text of v{{version}} back. The restore is recorded as a new version, so every state the history already holds is kept.',
+      versionRestored: 'Version restored',
+      changedBy: 'By {{user}}',
+      systemActor: 'System',
+      deleteVersion: 'Delete',
+      deleteVersionTitle: 'Are you sure to delete version {{version}}?',
+      deleteVersionDescription:
+        'This version is removed from the history permanently. The latest version, the parser baseline and the record of a removal are kept.',
+      versionDeleted: 'Version deleted',
+      versionNotDeletable: 'This version cannot be deleted',
+      versionNotDeletableDescription:
+        'The version is still needed: the latest state, the parser baseline, the record of a removal, and any state a dataset version restores from are kept.',
+      tags: 'Tags',
+      versionHistoryTip: 'Pick a version to preview what it stored.',
+      versionChanges: 'Changes',
+      versionContent: 'Content',
+      compareFrom: 'From',
+      compareTip: 'Pick two versions to see what changed.',
+      noDiff: 'These versions have no differences.',
+      versionMissing:
+        'This version does not exist. The chunk may never have been edited, or a re-parse dropped its history.',
+      diffChanged: 'Changed',
+      diffFieldContent: 'Content',
+      diffFieldType: 'Chunk type',
+      diffFieldImage: 'Image',
+      diffFieldVisibility: 'Visibility',
+      // A version that recorded no picture, shown in its half of the comparison.
+      noImage: 'No image',
+    },
+    datasetVersion: {
+      latest: 'Current',
+      noVersions:
+        'No versions yet. Change the configuration to start its history.',
+      restoredFrom: 'Restored from v{{version}}',
+      summaryTitle: 'Summary:',
+      // Plural keys: the count picks the form, so a one-file version reads
+      // "1 file" instead of "1 file(s)".
+      counts_one: '{{count}} file',
+      counts_other: '{{count}} files',
+      documentsTitle: 'Files:',
+      documentsShowAll: 'Show {{count}} more',
+      documentsShowLess: 'Show fewer',
+      columnVersion: 'Version',
+      columnKind: 'Change',
+      columnTime: 'Time',
+      columnCreatedBy: 'Created by',
+      systemActor: 'System',
+      versionMissing:
+        'This version does not exist. The history may have been rebuilt.',
+      // The action bar already sits under the version list and acts on the row the
+      // list highlights, and the dialogs behind both buttons name the version, so
+      // the buttons do not repeat it - the chunk version history uses the same two
+      // short labels.
+      restore: 'Restore',
+      // Only shown as the disabled restore button's title: the panel does not
+      // carry an explanatory sentence about what a restore does.
+      restoreCurrentTip: 'This is already the current version.',
+      restoreBlockedTitle: 'Cannot restore this version',
+      restoreConfirmTitle: 'Restore to version {{version}}?',
+      // A plan moves documents in two directions and one of them is usually
+      // empty, so the sentence names only what actually moves: "restores 0
+      // documents" reads like a failure, yet it is the ordinary case of undoing
+      // an upload.
+      restoreConfirmBoth:
+        'This restores {{restored}} documents and removes {{deleted}} documents that were uploaded after this version',
+      restoreConfirmRestoreOnly:
+        'This restores {{restored}} documents that were deleted after this version',
+      restoreConfirmDeleteOnly:
+        'This removes {{deleted}} documents that were uploaded after this version',
+      restoreConfirmConfig: 'It also applies {{count}} configuration changes',
+      restoreIncompleteTitle: '{{count}} documents could not be fully restored',
+      restoreIncompleteBody:
+        'While the document rows are back, their content is not - parse them again: {{names}}',
+      restoreIncompleteBodyWithReasons:
+        'While the document rows are back, their content is not - parse them again: {{names}} ({{reasons}})',
+      restoreMissingNoChunkHistory: 'no chunk history reaches this version',
+      restoreMissingRemovalGone: 'the record of their removal was cleaned up',
+      restoreMissingReplayFailed: 'replaying their chunks failed',
+      restoreMissingHistoryUnreadable: 'their chunk history could not be read',
+      restored: 'Restored to this version',
+      delete: 'Delete',
+      deleteTitle: 'Are you sure to delete version {{version}}?',
+      deleted: 'Version deleted',
+      kindBaseline: 'Initial',
+      kindDatasetConfig: 'Dataset config changed',
+      kindDocumentConfig: 'Document config changed',
+      kindDocumentRename: 'Document renamed',
+      kindDocumentMetadata: 'Document metadata changed',
+      kindDocumentStatus: 'Document enabled or disabled',
+      kindDocumentEnable: 'Document enabled',
+      kindDocumentDisable: 'Document disabled',
+      kindArtifactEdit: 'Wiki page edited',
+      kindRestore: 'Restore',
+      kindUpload: 'Documents added',
+      kindDelete: 'Documents removed',
+      kindParse: 'Document parsed',
+      kindChunk: 'Chunk changed',
+      // The chunk kinds name the action the version recorded. `kindChunk` above
+      // stays for rows written before these existed and for a mixed batch.
+      kindChunkAdd: 'Chunk added',
+      kindChunkUpdate: 'Chunk edited',
+      kindChunkDelete: 'Chunk removed',
+      kindChunkRestore: 'Chunk restored',
+      kindChunkEnable: 'Chunk enabled',
+      kindChunkDisable: 'Chunk disabled',
+      // Full-page history view.
+      pageTitle: 'Versions',
+      pageDescription:
+        'Every change this dataset went through, including configuration, document, chunk and wiki page changes.',
+      filterAll: 'All changes',
+      filterConfiguration: 'Configuration only',
+      filterDocuments: 'Documents only',
+      // A compiled wiki page is an artifact rather than a document, so it gets a
+      // bucket of its own instead of inflating the document list.
+      filterPages: 'Wiki pages only',
+      filterChunks: 'Chunks only',
+      changesTitle: 'Changes:',
+      changesConfiguration: 'Changed dataset configuration',
+      changesDocumentConfiguration: 'Changed document configuration',
+      changesDocumentConfigurationFor:
+        'Changed document configuration for {{documents}}',
+      configChangeLine: '{{field}}: {{before}} → {{after}}',
+      configAvatarSet: 'set',
+      configAvatarEmpty: 'none',
+      changesEmpty: 'This version recorded no change detail.',
+      // A change reads as one sentence ("Added document handbook.pdf"), so the
+      // entity is a common noun and the order is a sentence's, not a table's.
+      changesLine: '{{action}} {{entity}} {{name}}',
+      changesRenameLine: '{{action}} {{entity}} {{before}} to {{after}}',
+      changesMetadataLine: '{{action}} metadata for {{name}}',
+      // The writer stores a bounded set and keeps the true count beside it: a
+      // shorter list is a sample, and the reader has to be told.
+      changesTruncated:
+        'Only the first {{shown}} of {{total}} changes are listed.',
+      chunkChangeLine: '{{action}} chunk {{chunk}} of document {{document}}',
+      chunkVersionTag: '(chunk version: v{{version}})',
+      // Removals collapse into one line: the id, the text and the type of a chunk
+      // that went away are in its own history, not in this list.
+      chunkRemovedLine: 'Removed {{count}} chunk(s)',
+      changeEntityDocument: 'document',
+      changeEntityChunk: 'chunk',
+      changeEntityArtifact: 'wiki page',
+      changeActionAdd: 'Added',
+      changeActionUpdate: 'Changed',
+      changeActionChunkEdit: 'Edited',
+      changeActionRename: 'Renamed',
+      changeActionDelete: 'Removed',
+      changeActionParse: 'Parsed',
+      changeActionRestore: 'Restored',
+      changeActionEnable: 'Enabled',
+      changeActionDisable: 'Disabled',
+      field: {
+        name: 'Name',
+        avatar: 'Avatar',
+        description: 'Description',
+        language: 'Language',
+        embd_id: 'Embedding model',
+        parser_id: 'Chunk method',
+        pipeline_id: 'Data pipeline',
+        pipeline_version_id: 'Pipeline version',
+        pagerank: 'PageRank',
+        similarity_threshold: 'Similarity threshold',
+        vector_similarity_weight: 'Vector similarity weight',
+        permission: 'Permission',
+        parser_config: 'Parser configuration',
+        connectors: 'Data sources',
+      },
+    },
+    knowledgeDetails: {
+      updated: 'Updated',
+      versions: 'Versions',
+    },
     common: {
       view: 'View',
       duplicate: 'Duplicate',

@@ -106,7 +106,12 @@ func insertCADPreviewDocument(t *testing.T, id, kbID string) *entity.Document {
 	return doc
 }
 
-func TestDeleteDocumentFullCleansPreviewArtifactsWhenFileCleanupFails(t *testing.T) {
+// The document row and its file2document mappings are dropped in one
+// transaction, so a mapping failure rolls the whole delete back: the document
+// still exists and a retry can make progress. Nothing is cleaned up on that
+// path - in particular the preview artifacts stay, because they still belong to
+// a live document.
+func TestDeleteDocumentFullRollsBackWhenFileMappingDeleteFails(t *testing.T) {
 	db := setupServiceTestDB(t)
 	pushServiceDB(t, db)
 	insertTestKB(t, "kb-1", "tenant-1", 1, 0, 0)
@@ -114,7 +119,8 @@ func TestDeleteDocumentFullCleansPreviewArtifactsWhenFileCleanupFails(t *testing
 	insertTestFile2Document(t, "f2d-1", "file-1", doc.ID)
 
 	store := useMemoryStorage(t)
-	for _, key := range []string{cadPreviewObjectKey(doc.ID), cadThumbnailObjectKey(doc.ID)} {
+	keys := []string{cadPreviewObjectKey(doc.ID), cadThumbnailObjectKey(doc.ID)}
+	for _, key := range keys {
 		if err := store.Put(t.Context(), doc.KbID, key, []byte("data")); err != nil {
 			t.Fatal(err)
 		}
@@ -128,12 +134,16 @@ func TestDeleteDocumentFullCleansPreviewArtifactsWhenFileCleanupFails(t *testing
 	}
 
 	err := testDocumentService(t).deleteDocumentFull(t.Context(), doc.ID)
-	if err == nil || !strings.Contains(err.Error(), "file cleanup failed") {
-		t.Fatalf("deleteDocumentFull error = %v, want file cleanup failure", err)
+	if err == nil || !strings.Contains(err.Error(), "delete the file mappings") {
+		t.Fatalf("deleteDocumentFull error = %v, want a file mapping failure", err)
 	}
-	for _, key := range []string{cadPreviewObjectKey(doc.ID), cadThumbnailObjectKey(doc.ID)} {
-		if _, getErr := store.Get(t.Context(), doc.KbID, key); !storage.IsNotFound(getErr) {
-			t.Fatalf("preview object %s survived failed file cleanup: %v", key, getErr)
+	var remaining entity.Document
+	if findErr := db.First(&remaining, "id = ?", doc.ID).Error; findErr != nil {
+		t.Fatalf("document row was not rolled back: %v", findErr)
+	}
+	for _, key := range keys {
+		if _, getErr := store.Get(t.Context(), doc.KbID, key); getErr != nil {
+			t.Fatalf("preview object %s was removed although the delete rolled back: %v", key, getErr)
 		}
 	}
 }
