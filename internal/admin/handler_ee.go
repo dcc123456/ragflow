@@ -19,20 +19,106 @@
 package admin
 
 import (
+	"crypto/rsa"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"ragflow/internal/common"
 	"ragflow/internal/dao"
+	"ragflow/internal/entity"
 	apihandler "ragflow/internal/handler"
 	servicepkg "ragflow/internal/service"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 )
+
+var errAdminSelfPasswordChange = errors.New("change your own password in Admin Settings")
+
+func checkAdminPasswordChangeTarget(actorID, targetID string) error {
+	if actorID == targetID {
+		return errAdminSelfPasswordChange
+	}
+	return nil
+}
+
+func passwordChangeErrorCode(err error) common.ErrorCode {
+	if errors.Is(err, errAdminSelfPasswordChange) {
+		return common.CodeForbidden
+	}
+	return common.CodeServerError
+}
+
+func (h *Handler) changeOwnPassword(c *gin.Context) {
+	common.StartOperationLog(c, "change_own_admin_password")
+	defer common.FinishOperationLog(c)
+
+	user, code, message := apihandler.GetUser(c)
+	if code != common.CodeSuccess {
+		common.RespondError(c, code, message)
+		return
+	}
+	var req struct {
+		CurrentPassword string `json:"current_password" binding:"required"`
+		NewPassword     string `json:"new_password" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.RespondError(c, common.CodeBadRequest, "Current and new passwords are required")
+		return
+	}
+
+	key, err := common.LoadPrivateKey()
+	if err != nil {
+		common.RespondError(c, common.CodeServerError, "Could not change password")
+		return
+	}
+	decrypt := func(value string) (string, error) {
+		ciphertext, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return "", err
+		}
+		encoded, err := rsa.DecryptPKCS1v15(nil, key, ciphertext)
+		return string(encoded), err
+	}
+	current, err := decrypt(req.CurrentPassword)
+	if err != nil || user.Password == nil || !h.userService.VerifyPassword(*user.Password, current) {
+		common.RespondError(c, common.CodeBadRequest, "Current password is incorrect")
+		return
+	}
+	encoded, err := decrypt(req.NewPassword)
+	password, decodeErr := base64.StdEncoding.Strict().DecodeString(encoded)
+	if err != nil || decodeErr != nil || !utf8.Valid(password) || utf8.RuneCount(password) < 8 || base64.StdEncoding.EncodeToString(password) != encoded {
+		common.RespondError(c, common.CodeBadRequest, "New password must be valid and contain at least 8 characters")
+		return
+	}
+	if current == encoded {
+		common.RespondError(c, common.CodeBadRequest, "New password must differ from current password")
+		return
+	}
+	hash, err := common.GenerateWerkzeugPasswordHash(encoded)
+	if err != nil {
+		common.RespondError(c, common.CodeServerError, "Could not change password")
+		return
+	}
+	// Only update the credentials if the session and password we just checked are still current.
+	result := dao.DB.WithContext(c.Request.Context()).Model(&entity.User{}).
+		Where("id = ? AND password = ? AND access_token = ? AND is_superuser = ?", user.ID, user.Password, user.AccessToken, true).
+		Updates(map[string]any{"password": hash, "access_token": "INVALID_" + common.GenerateToken()})
+	if result.Error != nil {
+		common.RespondError(c, common.CodeServerError, "Could not change password")
+		return
+	}
+	if result.RowsAffected != 1 {
+		common.RespondError(c, common.CodeConflict, "Account credentials changed; sign in and try again")
+		return
+	}
+	common.RespondSuccess(c, nil, "Password changed successfully")
+}
 
 // ListRoles handle list roles
 func (h *Handler) ListRoles(c *gin.Context) {

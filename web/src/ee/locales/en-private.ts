@@ -366,6 +366,11 @@ export default {
         },
       },
       settingsSubtitle: 'Manage system-wide configurations.',
+      changeOwnPassword: {
+        failed: 'Could not change the password. Please try again.',
+        encryptionFailed:
+          'Could not encrypt the passwords. Try a shorter password.',
+      },
       settingsForm: {
         apiKey: {
           title: 'API keys',

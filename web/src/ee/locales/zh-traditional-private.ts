@@ -155,6 +155,10 @@ export default {
       switchTenant: '切換租戶',
     },
     admin: {
+      changeOwnPassword: {
+        failed: '無法變更密碼，請再試一次。',
+        encryptionFailed: '無法加密密碼，請嘗試使用較短的密碼。',
+      },
       settingsForm: {
         apiKey: {
           title: 'API 金鑰',

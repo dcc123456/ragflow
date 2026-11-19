@@ -111,3 +111,9 @@ Click the detail button in **Actions** on the user list to enter the user detail
 **Caution:** Before disabling, deleting, or downgrading `Superuser`, administrators should check the detail page to confirm whether the user still has important resources or recent login activity.
 
 ![View User Details And Resource Impact](https://raw.githubusercontent.com/infiniflow/ragflow-docs/main/images/view_user_details_and_resource_impact.jpg)
+
+## Change Your Own Admin Password (Enterprise)
+
+In **Admin → Settings**, select **Edit** beside **Password**, enter your current
+password, and enter and confirm the new password. After saving, sign in again
+with the new password. Existing login sessions for that account are invalidated.

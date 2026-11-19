@@ -75,6 +75,7 @@ export default {
   adminAddLlmFactory: '/api/v1/admin/llm/add_llm',
   adminDeleteLlmFactory: '/api/v1/admin/llm/delete_factory',
   adminVariables: '/api/v1/admin/variables',
+  adminChangeOwnPassword: `${restAPIv1}/admin/me/password`,
   adminUploadSensitiveWordFilter: '/api/v1/admin/sensitive-words-file',
   adminDownloadSensitiveWordFilter: '/api/v1/admin/sensitive-words-file',
   adminTestSMTPConnection: '/api/v1/admin/validate_mail',

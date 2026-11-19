@@ -471,6 +471,10 @@ export default {
         lastSaveAt: '最后保存时间',
       },
       resourceType: { group: '群组', mcp: 'MCP', invitation: '邀请' },
+      changeOwnPassword: {
+        failed: '无法更改密码，请重试。',
+        encryptionFailed: '无法加密密码，请尝试使用较短的密码。',
+      },
       settingsForm: {
         apiKey: {
           title: 'API 密钥',

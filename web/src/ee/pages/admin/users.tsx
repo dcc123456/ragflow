@@ -29,6 +29,7 @@ import {
   LucideUserPlus,
 } from 'lucide-react';
 
+import { PrivateRoutes } from '@/ee/private-routes';
 import { isBillingEnabled } from '@/ee/services/billingStatus';
 import { rsaPsw } from '@/utils';
 
@@ -455,6 +456,15 @@ function AdminUserManagement() {
         cell: ({ row }) => {
           const isMe = row.original.email === userInfo?.email;
 
+          function handleChangePassword() {
+            if (isMe) {
+              navigate(PrivateRoutes.AdminSettings);
+            } else {
+              setUserToMakeAction(row.original);
+              setPasswordModalOpen(true);
+            }
+          }
+
           return (
             <div className="opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100 transition-opacity">
               <Button
@@ -470,33 +480,27 @@ function AdminUserManagement() {
                 <LucideClipboardList />
               </Button>
 
-              {!isMe && (
-                <>
-                  <Button
-                    variant="transparent"
-                    size="icon"
-                    className="border-0"
-                    onClick={() => {
-                      setUserToMakeAction(row.original);
-                      setPasswordModalOpen(true);
-                    }}
-                  >
-                    <LucideUserLock />
-                  </Button>
-                  {!row.original.is_superuser && (
-                    <Button
-                      variant="danger"
-                      size="icon"
-                      className="border-0"
-                      onClick={() => {
-                        setUserToMakeAction(row.original);
-                        setDeleteModalOpen(true);
-                      }}
-                    >
-                      <LucideTrash2 />
-                    </Button>
-                  )}
-                </>
+              <Button
+                variant="transparent"
+                size="icon"
+                className="border-0"
+                aria-label={t('admin.changePassword')}
+                onClick={handleChangePassword}
+              >
+                <LucideUserLock />
+              </Button>
+              {!isMe && !row.original.is_superuser && (
+                <Button
+                  variant="danger"
+                  size="icon"
+                  className="border-0"
+                  onClick={() => {
+                    setUserToMakeAction(row.original);
+                    setDeleteModalOpen(true);
+                  }}
+                >
+                  <LucideTrash2 />
+                </Button>
               )}
             </div>
           );
