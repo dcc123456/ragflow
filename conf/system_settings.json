@@ -187,6 +187,36 @@
       "value": "auth:user.id:read contact:user.email:readonly"
     },
     {
+      "name": "wecom|sso.enabled",
+      "source": "wecom|sso",
+      "data_type": "bool",
+      "value": "false"
+    },
+    {
+      "name": "wecom|sso.client_id",
+      "source": "wecom|sso",
+      "data_type": "string",
+      "value": ""
+    },
+    {
+      "name": "wecom|sso.client_secret",
+      "source": "wecom|sso",
+      "data_type": "string",
+      "value": ""
+    },
+    {
+      "name": "wecom|sso.agent_id",
+      "source": "wecom|sso",
+      "data_type": "string",
+      "value": ""
+    },
+    {
+      "name": "wecom|sso.redirect_uri",
+      "source": "wecom|sso",
+      "data_type": "string",
+      "value": ""
+    },
+    {
       "name": "sandbox.provider_type",
       "source": "variable",
       "data_type": "string",

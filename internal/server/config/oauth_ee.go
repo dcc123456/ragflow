@@ -34,9 +34,17 @@ type OAuthChannel struct {
 	AuthorizationURL string `mapstructure:"authorization_url"`
 	TokenURL         string `mapstructure:"token_url"`
 	UserinfoURL      string `mapstructure:"userinfo_url"`
-	RedirectURI      string `mapstructure:"redirect_uri"`
-	Scope            string `mapstructure:"scope"`
-	Issuer           string `mapstructure:"issuer"`
+	// DirectoryURL is the WeCom contact directory endpoint the member
+	// profile is loaded from. It carries no meaning for the other flavors.
+	DirectoryURL string `mapstructure:"directory_url"`
+	RedirectURI  string `mapstructure:"redirect_uri"`
+	Scope        string `mapstructure:"scope"`
+	Issuer       string `mapstructure:"issuer"`
+
+	// AgentID is the WeCom self-built application id, sent alongside the
+	// corp id (client_id) on the wwlogin consent URL. It carries no meaning
+	// for the other flavors.
+	AgentID string `mapstructure:"agent_id"`
 
 	// TrustEmailVerified marks the provider as institutionally trusted for the
 	// address it asserts, so an OIDC login is accepted even when it omits

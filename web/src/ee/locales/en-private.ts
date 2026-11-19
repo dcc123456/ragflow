@@ -201,6 +201,9 @@ export default {
       feishuQrTitle: 'Scan the QR code with your Feishu app',
       feishuQrFailed:
         'Failed to load the QR code. Use the Feishu icon below to sign in instead.',
+      wecomQrTitle: 'Scan the QR code with your WeCom app',
+      wecomQrFailed:
+        'Failed to load the QR code. Use the WeCom icon below to sign in instead.',
       usernameLabel: 'Username',
       usernamePlaceholder: 'Please input username',
       ldapServerLabel: 'LDAP server',
@@ -520,6 +523,28 @@ export default {
             description: {
               redirectUri:
                 'Leave empty to use the single redirect URL registered with the Feishu app.',
+            },
+          },
+          wecom: {
+            title: 'WeCom',
+            dialogTitle: 'Configure WeCom SSO',
+            loginTip: 'Login with WeCom',
+            fields: {
+              clientId: 'Corp ID',
+              agentId: 'Agent ID',
+              clientSecret: 'App secret',
+              redirectUri: 'Redirect URI',
+            },
+            placeholder: {
+              redirectUri: 'http://<domain>/api/v1/auth/oauth/wecom/callback',
+            },
+            description: {
+              clientId:
+                'The "Corp ID" shown in the WeCom admin console under My Company.',
+              agentId:
+                'The "AgentId" of the self-built application used for login.',
+              redirectUri:
+                'Members are handed the code here after scanning. Register the same URL as the trusted callback domain of the application, and give the application the contact permission so login can read the biz_mail.',
             },
           },
         },

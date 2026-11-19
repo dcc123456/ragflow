@@ -31,6 +31,7 @@ import { useSystemConfig } from '@/hooks/use-system-request';
 import { isLicenseError, rsaPsw } from '@/ee/utils';
 import RememberMeCheckbox from '@/ee/pages/login-next/components/RememberMeCheckbox';
 import FeishuQrLogin from '@/ee/pages/login-next/login/feishu-qr-login';
+import WecomQrLogin from '@/ee/pages/login-next/login/wecom-qr-login';
 
 import { useAuth } from '@/hooks/auth-hooks';
 import { SSO_CLOUD_IDP_PROVIDERS } from '@/ee/pages/admin/sso-providers/cloud-idp';
@@ -62,9 +63,13 @@ export default function BasicLogin({ onLicenseError }: BasicLoginProps) {
   const { config } = useSystemConfig();
   const { currentChannelType, typeGroupedChannels } = useLoginChannels();
   const { initiate: initiateChannel } = useChannelLoginInitiate();
-  // Non-null while the Feishu QR code is embedded in the card; the form and
-  // SSO icon row are replaced by the code until the user backs out.
-  const [feishuQr, setFeishuQr] = useState<ChannelLoginInitiation | null>(null);
+  // Non-null while an embedded QR code (Feishu, WeCom) replaces the card;
+  // the form and SSO icon row are replaced by the code until the user backs
+  // out.
+  const [embeddedQr, setEmbeddedQr] = useState<{
+    channel: string;
+    initiation: ChannelLoginInitiation;
+  } | null>(null);
   const redirectTo =
     searchParams.get('redirect') ||
     (location.state as { redirectTo?: string } | null)?.redirectTo ||
@@ -90,14 +95,14 @@ export default function BasicLogin({ onLicenseError }: BasicLoginProps) {
   const allowRegister = config?.registerEnabled !== 0;
   const email = form.watch('email');
 
-  // The Feishu channel embeds the official QR SDK on the card itself instead
-  // of leaving the page: initiate fetches the authorize parameters (the state
-  // cookie is written server-side), the widget renders the code from them.
-  // Any failure — config incomplete, SDK unreachable — falls back to the
-  // original full-page redirect flow.
+  // The Feishu and WeCom channels embed the official QR SDK on the card
+  // itself instead of leaving the page: initiate fetches the authorize
+  // parameters (the state cookie is written server-side), the widget renders
+  // the code from them. Any failure — config incomplete, SDK unreachable —
+  // falls back to the original full-page redirect flow.
   const handleChannelClick = useCallback(
     async (channel: string) => {
-      if (channel !== 'lark') {
+      if (channel !== 'lark' && channel !== 'wecom') {
         loginWithChannel(channel);
         return;
       }
@@ -105,11 +110,11 @@ export default function BasicLogin({ onLicenseError }: BasicLoginProps) {
       try {
         const initiation = await initiateChannel(channel);
         if (initiation?.client_id && initiation.auth_url) {
-          setFeishuQr(initiation);
+          setEmbeddedQr({ channel, initiation });
           return;
         }
       } catch (e) {
-        console.error('Feishu QR login initiate failed:', e);
+        console.error(`${channel} QR login initiate failed:`, e);
       }
       loginWithChannel(channel);
     },
@@ -141,11 +146,19 @@ export default function BasicLogin({ onLicenseError }: BasicLoginProps) {
     [navigate, login, onLicenseError, redirectTo],
   );
 
-  if (feishuQr) {
+  if (embeddedQr) {
+    if (embeddedQr.channel === 'wecom') {
+      return (
+        <WecomQrLogin
+          authUrl={embeddedQr.initiation.auth_url}
+          onBack={() => setEmbeddedQr(null)}
+        />
+      );
+    }
     return (
       <FeishuQrLogin
-        authUrl={feishuQr.auth_url}
-        onBack={() => setFeishuQr(null)}
+        authUrl={embeddedQr.initiation.auth_url}
+        onBack={() => setEmbeddedQr(null)}
       />
     );
   }

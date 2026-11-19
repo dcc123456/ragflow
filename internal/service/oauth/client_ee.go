@@ -65,6 +65,15 @@ type Config struct {
 	Scope       string
 	Issuer      string
 
+	// AgentID is the WeCom self-built application id. It is sent alongside
+	// the corp id on the wwlogin consent URL and carries no meaning for the
+	// other flavors.
+	AgentID string
+	// DirectoryURL is the WeCom contact directory endpoint the member
+	// profile is loaded from. It defaults to the official endpoint and is
+	// overridable so tests can point at a stub server.
+	DirectoryURL string
+
 	// Channel is the configured provider name. It is only used to identify
 	// the provider in logs.
 	Channel string

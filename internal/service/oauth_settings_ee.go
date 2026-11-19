@@ -74,6 +74,10 @@ type ssoProviderSpec struct {
 	// list this deployment was granted. Empty means Scope is always used
 	// verbatim. Only providers whose useful scopes differ per tenant need it.
 	ScopeSetting string
+	// AgentID names the setting holding the WeCom self-built application id.
+	// Empty for the other flavors. It is mandatory: the wwlogin consent URL
+	// cannot be built without it.
+	AgentID string
 }
 
 // ssoProviderSpecs is keyed by the provider id used in the setting names. A
@@ -109,6 +113,23 @@ var ssoProviderSpecs = map[string]ssoProviderSpec{
 		RedirectURI:  "redirect_uri",
 		ScopeSetting: "scope",
 	},
+	// WeCom identifies the tenant by corp id (client_id) and the self-built
+	// application by agent_id; both ride on the wwlogin consent URL, so
+	// neither may be missing. The callback URL is mandatory too: the consent
+	// page has no out-of-band callback registration to fall back on, and the
+	// embedded QR panel needs the exact URL to hand the code to.
+	//
+	// Login binding is by the member's biz_mail (the tenant's WeCom
+	// mailbox): a corp without the mailbox service enabled produces members
+	// the login cannot bind, reported as email_missing.
+	"wecom": {
+		Type:                "wecom",
+		ClientID:            "client_id",
+		Secret:              "client_secret",
+		AgentID:             "agent_id",
+		RedirectURI:         "redirect_uri",
+		RedirectURIRequired: true,
+	},
 }
 
 // parseSSOBool reads the enabled flag the admin console stores. The console
@@ -129,6 +150,9 @@ func ssoRequiredSettings(spec ssoProviderSpec) []string {
 	required := []string{spec.ClientID, spec.Secret}
 	if spec.RedirectURIRequired && spec.RedirectURI != "" {
 		required = append(required, spec.RedirectURI)
+	}
+	if spec.AgentID != "" {
+		required = append(required, spec.AgentID)
 	}
 	return required
 }
@@ -196,6 +220,15 @@ func loadSSOChannels(ctx context.Context) map[string]config.OAuthChannel {
 			ClientID:     providerValues[spec.ClientID],
 			ClientSecret: providerValues[spec.Secret],
 			RedirectURI:  providerValues[spec.RedirectURI],
+			AgentID:      providerValues[spec.AgentID],
+			// Endpoint overrides mirror the YAML keys of the same name. Every
+			// flavor has its official endpoints built in, so an unset key changes
+			// nothing; a set one lets an operator point the channel at a proxied
+			// deployment, and the router-level integration tests at a stub server.
+			AuthorizationURL: providerValues["authorization_url"],
+			TokenURL:         providerValues["token_url"],
+			UserinfoURL:      providerValues["userinfo_url"],
+			DirectoryURL:     providerValues["directory_url"],
 		}
 	}
 	return channels
