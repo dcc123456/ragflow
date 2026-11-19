@@ -386,6 +386,15 @@ export default {
       },
     },
     flow: {
+      cADChunkerDescription:
+        'Split CAD drawings by sheet and spatial layout, with optional vision-model descriptions of drawing regions.',
+      cadParserNoConfig:
+        'CAD drawings are processed by the built-in parser and require no configuration. Configure vision enhancement in CAD Chunker.',
+      cadVisionEnhancementTip:
+        'Use a vision model to describe geometry, symbols, and spatial relationships in drawing regions; when off, only native CAD text is used.',
+      fileFormatOptions: {
+        cad: 'CAD Drawing',
+      },
       version: {
         noPublished: 'No published versions',
         addAlias: 'Add alias',

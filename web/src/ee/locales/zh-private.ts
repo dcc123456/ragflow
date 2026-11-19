@@ -216,6 +216,17 @@ export default {
         uploadAttachment: '点击或拖拽文件上传',
       },
     },
+    flow: {
+      cADChunkerDescription:
+        '按图框和空间布局切分 CAD 图纸，并可使用视觉模型描述图纸区域。',
+      cadParserNoConfig:
+        'CAD 图纸由内置解析器处理，无需配置。视觉增强请在 CAD Chunker 中设置。',
+      cadVisionEnhancementTip:
+        '使用视觉模型描述图纸区域中的几何、符号和空间关系；关闭时仅使用 CAD 原生文字。',
+      fileFormatOptions: {
+        cad: 'CAD 图纸',
+      },
+    },
     setting: {
       deleteAccount: '删除账户',
       deleteAccountDescription: '永久删除您的账户及相关数据，此操作无法撤销。',
