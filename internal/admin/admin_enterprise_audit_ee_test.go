@@ -80,10 +80,10 @@ func TestAdminEnterpriseAuditRequests(t *testing.T) {
 		{"PUT", "/tenants/target-tenant/role", "update_admin_tenant_role", "{", "response_error"},
 		{"PUT", "/tenants/target-tenant/status", "update_admin_tenant_status", "{", "response_error"},
 		{"PUT", "/settings/default-tenant-role", "set_admin_default_tenant_role", "{", "response_error"},
-		{"POST", "/whitelist/add", "add_admin_whitelist", "{", "response_error"},
+		{"POST", "/whitelist", "add_admin_whitelist", "{", "response_error"},
 		{"POST", "/whitelist/batch", "import_admin_whitelist", "{", "response_error"},
 		{"PUT", "/whitelist/invalid", "update_admin_whitelist", `{"email":"private-audit-sentinel@example.com"}`, "response_error"},
-		{"DELETE", "/whitelist/invalid", "delete_admin_whitelist", "", "response_success"},
+		{"DELETE", "/whitelist/invalid", "delete_admin_whitelist", "", "response_error"},
 		{"DELETE", "/whitelist/batch", "delete_admin_whitelist_batch", "{", "response_error"},
 		{"POST", "/validate_mail", "test_admin_smtp_connection", `{"password":"private-audit-sentinel"}`, "response_error"},
 	} {
@@ -205,7 +205,7 @@ func TestAdminEnterpriseAuditWhitelistSuccessAndReads(t *testing.T) {
 	var logs []*common.OperationLog
 	common.SetAuditLogSink(func(log *common.OperationLog) error { logs = append(logs, log); return nil })
 	t.Cleanup(func() { common.SetAuditLogSink(nil) })
-	callWhitelist(t, engine, whitelistJSON(http.MethodPost, "/add", `{"email":"audit@example.com"}`), http.StatusOK)
+	callWhitelist(t, engine, whitelistJSON(http.MethodPost, "", `{"email":"audit@example.com"}`), http.StatusOK)
 	if len(logs) != 1 || logs[0].Resources["outcome"] != "response_success" {
 		t.Fatalf("success logs: %+v", logs)
 	}

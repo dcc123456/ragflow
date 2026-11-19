@@ -132,7 +132,7 @@ function AdminWhitelist() {
   });
 
   const deleteWhitelistEntryMutation = useMutation({
-    mutationFn: (data: { email: string }) => deleteWhitelistEntry(data.email),
+    mutationFn: (data: { id: number }) => deleteWhitelistEntry(data.id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin/listWhitelist'] });
       setDeleteModalOpen(false);
@@ -392,7 +392,7 @@ function AdminWhitelist() {
               onClick={() => {
                 if (itemToMakeAction) {
                   deleteWhitelistEntryMutation.mutate({
-                    email: itemToMakeAction?.email,
+                    id: itemToMakeAction.id,
                   });
                 }
               }}

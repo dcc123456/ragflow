@@ -280,8 +280,8 @@ export const createWhitelistEntry = (email: string) =>
 export const updateWhitelistEntry = (id: number, email: string) =>
   request.put<ResponseData<never>>(adminUpdateWhitelistEntry(id), { email });
 
-export const deleteWhitelistEntry = (email: string) =>
-  request.delete<ResponseData<never>>(adminDeleteWhitelistEntry(email));
+export const deleteWhitelistEntry = (id: number) =>
+  request.delete<ResponseData<never>>(adminDeleteWhitelistEntry(id));
 
 export const importWhitelistFromExcel = (file: File) => {
   const fd = new FormData();

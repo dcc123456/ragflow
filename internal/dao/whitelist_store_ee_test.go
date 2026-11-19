@@ -81,7 +81,7 @@ func TestWhitelistDAOOperations(t *testing.T) {
 		t.Fatalf("new email update = (%q, %v, %v)", previous, updated, err)
 	}
 	for run := 0; run < 2; run++ {
-		deleted, err := store.DeleteByEmail(ctx, db, "carol@example.com")
+		deleted, err := store.DeleteByIDs(ctx, db, []int64{entries[0].ID})
 		if err != nil || deleted != int64(1-run) {
 			t.Fatalf("delete %d = (%d, %v)", run, deleted, err)
 		}
@@ -156,8 +156,12 @@ func TestWhitelistDAOUsesDatabaseEmailEquality(t *testing.T) {
 			if _, updated, err := store.UpdateEmail(t.Context(), db, 999, variant); err != nil || updated {
 				t.Fatalf("existing email update = (%v, %v), want no-op", updated, err)
 			}
-			if deleted, err := store.DeleteByEmail(t.Context(), db, variant); err != nil || deleted != 1 {
-				t.Fatalf("variant delete = (%d, %v), want one database match", deleted, err)
+			id := entries[0].ID
+			if caseSensitive {
+				id = entries[1].ID
+			}
+			if deleted, err := store.DeleteByIDs(t.Context(), db, []int64{id}); err != nil || deleted != 1 {
+				t.Fatalf("delete by ID = (%d, %v), want one row", deleted, err)
 			}
 			if allowed, err := WhitelistContains(t.Context(), db, original); err != nil || allowed != caseSensitive {
 				t.Fatalf("membership after variant delete = (%v, %v), case sensitive %v", allowed, err, caseSensitive)

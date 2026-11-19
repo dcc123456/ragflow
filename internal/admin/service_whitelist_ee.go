@@ -98,8 +98,11 @@ func (s *Service) UpdateWhiteList(ctx context.Context, id int64, value string) (
 	return fmt.Sprintf("Successfully updated the email from %s to %s.", previous, email), nil
 }
 
-func (s *Service) DeleteWhiteList(ctx context.Context, value string) (int64, error) {
-	return dao.NewWhitelistDAO().DeleteByEmail(ctx, dao.DB, value)
+func (s *Service) DeleteWhiteList(ctx context.Context, id int64) (int64, error) {
+	if id <= 0 {
+		return 0, common.NewCodedError(common.CodeBadRequest, "Invalid whitelist ID")
+	}
+	return dao.NewWhitelistDAO().DeleteByIDs(ctx, dao.DB, []int64{id})
 }
 
 func (s *Service) BatchDeleteWhiteList(ctx context.Context, ids []int64) (int64, error) {

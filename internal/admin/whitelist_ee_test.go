@@ -83,7 +83,7 @@ func whitelistJSON(method, path, body string) *http.Request {
 
 func TestWhitelistHTTPAdd(t *testing.T) {
 	engine := setupWhitelistTest(t)
-	callWhitelist(t, engine, whitelistJSON(http.MethodPost, "/add", `{"email":"Alice@Example.com"}`), http.StatusOK)
+	callWhitelist(t, engine, whitelistJSON(http.MethodPost, "", `{"email":"Alice@Example.com"}`), http.StatusOK)
 	var alice entity.WhiteList
 	if err := dao.DB.Where("email = ?", "Alice@Example.com").Take(&alice).Error; err != nil {
 		t.Fatal(err)
@@ -91,7 +91,7 @@ func TestWhitelistHTTPAdd(t *testing.T) {
 	if alice.CreateTime == nil || alice.CreateDate == nil || alice.UpdateTime == nil || alice.UpdateDate == nil {
 		t.Fatalf("missing timestamps: %+v", alice)
 	}
-	result := callWhitelist(t, engine, whitelistJSON(http.MethodPost, "/add", `{"email":"Alice@Example.com"}`), http.StatusOK)
+	result := callWhitelist(t, engine, whitelistJSON(http.MethodPost, "", `{"email":"Alice@Example.com"}`), http.StatusOK)
 	var counts struct{ Added, Skipped int }
 	if err := json.Unmarshal(result.Data, &counts); err != nil || counts.Added != 0 || counts.Skipped != 1 {
 		t.Fatalf("duplicate add = %s, error = %v", result.Data, err)
@@ -105,19 +105,19 @@ func TestWhitelistHTTPAdd(t *testing.T) {
 func TestWhitelistHTTPAddRejectsInvalidInput(t *testing.T) {
 	engine := setupWhitelistTest(t)
 	for _, body := range []string{`{`, `null`, `{}`, `{"email":123}`, `{"email":"bad"}`, `{"email":"Alice <alice@example.com>"}`, `{"email":"x@example.com' OR 1=1--"}`, `{"email":"a@b.c"}`, `{"email":"alice+tag@example.com"}`, `{"email":" alice@example.com "}`} {
-		callWhitelist(t, engine, whitelistJSON(http.MethodPost, "/add", body), http.StatusBadRequest)
+		callWhitelist(t, engine, whitelistJSON(http.MethodPost, "", body), http.StatusBadRequest)
 	}
 	if err := dao.DB.Migrator().DropTable(&entity.WhiteList{}); err != nil {
 		t.Fatal(err)
 	}
-	callWhitelist(t, engine, whitelistJSON(http.MethodPost, "/add", `{"email":"alice@example.com"}`), http.StatusInternalServerError)
+	callWhitelist(t, engine, whitelistJSON(http.MethodPost, "", `{"email":"alice@example.com"}`), http.StatusInternalServerError)
 }
 
 func TestWhitelistHTTPPreservesAddresses(t *testing.T) {
 	for _, email := range []string{"Alice@Example.COM", "álice@example.com", "用户@例子.公司", "a..b@example.com", ".alice@example.com", "alice@exam_ple.com"} {
 		t.Run(email, func(t *testing.T) {
 			engine := setupWhitelistTest(t)
-			callWhitelist(t, engine, whitelistJSON(http.MethodPost, "/add", fmt.Sprintf(`{"email":%q}`, email)), http.StatusOK)
+			callWhitelist(t, engine, whitelistJSON(http.MethodPost, "", fmt.Sprintf(`{"email":%q}`, email)), http.StatusOK)
 			result := callWhitelist(t, engine, whitelistJSON(http.MethodGet, "", ""), http.StatusOK)
 			var list whitelistList
 			if err := json.Unmarshal(result.Data, &list); err != nil || len(list.Entries) != 1 || list.Entries[0].Email != email {
@@ -134,8 +134,8 @@ func TestWhitelistHTTPList(t *testing.T) {
 	if err := json.Unmarshal(result.Data, &list); err != nil || list.Entries == nil || list.Total != 0 {
 		t.Fatalf("empty list = %s, error = %v", result.Data, err)
 	}
-	callWhitelist(t, engine, whitelistJSON(http.MethodPost, "/add", `{"email":"alice@example.com"}`), http.StatusOK)
-	callWhitelist(t, engine, whitelistJSON(http.MethodPost, "/add", `{"email":"bob@example.com"}`), http.StatusOK)
+	callWhitelist(t, engine, whitelistJSON(http.MethodPost, "", `{"email":"alice@example.com"}`), http.StatusOK)
+	callWhitelist(t, engine, whitelistJSON(http.MethodPost, "", `{"email":"bob@example.com"}`), http.StatusOK)
 	result = callWhitelist(t, engine, whitelistJSON(http.MethodGet, "", ""), http.StatusOK)
 	if err := json.Unmarshal(result.Data, &list); err != nil || list.Total != 2 || len(list.Entries) != 2 {
 		t.Fatalf("list = %s, error = %v", result.Data, err)
@@ -160,8 +160,8 @@ func TestWhitelistHTTPList(t *testing.T) {
 
 func TestWhitelistHTTPUpdate(t *testing.T) {
 	engine := setupWhitelistTest(t)
-	callWhitelist(t, engine, whitelistJSON(http.MethodPost, "/add", `{"email":"alice@example.com"}`), http.StatusOK)
-	callWhitelist(t, engine, whitelistJSON(http.MethodPost, "/add", `{"email":"bob@example.com"}`), http.StatusOK)
+	callWhitelist(t, engine, whitelistJSON(http.MethodPost, "", `{"email":"alice@example.com"}`), http.StatusOK)
+	callWhitelist(t, engine, whitelistJSON(http.MethodPost, "", `{"email":"bob@example.com"}`), http.StatusOK)
 	var alice entity.WhiteList
 	if err := dao.DB.Where("email = ?", "alice@example.com").Take(&alice).Error; err != nil {
 		t.Fatal(err)
@@ -194,10 +194,11 @@ func TestWhitelistHTTPUpdate(t *testing.T) {
 
 func TestWhitelistHTTPDeletesInvalidHistoricalAddress(t *testing.T) {
 	engine := setupWhitelistTest(t)
-	if err := dao.DB.Create(&entity.WhiteList{Email: "legacy invalid"}).Error; err != nil {
+	entry := entity.WhiteList{Email: "legacy invalid"}
+	if err := dao.DB.Create(&entry).Error; err != nil {
 		t.Fatal(err)
 	}
-	callWhitelist(t, engine, whitelistJSON(http.MethodDelete, "/legacy%20invalid", ""), http.StatusOK)
+	callWhitelist(t, engine, whitelistJSON(http.MethodDelete, fmt.Sprintf("/%d", entry.ID), ""), http.StatusOK)
 	var count int64
 	if err := dao.DB.Model(&entity.WhiteList{}).Count(&count).Error; err != nil || count != 0 {
 		t.Fatalf("historical address could not be removed: count %d, error = %v", count, err)
@@ -206,10 +207,22 @@ func TestWhitelistHTTPDeletesInvalidHistoricalAddress(t *testing.T) {
 
 func TestWhitelistHTTPDelete(t *testing.T) {
 	engine := setupWhitelistTest(t)
-	callWhitelist(t, engine, whitelistJSON(http.MethodPost, "/add", `{"email":"carol@example.com"}`), http.StatusOK)
-	callWhitelist(t, engine, whitelistJSON(http.MethodPost, "/add", `{"email":"bob@example.com"}`), http.StatusOK)
-	callWhitelist(t, engine, whitelistJSON(http.MethodDelete, "/carol%40example.com", ""), http.StatusOK)
-	callWhitelist(t, engine, whitelistJSON(http.MethodDelete, "/carol%40example.com", ""), http.StatusOK)
+	callWhitelist(t, engine, whitelistJSON(http.MethodPost, "", `{"email":"carol@example.com"}`), http.StatusOK)
+	callWhitelist(t, engine, whitelistJSON(http.MethodPost, "", `{"email":"bob@example.com"}`), http.StatusOK)
+	var carol entity.WhiteList
+	if err := dao.DB.Where("email = ?", "carol@example.com").Take(&carol).Error; err != nil {
+		t.Fatal(err)
+	}
+	path := fmt.Sprintf("/%d", carol.ID)
+	result := callWhitelist(t, engine, whitelistJSON(http.MethodDelete, path, ""), http.StatusOK)
+	var deletion whitelistDeleteResponse
+	if err := json.Unmarshal(result.Data, &deletion); err != nil || deletion.Deleted != 1 {
+		t.Fatalf("delete = %s, error = %v", result.Data, err)
+	}
+	callWhitelist(t, engine, whitelistJSON(http.MethodDelete, path, ""), http.StatusOK)
+	for _, invalid := range []string{"/invalid", "/0", "/-1", "/9223372036854775808"} {
+		callWhitelist(t, engine, whitelistJSON(http.MethodDelete, invalid, ""), http.StatusBadRequest)
+	}
 	var bob entity.WhiteList
 	if err := dao.DB.Where("email = ?", "bob@example.com").Take(&bob).Error; err != nil {
 		t.Fatal(err)

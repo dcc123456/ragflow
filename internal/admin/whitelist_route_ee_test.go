@@ -40,13 +40,12 @@ func TestWhitelistRoutes(t *testing.T) {
 	type routeMatch struct {
 		Handler string
 		ID      string
-		Email   string
 	}
 	engine := gin.New()
 	group := engine.Group("/api/v1/admin", func(c *gin.Context) {
 		// Observe route dispatch independently of service behavior.
 		c.AbortWithStatusJSON(http.StatusOK, routeMatch{
-			Handler: c.HandlerName(), ID: c.Param("id"), Email: c.Param("email"),
+			Handler: c.HandlerName(), ID: c.Param("id"),
 		})
 	})
 	RegisterEERouter(group, NewRouter(handler))
@@ -60,14 +59,12 @@ func TestWhitelistRoutes(t *testing.T) {
 		path    string
 		handler gin.HandlerFunc
 		id      string
-		email   string
 	}{
 		{name: "list", method: http.MethodGet, path: "/whitelist", handler: handler.ShowWhiteList},
-		{name: "add", method: http.MethodPost, path: "/whitelist/add", handler: handler.AddWhiteList},
+		{name: "add", method: http.MethodPost, path: "/whitelist", handler: handler.AddWhiteList},
 		{name: "import", method: http.MethodPost, path: "/whitelist/batch", handler: handler.BatchAddWhiteList},
 		{name: "update by id", method: http.MethodPut, path: "/whitelist/42", handler: handler.UpdateWhiteList, id: "42"},
-		{name: "delete by email", method: http.MethodDelete, path: "/whitelist/alice@example.com", handler: handler.DeleteWhiteList, email: "alice@example.com"},
-		{name: "delete encoded email", method: http.MethodDelete, path: "/whitelist/alice%2Btag%40example.com", handler: handler.DeleteWhiteList, email: "alice+tag@example.com"},
+		{name: "delete by id", method: http.MethodDelete, path: "/whitelist/42", handler: handler.DeleteWhiteList, id: "42"},
 		{name: "batch delete", method: http.MethodDelete, path: "/whitelist/batch", handler: handler.BatchDeleteWhiteList},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -81,7 +78,7 @@ func TestWhitelistRoutes(t *testing.T) {
 			if err := json.Unmarshal(response.Body.Bytes(), &got); err != nil {
 				t.Fatal(err)
 			}
-			want := routeMatch{Handler: runtime.FuncForPC(reflect.ValueOf(tc.handler).Pointer()).Name(), ID: tc.id, Email: tc.email}
+			want := routeMatch{Handler: runtime.FuncForPC(reflect.ValueOf(tc.handler).Pointer()).Name(), ID: tc.id}
 			if got != want {
 				t.Fatalf("%s %s matched %+v, want %+v", tc.method, path, got, want)
 			}

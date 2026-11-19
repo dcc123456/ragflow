@@ -103,26 +103,6 @@ func (d *WhitelistDAO) UpdateEmail(ctx context.Context, db *gorm.DB, id int64, e
 	return previous, updated, nil
 }
 
-func (d *WhitelistDAO) DeleteByEmail(ctx context.Context, db *gorm.DB, email string) (int64, error) {
-	var deleted int64
-	err := db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var entry entity.WhiteList
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("email = ?", email).Take(&entry).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return nil
-			}
-			return err
-		}
-		result := tx.Where("id = ?", entry.ID).Delete(&entity.WhiteList{})
-		deleted = result.RowsAffected
-		return result.Error
-	})
-	if err != nil {
-		return 0, fmt.Errorf("delete whitelist email: %w", err)
-	}
-	return deleted, nil
-}
-
 func (d *WhitelistDAO) DeleteByIDs(ctx context.Context, db *gorm.DB, ids []int64) (int64, error) {
 	result := db.WithContext(ctx).Where("id IN ?", ids).Delete(&entity.WhiteList{})
 	if result.Error != nil {

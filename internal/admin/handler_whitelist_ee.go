@@ -124,7 +124,13 @@ func (h *Handler) DeleteWhiteList(c *gin.Context) {
 	common.StartOperationLog(c, "delete_admin_whitelist")
 	defer common.FinishOperationLog(c)
 
-	deleted, err := h.service.DeleteWhiteList(c.Request.Context(), c.Param("email"))
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		writeWhitelistError(c, common.NewCodedError(common.CodeBadRequest, "Invalid whitelist ID"))
+		return
+	}
+	common.SetOperationResource(c, "whitelist_id", id)
+	deleted, err := h.service.DeleteWhiteList(c.Request.Context(), id)
 	if err != nil {
 		writeWhitelistError(c, err)
 		return

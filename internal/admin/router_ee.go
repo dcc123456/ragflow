@@ -168,10 +168,10 @@ func RegisterEERouter(protected *gin.RouterGroup, r *Router) {
 
 	// White list, EE
 	protected.GET("/whitelist", r.handler.ShowWhiteList)
-	protected.POST("/whitelist/add", r.handler.AddWhiteList)
+	protected.POST("/whitelist", r.handler.AddWhiteList)
 	protected.POST("/whitelist/batch", r.handler.BatchAddWhiteList)
 	protected.PUT("/whitelist/:id", r.handler.UpdateWhiteList)
-	protected.DELETE("/whitelist/:email", r.handler.DeleteWhiteList)
+	protected.DELETE("/whitelist/:id", r.handler.DeleteWhiteList)
 	protected.DELETE("/whitelist/batch", r.handler.BatchDeleteWhiteList)
 
 }

@@ -367,8 +367,8 @@ export const updateWhitelistEntry = (id: number, email: string) =>
     email,
   });
 
-export const deleteWhitelistEntry = (email: string) =>
-  request.delete<ResponseData<never>>(API.adminDeleteWhitelistEntry(email));
+export const deleteWhitelistEntry = (id: number) =>
+  request.delete<ResponseData<never>>(API.adminDeleteWhitelistEntry(id));
 
 export const importWhitelistFromExcel = (file: File) => {
   const fd = new FormData();

@@ -517,11 +517,11 @@ const apiEndpoints = {
   adminListResources: `${restAPIv1}/admin/roles/resource`,
 
   adminListWhitelist: `${restAPIv1}/admin/whitelist`,
-  adminCreateWhitelistEntry: `${restAPIv1}/admin/whitelist/add`,
+  adminCreateWhitelistEntry: `${restAPIv1}/admin/whitelist`,
   adminUpdateWhitelistEntry: (id: number) =>
     `${restAPIv1}/admin/whitelist/${id}`,
-  adminDeleteWhitelistEntry: (email: string) =>
-    `${restAPIv1}/admin/whitelist/${email}`,
+  adminDeleteWhitelistEntry: (id: number) =>
+    `${restAPIv1}/admin/whitelist/${id}`,
   adminImportWhitelist: `${restAPIv1}/admin/whitelist/batch`,
 
   adminGetSystemVersion: `${restAPIv1}/admin/version`,

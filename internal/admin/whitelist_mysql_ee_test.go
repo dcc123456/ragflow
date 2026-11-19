@@ -116,10 +116,10 @@ func TestWhitelistMySQLHTTP(t *testing.T) {
 		}
 		return result
 	}
-	call(whitelistJSON(http.MethodPost, "/add", `{"email":"ALICE@Example.com"}`), http.StatusOK)
-	call(whitelistJSON(http.MethodPost, "/add", `{"email":" ALICE@Example.com "}`), http.StatusBadRequest)
-	call(whitelistJSON(http.MethodPost, "/add", `{"email":"alice@example.com"}`), http.StatusOK)
-	call(whitelistJSON(http.MethodPost, "/add", `{"email":"álice@example.com"}`), http.StatusOK)
+	call(whitelistJSON(http.MethodPost, "", `{"email":"ALICE@Example.com"}`), http.StatusOK)
+	call(whitelistJSON(http.MethodPost, "", `{"email":" ALICE@Example.com "}`), http.StatusBadRequest)
+	call(whitelistJSON(http.MethodPost, "", `{"email":"alice@example.com"}`), http.StatusOK)
+	call(whitelistJSON(http.MethodPost, "", `{"email":"álice@example.com"}`), http.StatusOK)
 	call(whitelistUpload(t, "emails.xlsx", whitelistWorkbook(t, [][]string{{"email"}, {"alice@example.com"}, {"bob@example.com"}}), 1), http.StatusOK)
 	call(whitelistUpload(t, "emails.xlsx", whitelistWorkbook(t, [][]string{{"email"}, {"new@example.com"}, {"invalid email"}}), 1), http.StatusBadRequest)
 	store := dao.NewWhitelistDAO()
@@ -180,10 +180,14 @@ func TestWhitelistMySQLHTTP(t *testing.T) {
 		request.URL.Path = "/api/v1/users"
 		call(request, status)
 	}
-	result = call(whitelistJSON(http.MethodDelete, "/%C3%A1lice%40example.com", ""), http.StatusOK)
+	var accented entity.WhiteList
+	if err := db.Where("email = ?", "álice@example.com").Take(&accented).Error; err != nil {
+		t.Fatal(err)
+	}
+	result = call(whitelistJSON(http.MethodDelete, fmt.Sprintf("/%d", accented.ID), ""), http.StatusOK)
 	var deletion whitelistDeleteResponse
 	if err := json.Unmarshal(result.Data, &deletion); err != nil || deletion.Deleted != 1 {
-		t.Fatalf("database-equivalent delete = %s, error = %v", result.Data, err)
+		t.Fatalf("delete by ID = %s, error = %v", result.Data, err)
 	}
-	call(whitelistJSON(http.MethodDelete, "/alice%40example.com", ""), http.StatusOK)
+	call(whitelistJSON(http.MethodDelete, fmt.Sprintf("/%d", alice.ID), ""), http.StatusOK)
 }
