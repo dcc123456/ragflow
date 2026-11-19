@@ -1,8 +1,10 @@
 # Enterprise CI fallbacks
 
-The `merge_oss` label starts the existing synchronization CI without requiring
-`ci`. In preflight, `.github/actions/ee-stubs` runs this standard-library-only Go
-tool against the checked-out PR merge result. It scans all candidate packages,
+The `merge_oss` and `oss_changes` labels are equivalent: either starts CI without
+requiring `ci` and allows changes to shared Go files. Use `merge_oss` for OSS
+synchronization PRs and `oss_changes` for direct changes to shared OSS code.
+In preflight, `.github/actions/ee-stubs` runs this standard-library-only Go tool
+against the checked-out PR merge result. It scans all candidate packages,
 classifies community hook bodies, generates supported panic fallbacks and
 publishes the report. Community implementations without EE counterparts produce
 warnings. Confirmed empty hooks without EE counterparts fail the check after
@@ -107,9 +109,10 @@ summary tables group issues by source PR and show their severity separately;
 locations, PRs, authors and source commits have links in the summary. No owner is
 inferred from the PR author, and no investigation suggestions are generated.
 
-For `merge_oss` PRs, preflight checks out full history and supplies the target
-branch's base SHA. The scanner rechecks each affected package in that base tree
-to distinguish `Detected in this merge` from `Pre-existing`. An old Stub alone
+For PRs labeled `merge_oss` or `oss_changes`, preflight checks out full history
+and supplies the target branch's base SHA. The scanner rechecks each affected
+package in that base tree to distinguish `Detected in this merge` from
+`Pre-existing`. An old Stub alone
 does not prove an old issue: removing or changing its EE declaration can create
 a new gap. `Unknown` is used when the baseline cannot be checked.
 
