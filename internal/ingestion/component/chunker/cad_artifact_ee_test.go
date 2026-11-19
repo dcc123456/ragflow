@@ -177,7 +177,12 @@ func TestGenerateCADPreviewArtifacts(t *testing.T) {
 		t.Fatal(err)
 	}
 	inputs := map[string]any{"kb_id": "kb1", "doc_id": "doc1"}
-	if err := generateCADPreviewArtifacts(t.Context(), nil, inputs, schema.ChunkerFromUpstream{}, doc, []cadsource.Sheet{{ID: "s0", Layout: "model", Source: "fallback"}}, nil); err != nil {
+	sheets := []cadsource.Sheet{{ID: "s0", Layout: "model", Source: "fallback"}}
+	result, err := buildCADPreview(t.Context(), doc, sheets, cadPreviewPageWidth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := storeCADPreviewArtifacts(t.Context(), nil, inputs, schema.ChunkerFromUpstream{}, result, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -231,7 +236,12 @@ func TestGenerateCADPreviewArtifactsUpdatesThumbnail(t *testing.T) {
 		t.Fatal(err)
 	}
 	inputs := map[string]any{"kb_id": "kb1", "doc_id": "doc1"}
-	if err := generateCADPreviewArtifacts(t.Context(), db, inputs, schema.ChunkerFromUpstream{}, doc, []cadsource.Sheet{{ID: "s0", Layout: "model", Source: "fallback"}}, nil); err != nil {
+	sheets := []cadsource.Sheet{{ID: "s0", Layout: "model", Source: "fallback"}}
+	result, err := buildCADPreview(t.Context(), doc, sheets, cadPreviewPageWidth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := storeCADPreviewArtifacts(t.Context(), db, inputs, schema.ChunkerFromUpstream{}, result, nil); err != nil {
 		t.Fatal(err)
 	}
 

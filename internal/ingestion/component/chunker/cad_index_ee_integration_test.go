@@ -69,7 +69,7 @@ func TestCADExtraUsesExistingTextMapping(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	chunk := cadChunkFromItems("drawing", cadTestSheet("s1", [4]float64{0, 0, 1000, 600}), "R1", cadKindRegion, []cadTextItem{{text: "FC 095", x: 10, y: 30, height: 5, sourceID: "source:1"}})
+	chunk := cadTestChunkFromItems("drawing", cadTestSheet("s1", [4]float64{0, 0, 1000, 600}), "R1", cadKindRegion, []cadTextItem{{text: "FC 095", x: 10, y: 30, height: 5, sourceID: "source:1"}})
 	wire := cadTestChunkDocs(t, []cadChunk{chunk})[0].ToMap()
 	wire["id"] = "cadchunk"
 	wire["doc_id"] = "caddoc"

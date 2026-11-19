@@ -39,30 +39,64 @@ import (
 const ComponentNameCADChunker = "CADChunker"
 
 // cadChunkerComponent runs the spatial CAD chunker over the parser's
-// structured drawing payload. The spacing/limit knobs live in
-// defaultCADChunkerConfig.
+// structured drawing payload. Blocks are cut at rendered ink gutters; there are
+// no spacing or character knobs.
 type cadChunkerComponent struct{}
 
 // Invoke chunks one parsed drawing. The cad pipeline only runs for CAD
-// documents. A missing payload or a drawing without searchable text produces
-// an explicit error for the ingestion task.
+// documents. A missing payload is a wiring defect and fails the task; a
+// drawing without searchable text (pure 3D solids, symbol-only sheets)
+// yields per-sheet geometry summary chunks, and only a drawing with no
+// decoded geometry at all succeeds with zero chunks and a warning, so the
+// rendered preview that was already built above stays available instead of
+// failing the document.
 func (c *cadChunkerComponent) Invoke(ctx context.Context, db *gorm.DB, inputs map[string]any) (map[string]any, error) {
 	upstream, err := decodeChunkerFromUpstream(inputs)
 	if err != nil {
 		return nil, fmt.Errorf("CADChunker: decode input: %w", err)
 	}
-	out, drawing, err := chunkCAD(ctx, upstream)
+	drawing, err := decodeCADDrawing(ctx, upstream)
 	if err != nil {
 		return nil, err
 	}
 	if drawing == nil {
 		return nil, fmt.Errorf("CADChunker: upstream carries no structured CAD payload")
 	}
+
+	// Parse and render once, before chunking: chunk boundaries need the sheet
+	// ink, and the same render feeds chunk crops and the document preview.
+	docCAD, _, loadErr := loadCADDocument(ctx, db, upstream)
+	var preview *cadPreviewResult
+	var ink *cadInkIndex
+	if loadErr != nil {
+		common.Warn("CADChunker: load source: " + loadErr.Error())
+	} else if docCAD != nil {
+		preview, err = buildCADPreview(ctx, docCAD, drawing.Sheets, cadPreviewPageWidth)
+		if err != nil {
+			common.Warn("CADChunker: build preview for ink: " + err.Error())
+			preview = nil
+		} else {
+			ink = buildCADInk(preview.Pages)
+		}
+	}
+
+	out, _, err := chunkCADDrawing(ctx, upstream, drawing, ink)
+	if err != nil {
+		return nil, err
+	}
 	chunks, _ := schema.GetChunks(out)
 	if len(chunks) == 0 {
-		return nil, fmt.Errorf("CADChunker: no searchable text was found in this CAD drawing")
+		warning := "CADChunker: no searchable text was found in this CAD drawing; only the rendered preview is kept"
+		common.Warn(warning)
+		runtime.ReportProgressMessage(ctx, ComponentNameCADChunker, "WARNING: "+warning)
+		out, err = attachCADArtifacts(ctx, db, inputs, upstream, out, chunks, docCAD, preview)
+		if err != nil {
+			return nil, err
+		}
+		out["warnings"] = []string{warning}
+		return out, nil
 	}
-	return attachCADArtifacts(ctx, db, inputs, upstream, drawing.Sheets, out, chunks)
+	return attachCADArtifacts(ctx, db, inputs, upstream, out, chunks, docCAD, preview)
 }
 
 // cadChunkerParam configures optional enhancement of rendered chunk images.

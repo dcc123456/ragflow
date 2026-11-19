@@ -33,11 +33,13 @@ import (
 
 var cadLegendTag = regexp.MustCompile(`^(?:[A-Z][A-Z0-9-]*\s*[- ]?\s*\d{1,4}[A-Z]?|\d{1,3}[A-Z]?)$`)
 
-// cadLegendEntry is one structured legend row. Sources and Bounds are kept so
-// context added to a chunk can point back to the exact tag/description texts.
+// cadLegendEntry is one structured legend row. RowText is the exact line the
+// layout serializer emits for the row, so chunk matching does not depend on the
+// pre-formatting tab layout. Sources and Bounds point back to the source texts.
 type cadLegendEntry struct {
 	Tag         string
 	Description string
+	RowText     string
 	Sources     []cadSourceFact
 	Bounds      [4]float64
 }
@@ -97,8 +99,12 @@ func cadJoinLegendRows(items []cadTextItem) ([]cadTextItem, map[string]cadLegend
 			entry := cadLegendEntry{
 				Tag:         name,
 				Description: description.text,
-				Sources:     cadItemFacts([]cadTextItem{tag, description}),
-				Bounds:      [4]float64{bounds.minX, bounds.minY, bounds.maxX, bounds.maxY},
+				RowText: cadTableRowText(cadTableRow{Cells: []cadTableRowCell{
+					{Column: "TAG NUMBER", Text: name},
+					{Column: "DESCRIPTION", Text: strings.Join(strings.Fields(description.text), " ")},
+				}}),
+				Sources: cadItemFacts([]cadTextItem{tag, description}),
+				Bounds:  [4]float64{bounds.minX, bounds.minY, bounds.maxX, bounds.maxY},
 			}
 			if previous, ok := legend[name]; !ok {
 				legend[name] = entry
@@ -147,18 +153,19 @@ func cadAddLegendContext(chunks []cadChunk, legend map[string]cadLegendEntry) {
 	sort.Strings(keys)
 	for i := range chunks {
 		body := " " + strings.Join(strings.Fields(chunks[i].Content), " ") + " "
+		wrapped := "\n" + chunks[i].Content + "\n"
 		for _, tag := range keys {
 			if conflicts[strings.Join(strings.Fields(tag), "")] {
 				continue
 			}
 			entry := legend[tag]
 			description := entry.Description
-			ownRow := strings.Contains("\n"+chunks[i].Content+"\n", "\n"+tag+"\t"+description+"\n")
+			ownRow := entry.RowText != "" && strings.Contains(wrapped, "\n"+entry.RowText+"\n")
 			if description == "" || !(cadLegendMatchesBody(body, tag) || ownRow) {
 				continue
 			}
 			chunks[i].Keywords = cadAppendKeywordAliases(chunks[i].Keywords, tag)
-			if strings.Contains(chunks[i].Content, description) {
+			if strings.Contains(body, strings.Join(strings.Fields(description), " ")) {
 				continue
 			}
 			chunks[i].Context += "Legend: " + tag + " — " + description + "\n"
@@ -461,14 +468,169 @@ func cadFilterFrameGrid(items []cadTextItem, sheet cadsource.Sheet) ([]cadTextIt
 	return out, len(removed)
 }
 
-func cadTitleChunks(docName string, sheet cadsource.Sheet, parts [][]cadTextItem, cfg cadChunkerConfig) []cadChunk {
+func cadTitleChunks(docName string, sheet cadsource.Sheet, parts [][]cadTextItem, page *cadInkPage, scale float64) []cadChunk {
 	var out []cadChunk
 	for i, part := range parts {
 		boxes := make([]cadTextBox, len(part))
 		for j, item := range part {
-			boxes[j] = cadTextBoxFor(item, 1)
+			boxes[j] = cadTextBoxFor(item, scale)
 		}
-		out = append(out, cadRegionChunks(docName, sheet, fmt.Sprintf("T%d", i+1), cadKindTitleBlock, []cadEvidence{{Level: cadEvidenceDerived, Source: "layout", Method: "title_block"}}, boxes, 0, 0, cfg)...)
+		chunk := cadChunkFromBoxes(
+			docName, sheet, fmt.Sprintf("T%d", i+1), cadKindTitleBlock,
+			[]cadEvidence{{Level: cadEvidenceDerived, Source: "layout", Method: "title_block"}},
+			boxes, cadLocalTextBounds(boxes, page),
+		)
+		chunk.Content = cadTitleContent(part)
+		out = append(out, chunk)
 	}
 	return out
+}
+
+// cadTitlePairMaxDistance bounds a same-row value to the right of its label, in
+// text heights. A wider gap belongs to another cell of the title-block grid.
+const cadTitlePairMaxDistance = 15.0
+
+// cadTitleContent pairs field labels with their nearest value. Title blocks
+// are cell tables; global reading order loses label/value adjacency.
+func cadTitleContent(items []cadTextItem) string {
+	if len(items) == 0 {
+		return ""
+	}
+	ordered := append([]cadTextItem(nil), items...)
+	sortCADTextItems(ordered)
+	height := cadMedianItemHeight(ordered)
+	if height <= 0 {
+		height = 1
+	}
+	rowTolerance := 0.8 * height
+	var rows [][]int
+	rowOf := make([]int, len(ordered))
+	for i, item := range ordered {
+		placed := false
+		for r := range rows {
+			ref := ordered[rows[r][0]]
+			if math.Abs(item.y-ref.y) <= rowTolerance {
+				rows[r] = append(rows[r], i)
+				rowOf[i] = r
+				placed = true
+				break
+			}
+		}
+		if !placed {
+			rows = append(rows, []int{i})
+			rowOf[i] = len(rows) - 1
+		}
+	}
+	used := make([]bool, len(ordered))
+	lines := make([]string, 0, len(ordered))
+	rowHasLabel := make([]bool, len(rows))
+	for r := range rows {
+		for _, i := range rows[r] {
+			if cadMatchesAnyFieldLabel(ordered[i].text) && !cadHasInlineFieldValue(ordered[i].text) {
+				rowHasLabel[r] = true
+				break
+			}
+		}
+	}
+	for r := range rows {
+		// Pair labels before emitting sibling values: a value may sort above
+		// its label by a few tenths of a text height.
+		for _, i := range rows[r] {
+			item := ordered[i]
+			if used[i] || !cadMatchesAnyFieldLabel(item.text) || cadHasInlineFieldValue(item.text) {
+				continue
+			}
+			pair := -1
+			// A row with several field labels is a header row or a multi-cell
+			// band (SCALA/FORMATO, DRAWN/DATE). Pairing across it would attach
+			// the wrong value; stacked-cell pairing below handles those cases.
+			labelCount := 0
+			for _, j := range rows[rowOf[i]] {
+				if cadMatchesAnyFieldLabel(ordered[j].text) {
+					labelCount++
+				}
+			}
+			if labelCount == 1 {
+				bestX := math.Inf(1)
+				for _, j := range rows[rowOf[i]] {
+					if j == i || used[j] || cadMatchesAnyFieldLabel(ordered[j].text) {
+						continue
+					}
+					if ordered[j].x <= item.x || ordered[j].x-item.x > cadTitlePairMaxDistance*height {
+						continue
+					}
+					if ordered[j].x < bestX {
+						bestX = ordered[j].x
+						pair = j
+					}
+				}
+			}
+			if pair < 0 {
+				pair = cadNearestTitleValue(ordered, used, i, height, false, rowOf, rowHasLabel)
+				if pair < 0 {
+					pair = cadNearestTitleValue(ordered, used, i, height, true, rowOf, rowHasLabel)
+				}
+			}
+			if pair >= 0 {
+				label := strings.TrimRight(strings.TrimSpace(item.text), ":：")
+				lines = append(lines, label+": "+strings.TrimSpace(ordered[pair].text))
+				used[i], used[pair] = true, true
+			}
+		}
+		for _, i := range rows[r] {
+			if used[i] {
+				continue
+			}
+			lines = append(lines, cadNormalizeInlineTitleField(ordered[i].text))
+			used[i] = true
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+// cadNearestTitleValue finds a non-label value in the same column, either below
+// (above=false) or above the label. It is used for stacked cell layouts such as
+// SCALA/FORMATO where the label sits above its value. A value row that also
+// carries a field label belongs to that label, not to this one.
+func cadNearestTitleValue(items []cadTextItem, used []bool, label int, height float64, above bool, rowOf []int, rowHasLabel []bool) int {
+	best, bestDistance := -1, math.Inf(1)
+	for j, other := range items {
+		if j == label || used[j] || cadMatchesAnyFieldLabel(other.text) {
+			continue
+		}
+		if rowHasLabel[rowOf[j]] {
+			continue
+		}
+		if math.Abs(other.x-items[label].x) > 12*height {
+			continue
+		}
+		var distance float64
+		if above {
+			if other.y <= items[label].y {
+				continue
+			}
+			distance = other.y - items[label].y
+		} else {
+			if other.y >= items[label].y {
+				continue
+			}
+			distance = items[label].y - other.y
+		}
+		if distance > 20*height {
+			continue
+		}
+		if distance < bestDistance {
+			best, bestDistance = j, distance
+		}
+	}
+	return best
+}
+
+func cadHasInlineFieldValue(text string) bool {
+	for _, sep := range []string{":", "："} {
+		if _, after, ok := strings.Cut(text, sep); ok && strings.TrimSpace(after) != "" {
+			return true
+		}
+	}
+	return false
 }

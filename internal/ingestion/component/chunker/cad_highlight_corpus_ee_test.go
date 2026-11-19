@@ -42,7 +42,7 @@ func TestCADPreviewHighlightCorpus(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			chunks, _ := buildCADChunks(drawing, defaultCADChunkerConfig(), entry.Name())
+			chunks, _ := buildCADChunks(drawing, nil, entry.Name())
 			docs := cadTestChunkDocs(t, chunks)
 			doc, err := parseCADDocument(entry.Name(), data)
 			if err != nil {

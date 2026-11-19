@@ -25,6 +25,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"image"
 	"image/png"
 	"math"
 	"path/filepath"
@@ -112,6 +113,7 @@ func buildCADPreview(ctx context.Context, doc *cad.Document, sheets []cadsource.
 	if len(preview.Pages) == 0 {
 		return nil, fmt.Errorf("CAD has no renderable pages: %v", preview.Warnings)
 	}
+	preview.Pages = cadVisiblePreviewPages(preview)
 	preview.PDF, err = writeCADPreviewPDF(ctx, preview.Pages)
 	if err != nil {
 		return nil, err
@@ -127,6 +129,85 @@ func previewPageKey(layoutID, sheetID string) cadPreviewPageKey {
 		sheetID = ""
 	}
 	return cadPreviewPageKey{layoutID, sheetID}
+}
+
+// cadVisiblePreviewPages drops sheets rendered completely white. CAD layouts
+// can contain empty paper sheets; indexing them as page 1 hides the drawing.
+func cadVisiblePreviewPages(preview *cadPreviewResult) []cadPreviewPage {
+	pages := preview.Pages
+	visible := make([]cadPreviewPage, 0, len(pages))
+	var blankKeys []cadPreviewPageKey
+	for _, page := range pages {
+		if cadPreviewPageHasInk(page) {
+			visible = append(visible, page)
+		} else {
+			blankKeys = append(blankKeys, previewPageKey(page.layoutID, page.sheetID))
+		}
+	}
+	if len(visible) == 0 && len(pages) > 0 {
+		return pages[:1]
+	}
+	if preview.Omitted != nil {
+		for _, key := range blankKeys {
+			if _, exists := preview.Omitted[key]; !exists {
+				preview.Omitted[key] = "page rendered blank"
+			}
+		}
+	}
+	return visible
+}
+
+func cadPreviewPageHasInk(page cadPreviewPage) bool {
+	if len(page.data) == 0 {
+		return false
+	}
+	img, err := png.Decode(bytes.NewReader(page.data))
+	if err != nil {
+		// An unreadable page must stay in the preview; dropping it would hide
+		// a page the renderer did produce.
+		return true
+	}
+	const inkSumThreshold16 = 3 * 0xE000
+	switch m := img.(type) {
+	case *image.RGBA:
+		return cadRGBAPixelsHaveInk(m.Pix, m.Rect.Dx(), m.Rect.Dy(), m.Stride)
+	case *image.NRGBA:
+		return cadRGBAPixelsHaveInk(m.Pix, m.Rect.Dx(), m.Rect.Dy(), m.Stride)
+	case *image.Gray:
+		for y := 0; y < m.Rect.Dy(); y++ {
+			row := m.Pix[y*m.Stride : y*m.Stride+m.Rect.Dx()]
+			for _, v := range row {
+				if v < 0xE0 {
+					return true
+				}
+			}
+		}
+		return false
+	default:
+		bounds := img.Bounds()
+		for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+			for x := bounds.Min.X; x < bounds.Max.X; x++ {
+				r, g, b, _ := img.At(x, y).RGBA()
+				if r+g+b < inkSumThreshold16 {
+					return true
+				}
+			}
+		}
+		return false
+	}
+}
+
+func cadRGBAPixelsHaveInk(pix []byte, width, height, stride int) bool {
+	const inkSumThreshold8 = 3 * 0xE0
+	for y := 0; y < height; y++ {
+		row := pix[y*stride : y*stride+width*4]
+		for x := 0; x < len(row); x += 4 {
+			if uint32(row[x])+uint32(row[x+1])+uint32(row[x+2]) < inkSumThreshold8 {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 type cadPreviewPage struct {

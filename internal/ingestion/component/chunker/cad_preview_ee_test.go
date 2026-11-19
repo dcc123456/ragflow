@@ -6,6 +6,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/color"
 	"image/png"
 	"math"
 	"reflect"
@@ -315,5 +317,40 @@ func TestCADPreviewExplainsUnmappedChunks(t *testing.T) {
 		if diagnostics[i].Code != "cad_preview_unmapped" || !strings.Contains(diagnostics[i].Detail, reason) || len(chunks[i].Positions) != 0 {
 			t.Errorf("want %q without a highlight, got %+v and %s", reason, diagnostics[i], chunks[i].Positions)
 		}
+	}
+}
+
+func TestCADPreviewDetectsThinInkAndRecordsBlankOmission(t *testing.T) {
+	encodeWhite := func(drawPixel bool) []byte {
+		img := image.NewRGBA(image.Rect(0, 0, 512, 512))
+		for y := 0; y < 512; y++ {
+			for x := 0; x < 512; x++ {
+				img.SetRGBA(x, y, color.RGBA{R: 255, G: 255, B: 255, A: 255})
+			}
+		}
+		if drawPixel {
+			img.SetRGBA(1, 1, color.RGBA{R: 0, G: 0, B: 0, A: 255})
+		}
+		var buf bytes.Buffer
+		if err := png.Encode(&buf, img); err != nil {
+			t.Fatal(err)
+		}
+		return buf.Bytes()
+	}
+	thinPage := cadPreviewPage{layoutID: "model", sheetID: "s1", data: encodeWhite(true), width: 512, height: 512}
+	blankPage := cadPreviewPage{layoutID: "model", sheetID: "s2", data: encodeWhite(false), width: 512, height: 512}
+	if !cadPreviewPageHasInk(thinPage) {
+		t.Fatal("1px ink at non-strided coordinate missed")
+	}
+	preview := &cadPreviewResult{
+		Pages:   []cadPreviewPage{blankPage, thinPage},
+		Omitted: make(map[cadPreviewPageKey]string),
+	}
+	visible := cadVisiblePreviewPages(preview)
+	if len(visible) != 1 || visible[0].sheetID != "s1" {
+		t.Fatalf("visible pages = %+v", visible)
+	}
+	if preview.Omitted[previewPageKey("model", "s2")] != "page rendered blank" {
+		t.Fatalf("blank page omission not recorded: %+v", preview.Omitted)
 	}
 }

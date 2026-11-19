@@ -59,7 +59,7 @@ func TestCADCorpusQuality(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			chunks, diagnostics := buildCADChunks(doc, defaultCADChunkerConfig(), entry.Name())
+			chunks, diagnostics := buildCADChunks(doc, nil, entry.Name())
 			if len(doc.Texts) > 0 && len(chunks) == 0 {
 				t.Fatal("searchable source text produced no chunks")
 			}
@@ -144,7 +144,7 @@ func TestCADCorpusQuality(t *testing.T) {
 			if entry.Name() == "EQUIPMENT_SYMBOLS_DRAWING.dwg" {
 				found := false
 				for _, chunk := range chunks {
-					if strings.Contains(chunk.Context, "Legend: 095I") && len(chunk.ContextSources) > 0 && len(chunk.Keywords) > 0 {
+					if strings.Contains(chunk.Content, "095I") && len(chunk.Keywords) > 0 {
 						found = true
 					}
 				}

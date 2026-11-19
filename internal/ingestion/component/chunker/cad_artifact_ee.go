@@ -34,31 +34,38 @@ import (
 	"ragflow/internal/entity"
 	"ragflow/internal/ingestion/component"
 	"ragflow/internal/ingestion/component/schema"
-	"ragflow/internal/parser/cadsource"
 	"ragflow/internal/storage"
 )
 
 const (
 	cadChunkImageWidth      = 1200
+	cadChunkImageMaxSide    = 4096
 	cadChunkImageMaxPerDoc  = 200
 	cadChunkImageMaxPixels  = 60_000_000
 	cadChunkImageDataPrefix = "data:image/png;base64,"
 )
 
-// attachCADArtifacts renders chunk images and the document preview using the
-// sheet identities already assigned by the CAD parser.
-func attachCADArtifacts(ctx context.Context, db *gorm.DB, inputs map[string]any, upstream schema.ChunkerFromUpstream, sheets []cadsource.Sheet, out map[string]any, chunks []schema.ChunkDoc) (map[string]any, error) {
+// loadCADDocument fetches and parses the source binary once. It is called
+// before chunking so the sheet ink can drive cut boundaries.
+func loadCADDocument(ctx context.Context, db *gorm.DB, upstream schema.ChunkerFromUpstream) (*cad.Document, string, error) {
 	data, name, err := fetchCADSource(ctx, db, upstream)
 	if err != nil {
-		common.Warn("CADChunker: fetch source: " + err.Error())
-		return out, nil
+		return nil, name, err
 	}
 	if len(data) == 0 || !isCADSourceFile(sourceCADName(name, upstream)) {
-		return out, nil
+		return nil, name, nil
 	}
-	docCAD, err := parseCADDocument(sourceCADName(name, upstream), data)
+	doc, err := parseCADDocument(sourceCADName(name, upstream), data)
 	if err != nil {
-		common.Warn("CADChunker: parse source: " + err.Error())
+		return nil, name, err
+	}
+	return doc, name, nil
+}
+
+// attachCADArtifacts renders chunk images and stores the preview that was
+// already rendered for ink detection.
+func attachCADArtifacts(ctx context.Context, db *gorm.DB, inputs map[string]any, upstream schema.ChunkerFromUpstream, out map[string]any, chunks []schema.ChunkDoc, docCAD *cad.Document, preview *cadPreviewResult) (map[string]any, error) {
+	if docCAD == nil {
 		return out, nil
 	}
 	if err := renderCADChunkImages(ctx, docCAD, chunks); err != nil {
@@ -68,11 +75,14 @@ func attachCADArtifacts(ctx context.Context, db *gorm.DB, inputs map[string]any,
 		common.Warn("CADChunker: render chunk images: " + err.Error())
 	}
 	out["chunks"] = chunks
-	if err := generateCADPreviewArtifacts(ctx, db, inputs, upstream, docCAD, sheets, chunks); err != nil {
+	if preview == nil {
+		return out, nil
+	}
+	if err := storeCADPreviewArtifacts(ctx, db, inputs, upstream, preview, chunks); err != nil {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		common.Warn("CADChunker: generate preview: " + err.Error())
+		common.Warn("CADChunker: store preview: " + err.Error())
 	}
 	return out, nil
 }
@@ -120,11 +130,19 @@ func renderCADChunkImage(doc *cad.Document, meta cadChunkImageProvenance) (strin
 	if boxW <= 0 || boxH <= 0 {
 		return "", nil
 	}
+	// The crop is one complete block; keep it whole and clamp its longest side.
+	// VLM tiling, when needed, happens on this image without changing the chunk.
+	if height := float64(width) * boxH / boxW; height > cadChunkImageMaxSide {
+		width = int(math.Round(cadChunkImageMaxSide * boxW / boxH))
+	}
+	if width < 1 {
+		return "", nil
+	}
 	if h := float64(width) * boxH / boxW; float64(width)*h > cadChunkImageMaxPixels {
 		width = int(math.Sqrt(cadChunkImageMaxPixels * boxW / boxH))
-		if width < 64 {
-			return "", nil
-		}
+	}
+	if width < 1 {
+		return "", nil
 	}
 	res, err := cad.RenderLayoutBoxPNG(doc, meta.layoutID, meta.bbox, cad.RenderOptions{Width: width})
 	if err != nil || len(res.Data) == 0 {
@@ -133,16 +151,18 @@ func renderCADChunkImage(doc *cad.Document, meta cadChunkImageProvenance) (strin
 	return cadChunkImageDataPrefix + base64.StdEncoding.EncodeToString(res.Data), nil
 }
 
-// generateCADPreviewArtifacts writes the document-scoped preview PDF and
-// thumbnail during ingestion, before the document is marked complete. Preview
-// rendering is best-effort: a failure or panic must not fail the ingestion
-// task that already produced the chunks.
-func generateCADPreviewArtifacts(ctx context.Context, db *gorm.DB, inputs map[string]any, upstream schema.ChunkerFromUpstream, docCAD *cad.Document, sheets []cadsource.Sheet, chunks []schema.ChunkDoc) (err error) {
+// storeCADPreviewArtifacts persists the preview that was rendered before
+// chunking. Storage is best-effort: a failure or panic must not fail the
+// ingestion task that already produced the chunks.
+func storeCADPreviewArtifacts(ctx context.Context, db *gorm.DB, inputs map[string]any, upstream schema.ChunkerFromUpstream, result *cadPreviewResult, chunks []schema.ChunkDoc) (err error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			err = fmt.Errorf("CAD preview panic: %v", recovered)
 		}
 	}()
+	if result == nil {
+		return nil
+	}
 	kbID, docID := resolveImageUploadContext(ctx, inputs)
 	if docID == "" {
 		docID = strings.TrimSpace(upstream.DocID)
@@ -159,10 +179,6 @@ func generateCADPreviewArtifacts(ctx context.Context, db *gorm.DB, inputs map[st
 	store := storage.GetStorageFactory().GetStorage()
 	if store == nil {
 		return fmt.Errorf("storage not initialized")
-	}
-	result, err := buildCADPreview(ctx, docCAD, sheets, cadPreviewPageWidth)
-	if err != nil {
-		return err
 	}
 	for _, warning := range result.Warnings {
 		common.Warn("CAD preview: " + warning)

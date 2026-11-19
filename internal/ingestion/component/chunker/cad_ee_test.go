@@ -62,6 +62,14 @@ func cadTestDrawing(sheets []cadsource.Sheet, texts []cadsource.Text, attributes
 	}
 }
 
+func cadTestChunkFromItems(docName string, sheet cadsource.Sheet, regionID string, kind cadChunkKind, items []cadTextItem) cadChunk {
+	boxes := make([]cadTextBox, len(items))
+	for i, item := range items {
+		boxes[i] = cadTextBoxFor(item, 1)
+	}
+	return cadChunkFromBoxes(docName, sheet, regionID, kind, nil, boxes, cadItemsBounds(items))
+}
+
 func cadTestTexts(chunks []cadChunk) []string {
 	var lines []string
 	for _, chunk := range chunks {
@@ -131,41 +139,6 @@ func TestCADChunkEvidenceGates(t *testing.T) {
 	}
 }
 
-// TestCADChunkerSplitsRegionsBySpace verifies that clearly separated text
-// clusters become separate region chunks instead of one sheet-wide chunk.
-func TestCADChunkerSplitsRegionsBySpace(t *testing.T) {
-	drawing := cadTestDrawing(
-		[]cadsource.Sheet{cadTestSheet("s1", [4]float64{0, 0, 1000, 600})},
-		[]cadsource.Text{
-			cadTestText("A1", "s1", 10, 500, 10),
-			cadTestText("A2", "s1", 20, 500, 10),
-			cadTestText("A3", "s1", 30, 500, 10),
-			cadTestText("B1", "s1", 700, 100, 10),
-			cadTestText("B2", "s1", 710, 100, 10),
-			cadTestText("B3", "s1", 720, 100, 10),
-		},
-	)
-	chunks, diagnostics := buildCADChunks(drawing, defaultCADChunkerConfig(), "M-102")
-	if len(diagnostics) != 0 {
-		t.Fatalf("unexpected diagnostics: %+v", diagnostics)
-	}
-	if len(chunks) != 2 {
-		t.Fatalf("chunks = %d, want 2: %+v", len(chunks), chunks)
-	}
-	if chunks[0].Kind != cadKindRegion || chunks[1].Kind != cadKindRegion {
-		t.Fatalf("kinds = %s/%s, want region/region", chunks[0].Kind, chunks[1].Kind)
-	}
-	if !strings.Contains(chunks[0].Content, "A1") || strings.Contains(chunks[0].Content, "B1") {
-		t.Fatalf("first region content = %q, want only cluster A", chunks[0].Content)
-	}
-	if !strings.Contains(chunks[1].Content, "B1") || strings.Contains(chunks[1].Content, "A1") {
-		t.Fatalf("second region content = %q, want only cluster B", chunks[1].Content)
-	}
-	if len(cadTestTexts(chunks)) != 6 {
-		t.Fatalf("text lines = %d, want 6", len(cadTestTexts(chunks)))
-	}
-}
-
 // TestCADChunkerDeterministic verifies that input order does not change chunk
 // order, region ids, or content.
 func TestCADChunkerDeterministic(t *testing.T) {
@@ -180,7 +153,7 @@ func TestCADChunkerDeterministic(t *testing.T) {
 			cadTestText("B3", "s1", 720, 100, 10),
 		},
 	)
-	first, _ := buildCADChunks(drawing, defaultCADChunkerConfig(), "M-102")
+	first, _ := buildCADChunks(drawing, nil, "M-102")
 	firstJSON, err := json.Marshal(cadTestChunkDocs(t, first))
 	if err != nil {
 		t.Fatalf("marshal first: %v", err)
@@ -191,7 +164,7 @@ func TestCADChunkerDeterministic(t *testing.T) {
 		reversed[len(drawing.Texts)-1-i] = drawing.Texts[i]
 	}
 	drawing.Texts = reversed
-	second, _ := buildCADChunks(drawing, defaultCADChunkerConfig(), "M-102")
+	second, _ := buildCADChunks(drawing, nil, "M-102")
 	secondJSON, err := json.Marshal(cadTestChunkDocs(t, second))
 	if err != nil {
 		t.Fatalf("marshal second: %v", err)
@@ -201,29 +174,8 @@ func TestCADChunkerDeterministic(t *testing.T) {
 	}
 }
 
-// TestCADChunkerSheetFallbackClusters verifies that a fallback sheet (no
-// detected frame) still uses text extents and spatial regions.
-func TestCADChunkerSheetFallbackClusters(t *testing.T) {
-	drawing := cadTestDrawing(
-		[]cadsource.Sheet{{ID: "s0", Name: "整图"}},
-		[]cadsource.Text{
-			cadTestText("A1", "s0", 10, 500, 10),
-			cadTestText("A2", "s0", 20, 500, 10),
-			cadTestText("A3", "s0", 30, 500, 10),
-			cadTestText("B1", "s0", 700, 100, 10),
-			cadTestText("B2", "s0", 710, 100, 10),
-			cadTestText("B3", "s0", 720, 100, 10),
-		},
-	)
-	drawing.Diagnostics.SheetDetection = "fallback"
-	chunks, _ := buildCADChunks(drawing, defaultCADChunkerConfig(), "M-102")
-	if len(chunks) != 2 {
-		t.Fatalf("chunks = %d, want 2: %+v", len(chunks), chunks)
-	}
-}
-
-// TestCADChunkerNoHeightWholeSheet verifies the conservative fallback: without
-// heights and without a reliable line pitch, the sheet stays one chunk.
+// TestCADChunkerNoHeightWholeSheet verifies that without text heights and a
+// reliable line pitch the sheet stays one chunk.
 func TestCADChunkerNoHeightWholeSheet(t *testing.T) {
 	drawing := cadTestDrawing(
 		[]cadsource.Sheet{cadTestSheet("s1", [4]float64{0, 0, 1000, 600})},
@@ -233,12 +185,12 @@ func TestCADChunkerNoHeightWholeSheet(t *testing.T) {
 			cadTestText("A3", "s1", 300, 500, 0),
 		},
 	)
-	chunks, diagnostics := buildCADChunks(drawing, defaultCADChunkerConfig(), "M-102")
+	chunks, diagnostics := buildCADChunks(drawing, nil, "M-102")
 	if len(chunks) != 1 {
 		t.Fatalf("chunks = %d, want 1: %+v", len(chunks), chunks)
 	}
-	if !cadHasEvidence(chunks[0].Evidence, "text_layout", "whole_sheet_fallback", cadEvidenceInferred) {
-		t.Fatalf("evidence = %+v, want whole_sheet_fallback", chunks[0].Evidence)
+	if len(chunks[0].Evidence) == 0 {
+		t.Fatalf("chunk lost evidence: %+v", chunks[0])
 	}
 	if !cadHasDiagnostic(diagnostics, "cad_scale_unreliable") {
 		t.Fatalf("diagnostics = %+v, want cad_scale_unreliable", diagnostics)
@@ -259,7 +211,7 @@ func TestCADChunkerTitleBlock(t *testing.T) {
 			cadTestText("材料 45钢", "s1", 800, 10, 10),
 		},
 	)
-	chunks, _ := buildCADChunks(drawing, defaultCADChunkerConfig(), "M-102")
+	chunks, _ := buildCADChunks(drawing, nil, "M-102")
 	if len(chunks) != 2 {
 		t.Fatalf("chunks = %d, want 2: %+v", len(chunks), chunks)
 	}
@@ -286,7 +238,7 @@ func TestCADChunkerNotes(t *testing.T) {
 			cadTestText("120", "s1", 620, 500, 10),
 		},
 	)
-	chunks, _ := buildCADChunks(drawing, defaultCADChunkerConfig(), "M-102")
+	chunks, _ := buildCADChunks(drawing, nil, "M-102")
 	if len(chunks) != 2 {
 		t.Fatalf("chunks = %d, want 2: %+v", len(chunks), chunks)
 	}
@@ -325,7 +277,7 @@ func TestCADChunkerAttributesGroupedByOwner(t *testing.T) {
 		cadsource.Attribute{Tag: "TAG", Value: "V-101", OwnerHandle: 0xA1},
 		cadsource.Attribute{Tag: "SPEC", Value: "DN100", OwnerHandle: 0xA1},
 	)
-	chunks, _ := buildCADChunks(drawing, defaultCADChunkerConfig(), "M-102")
+	chunks, _ := buildCADChunks(drawing, nil, "M-102")
 	if len(chunks) != 3 {
 		t.Fatalf("chunks = %d, want 3 (region + 2 attribute owners): %+v", len(chunks), chunks)
 	}
@@ -359,7 +311,7 @@ func TestCADChunkerZeroText(t *testing.T) {
 		[]cadsource.Sheet{cadTestSheet("s1", [4]float64{0, 0, 1000, 600})},
 		nil,
 	)
-	chunks, diagnostics := buildCADChunks(drawing, defaultCADChunkerConfig(), "M-102")
+	chunks, diagnostics := buildCADChunks(drawing, nil, "M-102")
 	if len(chunks) != 0 {
 		t.Fatalf("chunks = %d, want 0", len(chunks))
 	}
@@ -379,12 +331,13 @@ func TestCADChunkerZeroText(t *testing.T) {
 	ctx := runtime.WithProgressMessageCallback(context.Background(), func(_, message string) {
 		messages = append(messages, message)
 	})
-	out, drawing, err := chunkCAD(ctx, upstream)
-	if err != nil {
-		t.Fatalf("chunkCAD: %v", err)
+	decoded, err := decodeCADDrawing(ctx, upstream)
+	if err != nil || decoded == nil {
+		t.Fatalf("decodeCADDrawing: %v", err)
 	}
-	if drawing == nil {
-		t.Fatal("chunkCAD did not claim the CAD payload")
+	out, _, err := chunkCADDrawing(ctx, upstream, decoded, nil)
+	if err != nil {
+		t.Fatalf("chunkCADDrawing: %v", err)
 	}
 	chunksOut, _ := out["chunks"].([]map[string]any)
 	if len(chunksOut) != 0 {
@@ -395,9 +348,9 @@ func TestCADChunkerZeroText(t *testing.T) {
 	}
 }
 
-// TestCADChunkerOversizeSplits verifies an oversized region is split without
-// losing or duplicating any line.
-func TestCADChunkerOversizeSplits(t *testing.T) {
+// TestCADChunkerOversizeStaysWhole verifies that a sheet without rendered
+// whitespace is kept as one block even when its text budget is large.
+func TestCADChunkerOversizeStaysWhole(t *testing.T) {
 	texts := make([]cadsource.Text, 0, 120)
 	for i := 0; i < 120; i++ {
 		texts = append(texts, cadTestText("L"+itoa(i), "s1", 10, float64(1000-i*10), 10))
@@ -406,20 +359,13 @@ func TestCADChunkerOversizeSplits(t *testing.T) {
 		[]cadsource.Sheet{cadTestSheet("s1", [4]float64{0, 0, 1000, 600})},
 		texts,
 	)
-	chunks, _ := buildCADChunks(drawing, defaultCADChunkerConfig(), "M-102")
-	if len(chunks) < 2 {
-		t.Fatalf("chunks = %d, want >= 2: %+v", len(chunks), chunks)
+	chunks, _ := buildCADChunks(drawing, nil, "M-102")
+	if len(chunks) != 1 {
+		t.Fatalf("chunks = %d, want one large block: %+v", len(chunks), chunks)
 	}
 	lines := cadTestTexts(chunks)
 	if len(lines) != 120 {
 		t.Fatalf("lines = %d, want 120", len(lines))
-	}
-	seen := make(map[string]bool, len(lines))
-	for _, line := range lines {
-		if seen[line] {
-			t.Fatalf("duplicate line %q", line)
-		}
-		seen[line] = true
 	}
 }
 
@@ -439,7 +385,7 @@ func TestCADChunkerNoCrossSheetLeak(t *testing.T) {
 			cadTestText("B3", "s2", 30, 500, 10),
 		},
 	)
-	chunks, _ := buildCADChunks(drawing, defaultCADChunkerConfig(), "M-102")
+	chunks, _ := buildCADChunks(drawing, nil, "M-102")
 	if len(chunks) != 2 {
 		t.Fatalf("chunks = %d, want 2: %+v", len(chunks), chunks)
 	}
@@ -476,7 +422,7 @@ func TestCADChunkerChunkIDsUnique(t *testing.T) {
 			cadTestText("重复文字3", "s2", 30, 500, 10),
 		},
 	)
-	chunks, _ := buildCADChunks(drawing, defaultCADChunkerConfig(), "M-102")
+	chunks, _ := buildCADChunks(drawing, nil, "M-102")
 	seen := make(map[string]bool, len(chunks))
 	for _, chunk := range chunks {
 		doc := cadTestChunkDocs(t, []cadChunk{chunk})[0]
@@ -505,7 +451,7 @@ func TestCADChunkerSourceCoverage(t *testing.T) {
 			cadTestText("B3", "s1", 720, 100, 10),
 		},
 	)
-	chunks, diagnostics := buildCADChunks(drawing, defaultCADChunkerConfig(), "M-102")
+	chunks, diagnostics := buildCADChunks(drawing, nil, "M-102")
 	counts := cadTestSourceIDs(chunks)
 	if len(counts) != 6 {
 		t.Fatalf("source ids = %d, want 6: %+v", len(counts), counts)
@@ -523,12 +469,12 @@ func TestCADChunkerSourceCoverage(t *testing.T) {
 // TestCADChunkerMissingPayload verifies the fallback contract: no structured
 // payload means the generic text path keeps the document.
 func TestCADChunkerMissingPayload(t *testing.T) {
-	out, drawing, err := chunkCAD(context.Background(), schema.ChunkerFromUpstream{Name: "drawing.dxf"})
+	drawing, err := decodeCADDrawing(context.Background(), schema.ChunkerFromUpstream{Name: "drawing.dxf"})
 	if err != nil {
-		t.Fatalf("chunkCAD: %v", err)
+		t.Fatalf("decodeCADDrawing: %v", err)
 	}
-	if drawing != nil || out != nil {
-		t.Fatalf("handled = %v, out = %+v; want false/nil", drawing != nil, out)
+	if drawing != nil {
+		t.Fatalf("drawing = %+v, want nil for a missing payload", drawing)
 	}
 }
 
@@ -545,9 +491,9 @@ func TestCADChunkerInvalidPayload(t *testing.T) {
 	ctx := runtime.WithProgressMessageCallback(context.Background(), func(_, message string) {
 		messages = append(messages, message)
 	})
-	_, drawing, err := chunkCAD(ctx, upstream)
+	drawing, err := decodeCADDrawing(ctx, upstream)
 	if err != nil {
-		t.Fatalf("chunkCAD: %v", err)
+		t.Fatalf("decodeCADDrawing: %v", err)
 	}
 	if drawing != nil {
 		t.Fatal("malformed payload must not be handled")
@@ -581,12 +527,13 @@ func TestCADChunkerFromParsedDXF(t *testing.T) {
 		FileType: "cad",
 		File:     &meta,
 	}
-	out, drawing, err := chunkCAD(context.Background(), upstream)
-	if err != nil {
-		t.Fatalf("chunkCAD: %v", err)
+	drawing, err := decodeCADDrawing(context.Background(), upstream)
+	if err != nil || drawing == nil {
+		t.Fatalf("decodeCADDrawing: %v", err)
 	}
-	if drawing == nil {
-		t.Fatal("chunkCAD did not claim the parsed CAD document")
+	out, _, err := chunkCADDrawing(context.Background(), upstream, drawing, nil)
+	if err != nil {
+		t.Fatalf("chunkCADDrawing: %v", err)
 	}
 	chunks, _ := out["chunks"].([]map[string]any)
 	if len(chunks) == 0 {

@@ -42,7 +42,7 @@ func TestCADInvalidSheetGeometryRetainsProvenance(t *testing.T) {
 			sheet.Viewport = box
 			text := cadTestText("PUMP", "s1", 10, 20, 5)
 			text.Bounds = [4]float64{10, 20, 40, 25}
-			chunks, diagnostics := buildCADChunks(cadTestDrawing([]cadsource.Sheet{sheet}, []cadsource.Text{text}), defaultCADChunkerConfig(), "drawing")
+			chunks, diagnostics := buildCADChunks(cadTestDrawing([]cadsource.Sheet{sheet}, []cadsource.Text{text}), nil, "drawing")
 			if len(chunks) != 1 {
 				t.Fatalf("lost source text: %+v", chunks)
 			}
@@ -83,9 +83,14 @@ func TestCADMetadataOverflowFailsTaskWithDiagnostic(t *testing.T) {
 	}
 	var messages []string
 	ctx := runtime.WithProgressMessageCallback(t.Context(), func(component, message string) { messages = append(messages, component+": "+message) })
-	out, drawing, err := chunkCAD(ctx, schema.ChunkerFromUpstream{File: &schema.ChunkerFileMeta{Extra: map[string]json.RawMessage{"cad": raw}}})
-	if err == nil || drawing == nil || out != nil {
-		t.Fatalf("invalid metadata reported success: handled=%v error=%v output=%v", drawing != nil, err, out)
+	upstream := schema.ChunkerFromUpstream{File: &schema.ChunkerFileMeta{Extra: map[string]json.RawMessage{"cad": raw}}}
+	drawing, err := decodeCADDrawing(ctx, upstream)
+	if err != nil || drawing == nil {
+		t.Fatalf("decodeCADDrawing: %v", err)
+	}
+	out, _, err := chunkCADDrawing(ctx, upstream, drawing, nil)
+	if err == nil || out != nil {
+		t.Fatalf("invalid metadata reported success: error=%v output=%v", err, out)
 	}
 	if !strings.Contains(strings.Join(messages, "\n"), "cad_metadata_serialize_failed") {
 		t.Fatalf("serialization failure not reported: %v", messages)
@@ -98,7 +103,7 @@ func TestCADRepairedSheetDoesNotExcludeNumberedContent(t *testing.T) {
 	for i, number := range []string{"1", "2", "3", "4", "5", "6"} {
 		texts = append(texts, cadTestText(number, "s1", 10+float64(i)*10, 0, 1))
 	}
-	chunks, diagnostics := buildCADChunks(cadTestDrawing([]cadsource.Sheet{sheet}, texts), defaultCADChunkerConfig(), "drawing")
+	chunks, diagnostics := buildCADChunks(cadTestDrawing([]cadsource.Sheet{sheet}, texts), nil, "drawing")
 	if len(cadTestSourceIDs(chunks)) != 6 || cadHasDiagnostic(diagnostics, "cad_sheet_grid_excluded") {
 		t.Fatalf("derived text extents treated as a detected frame: %+v", diagnostics)
 	}
@@ -142,5 +147,52 @@ func TestCADChunkDocsOmitsUnknownSourceBounds(t *testing.T) {
 	}
 	if string(payload.CAD.Sources[1]["bounds"]) != "[0,0,10,10]" {
 		t.Fatalf("valid bounds at origin omitted: %s", extra)
+	}
+}
+
+func TestCADTitleMetadataNormalizesLabelPunctuation(t *testing.T) {
+	content := cadTitleContent([]cadTextItem{
+		{text: "SCALE:", x: 10, y: 80, height: 5},
+		{text: "SHEET", x: 200, y: 80, height: 5},
+		{text: "1/1", x: 10, y: 70, height: 5},
+		{text: "1", x: 200, y: 70, height: 5},
+		{text: "DWG NO.", x: 10, y: 50, height: 5},
+		{text: "DP24572-A", x: 40, y: 50, height: 5},
+	})
+	fields := cadTitleMetadata(content)
+	if fields["scale"] != "1/1" || fields["sheet"] != "1" || fields["drawing_no"] != "DP24572-A" {
+		t.Fatalf("title metadata = %+v (content %q)", fields, content)
+	}
+}
+
+func TestCADChunkMetadataMergesTitleBlocksPerSheet(t *testing.T) {
+	chunks := []cadChunk{
+		{Kind: cadKindTitleBlock, SheetID: "s1", Content: "SCALE: 1:50"},
+		{Kind: cadKindTitleBlock, SheetID: "s1", Content: "SCALE: 1:100\nSHEET: 3"},
+	}
+	document, bySheet := cadChunkMetadata(chunks)
+	if len(document) != 0 {
+		t.Fatalf("document metadata = %+v, want none", document)
+	}
+	sheet := bySheet["s1"]
+	if sheet["scale"] != "1:50" || sheet["sheet"] != "3" {
+		t.Fatalf("merged sheet metadata = %+v", sheet)
+	}
+}
+
+func TestCADTitleMetadataFullWidthColon(t *testing.T) {
+	content := cadTitleContent([]cadTextItem{
+		{text: "图号：M0000506", x: 10, y: 80, height: 5},
+		{text: "图名：制冷详情", x: 10, y: 70, height: 5},
+	})
+	if strings.Contains(content, "：") {
+		t.Fatalf("full-width separator survived normalization: %q", content)
+	}
+	fields := cadTitleMetadata(content)
+	if fields["drawing_no"] != "M0000506" || fields["drawing_title"] != "制冷详情" {
+		t.Fatalf("title metadata = %+v (content %q)", fields, content)
+	}
+	if direct := cadTitleMetadata("图号：M0000506"); direct["drawing_no"] != "M0000506" {
+		t.Fatalf("direct full-width parse = %+v", direct)
 	}
 }
