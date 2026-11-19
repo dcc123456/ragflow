@@ -1,23 +1,21 @@
-import { useSelectedIds } from '@/hooks/logic-hooks/use-row-selection';
-import { IEvaluationCollection } from '@/ee/interfaces/database/evaluation';
 import { OnChangeFn, RowSelectionState } from '@tanstack/react-table';
 import { Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 export function useBulkOperateEvaluation({
-  evaluationData,
   rowSelection,
   setRowSelection,
   deleteCallBack,
 }: {
-  evaluationData: IEvaluationCollection[];
   rowSelection: RowSelectionState;
   setRowSelection: OnChangeFn<RowSelectionState>;
   deleteCallBack: (collectionIds: string[]) => Promise<void>;
 }) {
   const { t } = useTranslation();
 
-  const { selectedIds } = useSelectedIds(rowSelection, evaluationData);
+  const selectedIds = Object.keys(rowSelection).filter(
+    (id) => rowSelection[id],
+  );
 
   // const { handleRemoveFile } = useHandleDeleteFile();
 

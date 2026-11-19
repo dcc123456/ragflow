@@ -6,8 +6,11 @@ import {
   useUpdateEvaluationCollection,
 } from '@/ee/hooks/use-evaluation-request';
 import { useState } from 'react';
+import { OnChangeFn, RowSelectionState } from '@tanstack/react-table';
 
-export const useEvaluationOperation = () => {
+export const useEvaluationOperation = (
+  setRowSelection: OnChangeFn<RowSelectionState>,
+) => {
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const { navigateToFileManagerEvaluationDetail } = useEvaluationNavigate();
@@ -27,7 +30,14 @@ export const useEvaluationOperation = () => {
   const handleDelete = async (item: any) => {
     // Delete single item
     try {
-      await deleteEvaluationCollection(item.id);
+      const result = await deleteEvaluationCollection(item.id);
+      if (result.code === 0) {
+        setRowSelection((selection) => {
+          const remaining = { ...selection };
+          delete remaining[item.id];
+          return remaining;
+        });
+      }
       // The success message is handled in the hook itself
     } catch (error) {
       message.error('Failed to delete evaluation dataset');

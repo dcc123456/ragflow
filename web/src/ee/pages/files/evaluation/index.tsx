@@ -41,17 +41,6 @@ export const EvaluationPage = {
       : undefined;
 
     const {
-      selectedItem,
-      editModalVisible,
-      handleEdit,
-      handleDelete,
-      handleEditOk,
-      handleView,
-      setEditModalVisible,
-      setSelectedItem,
-    } = useEvaluationOperation();
-
-    const {
       searchString,
       handleInputChange,
       data: evaluationData,
@@ -68,8 +57,18 @@ export const EvaluationPage = {
       handleBulkDelete,
     } = useBulkOperateBar();
 
+    const {
+      selectedItem,
+      editModalVisible,
+      handleEdit,
+      handleDelete,
+      handleEditOk,
+      handleView,
+      setEditModalVisible,
+      setSelectedItem,
+    } = useEvaluationOperation(setRowSelection);
+
     const { list } = useBulkOperateEvaluation({
-      evaluationData: evaluationData.collections || [],
       rowSelection,
       setRowSelection,
       deleteCallBack: handleBulkDelete,

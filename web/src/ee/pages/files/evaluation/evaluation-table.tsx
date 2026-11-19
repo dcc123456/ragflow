@@ -188,6 +188,7 @@ export const EvaluationTable: FC<EvaluationTableProps> = ({
   const table = useReactTable<IEvaluationCollection>({
     data: data || [],
     columns,
+    getRowId: (row) => row.id,
     manualPagination: true,
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
