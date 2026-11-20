@@ -53,8 +53,8 @@ func resolveUserAuthTenant(ctx context.Context, user *entity.User, tenantID stri
 	return tenantID, nil
 }
 
-// ResolveLoginTenantID chooses an active tenant context for a newly issued
-// user token. The user's personal tenant stays first when it is active.
+// ResolveLoginTenantID chooses the user's last active tenant, falling back to
+// their personal tenant.
 func ResolveLoginTenantID(ctx context.Context, user *entity.User) (string, error) {
 	if user == nil {
 		return "", fmt.Errorf("user is required")

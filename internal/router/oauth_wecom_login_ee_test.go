@@ -385,6 +385,9 @@ func TestOAuthWecomLoginFlow(t *testing.T) {
 	if err := testsupport.PrepareEnterprisePermissionFixture(db, "lisi-tenant", existingID); err != nil {
 		t.Fatalf("prepare existing member tenant: %v", err)
 	}
+	if err := testsupport.PrepareEnterprisePermissionFixture(db, existingID, existingID); err != nil {
+		t.Fatalf("prepare existing member personal tenant: %v", err)
+	}
 	stub.setBizMail(existingEmail)
 	authURL, state = startLogin()
 	code = confirmScan(authURL, state)

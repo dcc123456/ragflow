@@ -448,6 +448,9 @@ func TestOAuthDingtalkLoginFlow(t *testing.T) {
 	if err := testsupport.PrepareEnterprisePermissionFixture(db, "lisi-tenant", existingID); err != nil {
 		t.Fatalf("prepare existing member tenant: %v", err)
 	}
+	if err := testsupport.PrepareEnterprisePermissionFixture(db, existingID, existingID); err != nil {
+		t.Fatalf("prepare existing member personal tenant: %v", err)
+	}
 	stub.setEmail(existingEmail)
 	authURL, state = startLogin()
 	authCode = confirmScan(authURL, state)

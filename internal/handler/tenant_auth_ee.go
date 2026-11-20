@@ -67,6 +67,10 @@ func (h *TenantHandler) SwitchTenant(c *gin.Context) {
 		common.Respond(c, http.StatusInternalServerError, common.CodeServerError, nil, "Failed to generate authorization token")
 		return
 	}
+	if err := dao.NewUserTenantDAO().UpdateLastLoginTenantID(c.Request.Context(), dao.DB, user.ID, tenantID); err != nil {
+		common.Respond(c, http.StatusInternalServerError, common.CodeServerError, nil, "Failed to save last login tenant")
+		return
+	}
 
 	c.Header("Authorization", authToken)
 	c.Header("Access-Control-Expose-Headers", "Authorization")
