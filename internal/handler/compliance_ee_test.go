@@ -35,7 +35,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func TestSensitiveQuestionsReturnValidationErrors(t *testing.T) {
+func TestSensitiveQuestionsReturnEmptySearchResults(t *testing.T) {
 	db := testutil.SetupTestDB(t, &entity.SystemSettings{})
 	t.Cleanup(testutil.ReplaceDBForTest(t, db))
 	if err := db.Create(&entity.SystemSettings{Name: compliance.EnabledSetting, Source: "variable", DataType: "bool", Value: "true"}).Error; err != nil {
@@ -62,14 +62,13 @@ func TestSensitiveQuestionsReturnValidationErrors(t *testing.T) {
 	r.POST("/retrieval", (&SearchBotHandler{}).RetrievalTest)
 	r.POST("/dify", (&DifyRetrievalHandler{}).Retrieval)
 	for _, tc := range []struct {
-		path   string
-		body   string
-		status int
+		path string
+		body string
 	}{
-		{"/datasets/search", `{"question":"restricted","dataset_ids":["dataset"]}`, http.StatusOK},
-		{"/datasets/dataset/search", `{"question":"restricted"}`, http.StatusOK},
-		{"/retrieval", `{"question":"restricted","kb_ids":["dataset"]}`, http.StatusBadRequest},
-		{"/dify", `{"query":"restricted","knowledge_id":"dataset"}`, http.StatusBadRequest},
+		{"/datasets/search", `{"question":"restricted","dataset_ids":["dataset"]}`},
+		{"/datasets/dataset/search", `{"question":"restricted"}`},
+		{"/retrieval", `{"question":"restricted","kb_ids":["dataset"]}`},
+		{"/dify", `{"query":"restricted","knowledge_id":"dataset"}`},
 	} {
 		t.Run(tc.path, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.body))
@@ -80,11 +79,35 @@ func TestSensitiveQuestionsReturnValidationErrors(t *testing.T) {
 			if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
 				t.Fatal(err)
 			}
-			if w.Code != tc.status || result["message"] != compliance.DefaultResponse || result["code"] != float64(common.CodeArgumentError) {
+			if w.Code != http.StatusOK {
 				t.Fatalf("filtered result = %d: %s", w.Code, w.Body.String())
 			}
-			if _, ok := result["data"]; ok {
-				t.Fatalf("validation error contains result data: %s", w.Body.String())
+			if result["message"] != compliance.DefaultResponse {
+				t.Fatalf("expected configured rejection message: %s", w.Body.String())
+			}
+			if result["code"] != float64(common.CodeSuccess) {
+				t.Fatalf("expected success: %s", w.Body.String())
+			}
+			data, ok := result["data"].(map[string]interface{})
+			if !ok {
+				t.Fatalf("expected result data: %s", w.Body.String())
+			}
+			if tc.path == "/dify" {
+				if records, ok := data["records"].([]interface{}); !ok || len(records) != 0 {
+					t.Fatalf("expected empty records: %s", w.Body.String())
+				}
+				return
+			}
+			if data["total"] != float64(0) {
+				t.Fatalf("expected zero results: %s", w.Body.String())
+			}
+			if data["labels"] != nil {
+				t.Fatalf("expected no labels: %s", w.Body.String())
+			}
+			for _, field := range []string{"chunks", "doc_aggs"} {
+				if items, ok := data[field].([]interface{}); !ok || len(items) != 0 {
+					t.Fatalf("expected empty %s: %s", field, w.Body.String())
+				}
 			}
 		})
 	}
