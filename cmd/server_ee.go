@@ -113,7 +113,7 @@ func validateServerMode(args *bootstrap.ServerArgs) error {
 	return nil
 }
 
-func runEnterpriseServices(ctx context.Context, cancel context.CancelFunc, args *bootstrap.ServerArgs, services *bootstrap.AgentServices) error {
+func runEEServices(ctx context.Context, cancel context.CancelFunc, args *bootstrap.ServerArgs, services *bootstrap.AgentServices) error {
 	switch *args.Mode {
 	case "admin":
 		return admin.Run(ctx, args)
