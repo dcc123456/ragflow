@@ -350,8 +350,9 @@ type ListModelGroupResponse struct {
 	OperatorPermission int32  `json:"operator_permission"`
 }
 
-// ListModelGroup returns model groups the caller owns or can read in the current tenant.
-func (m *ModelProviderService) ListModelGroup(ctx context.Context, userID string) ([]*ListModelGroupResponse, error) {
+// ListModelGroup returns model groups readable by the caller. When accessUserID
+// is supplied, only groups readable by both users are returned.
+func (m *ModelProviderService) ListModelGroup(ctx context.Context, userID string, accessUserIDs ...string) ([]*ListModelGroupResponse, error) {
 	tenantID, err := requireCurrentTenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -385,6 +386,32 @@ func (m *ModelProviderService) ListModelGroup(ctx context.Context, userID string
 	var groups []*entity.TenantModelGroup
 	if err := groupQuery.Order("create_time DESC, id DESC").Find(&groups).Error; err != nil {
 		return nil, fmt.Errorf("list readable model groups: %w", err)
+	}
+	accessUserID := ""
+	if len(accessUserIDs) > 0 {
+		accessUserID = strings.TrimSpace(accessUserIDs[0])
+	}
+	if accessUserID != "" && accessUserID != userID {
+		accessCtx := permission.WithIdentity(ctx, accessUserID, tenantID)
+		accessibleGroups, accessErr := m.ListModelGroup(accessCtx, accessUserID)
+		if accessErr != nil {
+			var codedErr *common.CodedError
+			if errors.As(accessErr, &codedErr) && (codedErr.Code == common.CodeForbidden || codedErr.Code == common.CodeUnauthorized) {
+				return []*ListModelGroupResponse{}, nil
+			}
+			return nil, fmt.Errorf("check model group access for user %s: %w", accessUserID, accessErr)
+		}
+		accessibleIDs := make(map[string]struct{}, len(accessibleGroups))
+		for _, group := range accessibleGroups {
+			accessibleIDs[group.ID] = struct{}{}
+		}
+		filteredGroups := groups[:0]
+		for _, group := range groups {
+			if _, ok := accessibleIDs[group.ID]; ok {
+				filteredGroups = append(filteredGroups, group)
+			}
+		}
+		groups = filteredGroups
 	}
 
 	ownerIDs := make([]string, 0, len(groups))

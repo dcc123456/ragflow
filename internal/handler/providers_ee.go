@@ -75,13 +75,12 @@ func (h *ProviderHandler) DeleteModelGroup(c *gin.Context) {
 	common.RespondSuccess(c, nil, "success")
 }
 
-// ListModelGroups returns the metadata of every model group the caller owns in
-// the current tenant.
+// ListModelGroups returns the model groups visible to the caller in the current tenant.
 func (h *ProviderHandler) ListModelGroups(c *gin.Context) {
 	userID := c.GetString("user_id")
 	ctx := c.Request.Context()
 
-	groups, err := h.modelProviderService.ListModelGroup(ctx, userID)
+	groups, err := h.modelProviderService.ListModelGroup(ctx, userID, c.Query("access_user_id"))
 	if err != nil {
 		common.RespondError(c, common.CodeDataError, err.Error())
 		return

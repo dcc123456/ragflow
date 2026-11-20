@@ -185,10 +185,10 @@ func (s *TenantService) UpdateResourcePermissions(ctx context.Context, userID, t
 			return common.NewCodedError(common.CodeBadRequest, "expanded resource list exceeds 200 items")
 		}
 		for _, resource := range resources {
-			if (resource.Type == "model_instance" || resource.Type == "model_group") &&
+			if resource.Type == "model_instance" &&
 				*request.Permission != 0 &&
 				*request.Permission != entity.ResourcePermissionRead {
-				return common.NewCodedError(common.CodeBadRequest, "model resources only support read permission")
+				return common.NewCodedError(common.CodeBadRequest, "model instances only support read permission")
 			}
 		}
 
@@ -588,7 +588,7 @@ func requireFeatureSharePermission(ctx context.Context, db *gorm.DB, actor *perm
 	}
 	featureName := map[string]permission.Feature{
 		"kb": "dataset", "document": "dataset", "dialog": "chat", "canvas": "agent",
-		"file": "file", "search": "search", "memory": "memory", "mcp": "mcp", "model_group": "model_provider",
+		"file": "file", "search": "search", "memory": "memory", "mcp": "mcp",
 	}[resourceType]
 	if featureName == "" {
 		return nil
@@ -789,10 +789,6 @@ func updateResourceUserID(tx *gorm.DB, tenantID string, resource permissionResou
 			Update("user_id", userID).Error
 	case "mcp":
 		err = tx.Model(&entity.MCPServer{}).
-			Where("id = ? AND tenant_id = ?", resource.ID, tenantID).
-			Update("user_id", userID).Error
-	case "model_group":
-		err = tx.Model(&entity.TenantModelGroup{}).
 			Where("id = ? AND tenant_id = ?", resource.ID, tenantID).
 			Update("user_id", userID).Error
 	case "model_instance":

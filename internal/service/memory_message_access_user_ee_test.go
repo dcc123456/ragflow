@@ -1,19 +1,3 @@
-//
-//  Copyright (c) 2026 InfiniFlow. All rights reserved.
-//
-//  RAGFlow Enterprise Edition — Proprietary and Confidential.
-//
-//  This file is part of the RAGFlow Enterprise Edition and is licensed,
-//  not sold, under the RAGFlow Enterprise Commercial License Agreement.
-//  Unauthorized copying, modification, distribution, or disclosure of this
-//  file, via any medium, is strictly prohibited.
-//
-//  Portions of this file may incorporate code from RAGFlow Community Edition,
-//  which is licensed under the Apache License, Version 2.0.
-//
-//  For commercial licensing inquiries: sales@infiniflow.ai
-//
-
 //go:build ee
 
 package service
@@ -60,9 +44,9 @@ func TestListMemoriesForAccessUserUsesCallerPermission(t *testing.T) {
 	grantServiceTestResource(t, "canvas-owner", "canvas", "canvas-1", "caller", testResourcePermissionRead)
 	grantServiceTestResource(t, "canvas-owner", "memory", "memory-shared", "caller", testResourcePermissionRead)
 	for _, memory := range []*entity.Memory{
-		{ID: "memory-shared", Name: "Shared", UserID: "canvas-owner", TenantID: "canvas-owner", EmbdID: "embd", LLMID: "llm", Permissions: string(TenantPermissionTeam)},
-		{ID: "memory-caller-only", Name: "Caller only", UserID: "caller", TenantID: "caller", EmbdID: "embd", LLMID: "llm", Permissions: string(TenantPermissionMe)},
-		{ID: "memory-owner-only", Name: "Owner only", UserID: "canvas-owner", TenantID: "canvas-owner", EmbdID: "embd", LLMID: "llm", Permissions: string(TenantPermissionMe)},
+		{ID: "memory-shared", Name: "Shared", TenantID: "canvas-owner", EmbdID: "embd", LLMID: "llm", Permissions: string(TenantPermissionTeam)},
+		{ID: "memory-caller-only", Name: "Caller only", TenantID: "caller", EmbdID: "embd", LLMID: "llm", Permissions: string(TenantPermissionMe)},
+		{ID: "memory-owner-only", Name: "Owner only", TenantID: "canvas-owner", EmbdID: "embd", LLMID: "llm", Permissions: string(TenantPermissionMe)},
 	} {
 		if err := dao.DB.Create(memory).Error; err != nil {
 			t.Fatalf("seed memory %s: %v", memory.ID, err)

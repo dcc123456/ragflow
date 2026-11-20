@@ -11,17 +11,19 @@ import {
 } from '@/ee/interfaces/request/model-group';
 import modelGroupService from '@/ee/services/model-group-service';
 import { normalizeModelTypes } from '@/ee/utils/model-group-util';
+import { ModelResourceAccessUserIdContext } from '@/hooks/use-llm-request';
 import {
   QueryClient,
   useMutation,
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
-import { useCallback } from 'react';
+import { useCallback, useContext } from 'react';
 
 export const ModelGroupKeys = {
   all: () => ['modelGroup'] as const,
-  list: () => [...ModelGroupKeys.all(), 'list'] as const,
+  list: (accessUserId?: string | null) =>
+    [...ModelGroupKeys.all(), 'list', accessUserId ?? ''] as const,
   detail: (groupId: string) =>
     [...ModelGroupKeys.all(), 'detail', groupId] as const,
   optionsRoot: () => [...ModelGroupKeys.all(), 'options'] as const,
@@ -37,8 +39,8 @@ export const ModelGroupKeys = {
     [...ModelGroupKeys.all(), 'action', action, groupId] as const,
 };
 
-async function fetchModelGroupList() {
-  const { data } = await modelGroupService.list();
+async function fetchModelGroupList(accessUserId?: string) {
+  const { data } = await modelGroupService.list(accessUserId);
   if (data.code !== 0) throw new Error(data.message || 'Failed to list groups');
   return data.data ?? [];
 }
@@ -48,12 +50,25 @@ export async function fetchModelGroupMembers(groupId: string) {
     throw new Error(data.message || 'Failed to list members');
   return data.data ?? [];
 }
-export function useModelGroupList(enabled = true) {
+export function useModelGroupList(
+  enabled = true,
+  accessUserId?: string | null,
+) {
+  const contextAccessUserId = useContext(ModelResourceAccessUserIdContext);
+  const waitingForAccessUser =
+    accessUserId === null ||
+    (accessUserId === undefined && contextAccessUserId === null);
+  const resolvedAccessUserId =
+    accessUserId === undefined
+      ? (contextAccessUserId ?? undefined)
+      : (accessUserId ?? undefined);
   const query = useQuery<IModelGroup[]>({
-    queryKey: ModelGroupKeys.list(),
-    queryFn: fetchModelGroupList,
+    queryKey: ModelGroupKeys.list(
+      waitingForAccessUser ? null : resolvedAccessUserId,
+    ),
+    queryFn: () => fetchModelGroupList(resolvedAccessUserId ?? undefined),
     initialData: [],
-    enabled,
+    enabled: enabled && !waitingForAccessUser,
     gcTime: 0,
   });
   return { ...query, loading: query.isFetching && !query.isFetched };

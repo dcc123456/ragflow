@@ -32,7 +32,13 @@ const requests = registerNextServer<keyof typeof methods>(methods);
 
 const modelGroupService = {
   create: (data: ICreateModelGroupRequest) => requests.create({ data }, true),
-  list: () => requests.list({ params: {} }, true),
+  list: (accessUserId?: string) =>
+    requests.list(
+      {
+        params: accessUserId ? { access_user_id: accessUserId } : {},
+      },
+      true,
+    ),
   members: (groupId: string) =>
     requests.members({ url: api.modelGroup(groupId) }, true),
   remove: (groupId: string) =>

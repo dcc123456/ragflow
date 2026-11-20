@@ -12,6 +12,7 @@ import { useTranslation } from 'react-i18next';
 export interface ModelGroupTreeSelectProps {
   modelTypes: string[];
   providers?: string[];
+  accessUserId?: string | null;
   dropdownHeader?: React.ReactNode;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -32,6 +33,7 @@ export const ModelGroupTreeSelect = forwardRef<
   {
     modelTypes,
     providers,
+    accessUserId,
     dropdownHeader,
     open,
     onOpenChange,
@@ -52,14 +54,20 @@ export const ModelGroupTreeSelect = forwardRef<
     isFetched: modelsFetched,
     isError: modelsError,
     refetch: refetchModels,
-  } = useFetchAllAddedModels();
+  } = useFetchAllAddedModels(undefined, undefined, accessUserId);
   const {
     groups,
     compatibleGroupIds,
     isFetched: groupsFetched,
     isError: groupsError,
     refetch: refetchGroups,
-  } = useModelGroupOptions(modelTypes, allModels, true, providers);
+  } = useModelGroupOptions(
+    modelTypes,
+    allModels,
+    true,
+    providers,
+    accessUserId,
+  );
 
   const settled =
     modelsFetched && !modelsError && groupsFetched && !groupsError;

@@ -58,6 +58,7 @@ func setupResourcePermissionTestDB(t *testing.T) *gorm.DB {
 		&entity.MCPServer{},
 		&entity.TenantModelProvider{},
 		&entity.TenantModelInstance{},
+		&entity.TenantModelGroup{},
 	)
 	t.Cleanup(testutil.ReplaceDBForTest(t, db))
 	return db
@@ -319,6 +320,25 @@ func TestUpdateAndListResourcePermissions(t *testing.T) {
 	}
 	if changeLog.OperatorID != "owner-link" || changeLog.ActorUserID == nil || *changeLog.ActorUserID != "owner" {
 		t.Fatalf("resource permission actor = (%q, %v), want membership ID and user ID", changeLog.OperatorID, changeLog.ActorUserID)
+	}
+}
+
+func TestResolveModelGroupPermissionResource(t *testing.T) {
+	db := setupResourcePermissionTestDB(t)
+	active := entity.ModelGroupMapStatusActive
+	if err := db.Create(&entity.TenantModelGroup{
+		ID: "model-group-1", TenantID: "tenant-permission", UserID: "owner",
+		GroupName: "fallback", Status: active,
+	}).Error; err != nil {
+		t.Fatalf("seed model group: %v", err)
+	}
+
+	resources, err := resolvePermissionResources(db, "tenant-permission", "model_group", "model-group-1")
+	if err != nil {
+		t.Fatalf("resolve model group permission resource: %v", err)
+	}
+	if len(resources) != 1 || resources[0].ID != "model-group-1" || resources[0].Type != "model_group" || resources[0].OwnerUserID != "owner" {
+		t.Fatalf("resolved model group = %+v, want model-group-1 owned by owner", resources)
 	}
 }
 

@@ -47,6 +47,7 @@ export const ModelReferenceSelect = forwardRef<
     className,
     renderSelected,
     testId,
+    accessUserId,
     ownerTenantId,
     skipTenantInfo,
   },
@@ -153,6 +154,7 @@ export const ModelReferenceSelect = forwardRef<
       className={className}
       renderSelected={renderSelected}
       testId={testId}
+      accessUserId={accessUserId}
       ownerTenantId={ownerTenantId}
       skipTenantInfo={skipTenantInfo}
     />
@@ -176,6 +178,7 @@ export const ModelReferenceSelect = forwardRef<
       allowClear={allowClear}
       className={className}
       testId={testId}
+      accessUserId={accessUserId}
     />
   ) : (
     directSelect
