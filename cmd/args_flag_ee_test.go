@@ -454,7 +454,7 @@ func TestParseArgsHelpVersion(t *testing.T) {
 }
 
 // TestParseArgsDoesNotMutateInput: parseArgsFrom must not rewrite the caller's
-// argv slice (parseArgs passes os.Args straight through).
+// argv slice (main passes os.Args straight through).
 func TestParseArgsDoesNotMutateInput(t *testing.T) {
 	in := []string{"ragflow_server", "--api", "--port=80", "--config=a=b"}
 	want := append([]string(nil), in...)
@@ -548,13 +548,13 @@ func TestParseArgsBoolDoesNotConsumePositional(t *testing.T) {
 }
 
 // TestParseArgsDoesNotMutateOsArgs is the os.Args-level version of the same
-// guard, exercised through the parseArgs adapter.
+// guard, passing os.Args directly as main does.
 func TestParseArgsDoesNotMutateOsArgs(t *testing.T) {
 	orig := os.Args
 	defer func() { os.Args = orig }()
 	os.Args = []string{"ragflow_server", "--api", "--port=80"}
 	snapshot := append([]string(nil), os.Args...)
-	if _, err := parseArgs(); err != nil {
+	if _, err := parseArgsFrom(os.Args); err != nil {
 		t.Fatalf("parseArgs error = %v", err)
 	}
 	if !reflect.DeepEqual(os.Args, snapshot) {
