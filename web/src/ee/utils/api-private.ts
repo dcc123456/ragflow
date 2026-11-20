@@ -13,6 +13,7 @@ const restAPIv1 = '/api/v1';
 export default {
   deleteOwnAccount: `${restAPIv1}/users/me`,
   heartBeat: `${restAPIv1}/heartbeat`,
+  getDocAnalyzers: `${restAPIv1}/system/doc-analyzers`,
   notification: '/api/v1/notification',
   exposeModelProvider: '/api/v1/expose-model-provider',
   exposeApi: '/api/v1/expose-api',
