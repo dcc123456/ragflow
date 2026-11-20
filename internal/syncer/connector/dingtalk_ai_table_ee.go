@@ -1,18 +1,20 @@
 //
-// Copyright 2026 The InfiniFlow Authors. All Rights Reserved.
+//  Copyright (c) 2026 InfiniFlow. All rights reserved.
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+//  RAGFlow Enterprise Edition — Proprietary and Confidential.
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+//  This file is part of the RAGFlow Enterprise Edition and is licensed,
+//  not sold, under the RAGFlow Enterprise Commercial License Agreement.
+//  Unauthorized copying, modification, distribution, or disclosure of this
+//  file, via any medium, is strictly prohibited.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+//  Portions of this file may incorporate code from RAGFlow Community Edition,
+//  which is licensed under the Apache License, Version 2.0.
 //
+//  For commercial licensing inquiries: sales@infiniflow.ai
+//
+
+//go:build ee
 
 package connector
 
@@ -35,7 +37,7 @@ import (
 
 const (
 	defaultDingTalkAITableBatchSize = 32
-	dingTalkAITableAPIBaseURL       = "https://api.dingtalk.com"
+	dingTalkAPIBaseURL              = "https://api.dingtalk.com"
 	dingTalkAITableDocIDPrefix      = "dingtalk_ai_table:"
 	dingTalkAITableRequestTimeout   = 60 * time.Second
 )
@@ -62,7 +64,7 @@ func NewDingTalkAITableConnector(config map[string]any) (*DingTalkAITableConnect
 		operatorID:  strings.TrimSpace(stringConfig(config["operator_id"])),
 		accessToken: stringConfig(credentials["access_token"]),
 		batchSize:   configInt(config["batch_size"], defaultDingTalkAITableBatchSize),
-		apiBaseURL:  dingTalkAITableAPIBaseURL,
+		apiBaseURL:  dingTalkAPIBaseURL,
 		httpClient:  &http.Client{Timeout: dingTalkAITableRequestTimeout},
 	}, nil
 }
@@ -327,10 +329,6 @@ func validateDingTalkAITableAPIBaseURL(value string) error {
 }
 
 func (c *DingTalkAITableConnector) recordDocument(sheet dingTalkAITableSheet, record dingTalkAITableRecord) (SourceDocument, bool) {
-	blob, err := json.MarshalIndent(record.Fields, "", "  ")
-	if err != nil {
-		blob = []byte("{}")
-	}
 	updatedAt, hasUpdatedAt := parseDingTalkAITableLastModifiedTime(record.LastModifiedTime)
 	semanticIdentifier := fmt.Sprintf("%s - Record %s", sheet.Name, record.ID)
 	fieldNames := make([]string, 0, len(record.Fields))
@@ -348,6 +346,7 @@ func (c *DingTalkAITableConnector) recordDocument(sheet dingTalkAITableSheet, re
 			}
 		}
 	}
+	blob := dingTalkAITableRecordMarkdown(sheet, record, semanticIdentifier)
 	metadata := map[string]any{
 		"table_id":   c.tableID,
 		"sheet_id":   sheet.ID,
@@ -357,7 +356,7 @@ func (c *DingTalkAITableConnector) recordDocument(sheet dingTalkAITableSheet, re
 	return SourceDocument{
 		SourceID:           c.documentID(sheet.ID, record.ID),
 		SemanticIdentifier: semanticIdentifier,
-		Extension:          ".json",
+		Extension:          ".md",
 		Blob:               blob,
 		UpdatedAt:          updatedAt,
 		SizeBytes:          int64(len(blob)),
@@ -414,17 +413,29 @@ func parseDingTalkAITableLastModifiedTime(value any) (time.Time, bool) {
 	return time.Unix(0, millis*int64(time.Millisecond)).UTC(), true
 }
 
+// dingTalkAITableRecordMarkdown renders one record as a Markdown section: a
+// two-column field table keeps the field names next to their values, which the
+// markdown chunker splits far better than a JSON object.
+func dingTalkAITableRecordMarkdown(sheet dingTalkAITableSheet, record dingTalkAITableRecord, title string) []byte {
+	fieldNames := make([]string, 0, len(record.Fields))
+	for name := range record.Fields {
+		fieldNames = append(fieldNames, name)
+	}
+	sort.Strings(fieldNames)
+	rows := make([][]string, 0, len(fieldNames)+1)
+	rows = append(rows, []string{"Field", "Value"})
+	for _, name := range fieldNames {
+		rows = append(rows, []string{name, cellValue(record.Fields[name])})
+	}
+	var out strings.Builder
+	out.WriteString("## " + firstNonEmpty(title, sheet.Name+" - Record "+record.ID) + "\n\n")
+	out.WriteString(markdownTable(rows))
+	return []byte(strings.TrimSpace(out.String()))
+}
+
 func dingTalkAITableFingerprint(blob []byte) string {
 	sum := xxh3.Hash128(blob).Bytes()
 	return hex.EncodeToString(sum[:])
-}
-
-func truncateRunes(value string, max int) string {
-	runes := []rune(value)
-	if len(runes) <= max {
-		return value
-	}
-	return string(runes[:max])
 }
 
 type dingTalkAITableSheet struct {

@@ -228,15 +228,30 @@ export default {
       },
     },
     setting: {
+      feishu_wikiDescription:
+        '同步飞书 / Lark 知识库指定范围内的文件附件、原生文档正文、电子表格与多维表格（均转换为 Markdown）。',
+      dataSourceFieldFeishuPlatform: '平台',
+      dataSourceFieldFeishuAppId: '飞书应用 App ID',
+      dataSourceFieldFeishuAppSecret: '飞书应用 App Secret',
+      dataSourceFieldWikiSpaceId: '知识库 Space ID',
+      dataSourceFieldRootNodeToken: '知识库根节点 Token',
+      dataSourceFieldIncludeExtensions: '允许的文件扩展名',
+      dataSourceFieldIncludeKeywords: '文件名必须包含的关键词',
+      dataSourceFieldExcludeKeywords: '文件名排除关键词',
+      dataSourceFieldMaxFileSizeBytes: '最大文件大小（字节）',
+      dataSourceValidationFeishuBatchSize: '批量大小必须介于 1 和 10 之间',
+      dingtalkDescription: '连接钉钉，同步 AI 表格记录或知识库、钉盘内容。',
+      dataSourceFieldDingTalkType: '类型',
+      dataSourceFieldDingTalkAppKey: '钉钉应用 AppKey',
+      dataSourceFieldDingTalkAppSecret: '钉钉应用 AppSecret',
+      dataSourceFieldDingTalkDriveMode: '钉盘',
+      dataSourceFieldDingTalkDriveSpaceId: '钉盘空间 ID',
       deleteAccount: '删除账户',
       deleteAccountDescription: '永久删除您的账户及相关数据，此操作无法撤销。',
       deleteAccountWarning:
         '此操作会删除您拥有的工作空间及其资源，以及您在其他工作空间创建的数据集和文档。请先转移工作空间所有权或移除其他成员。',
       deleteAccountConfirmation: '输入您的账户邮箱（{{email}}）以确认删除。',
 
-      larkDescription: '连接飞书同步指定文件夹中的文件。',
-      larkFolderTip: '不填写则不执行。',
-      larkWikiTip: '不填写则不执行。',
       requestAdminAddModel: '请联系管理员添加模型。',
       modelGroup: '模型组',
       modelGroupPage: {

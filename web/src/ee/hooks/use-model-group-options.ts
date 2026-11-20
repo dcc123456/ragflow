@@ -18,6 +18,7 @@ export function useModelGroupOptions(
   allModels: IAddedModel[],
   enabled = true,
   providers?: string[],
+  accessUserId?: string | null,
 ) {
   const queryClient = useQueryClient();
   const normalizedTypes = useMemo(
@@ -29,7 +30,7 @@ export function useModelGroupOptions(
     isFetched: listFetched,
     isError: listError,
     refetch: refetchGroups,
-  } = useModelGroupList(enabled);
+  } = useModelGroupList(enabled, accessUserId);
   const { details, membersFetched } = useQueries({
     queries: groups.map((group) => ({
       queryKey: ModelGroupKeys.detail(group.id),

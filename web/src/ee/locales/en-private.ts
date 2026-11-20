@@ -305,6 +305,26 @@ export default {
       },
     },
     setting: {
+      feishu_wikiDescription:
+        'Sync file attachments, native document bodies, spreadsheets and bitables (converted to Markdown) from a Feishu or Lark Wiki subtree.',
+      dataSourceFieldFeishuPlatform: 'Platform',
+      dataSourceFieldFeishuAppId: 'Feishu app ID',
+      dataSourceFieldFeishuAppSecret: 'Feishu app secret',
+      dataSourceFieldWikiSpaceId: 'Wiki space ID',
+      dataSourceFieldRootNodeToken: 'Wiki root node token',
+      dataSourceFieldIncludeExtensions: 'Allowed file extensions',
+      dataSourceFieldIncludeKeywords: 'Required filename keywords',
+      dataSourceFieldExcludeKeywords: 'Excluded filename keywords',
+      dataSourceFieldMaxFileSizeBytes: 'Maximum file size (bytes)',
+      dataSourceValidationFeishuBatchSize:
+        'Batch size must be between 1 and 10',
+      dingtalkDescription:
+        'Connect DingTalk to sync AI Table records or knowledge base and drive spaces.',
+      dataSourceFieldDingTalkType: 'Type',
+      dataSourceFieldDingTalkAppKey: 'DingTalk app key',
+      dataSourceFieldDingTalkAppSecret: 'DingTalk app secret',
+      dataSourceFieldDingTalkDriveMode: 'Drive',
+      dataSourceFieldDingTalkDriveSpaceId: 'Drive space ID',
       deleteAccount: 'Delete account',
       deleteAccountDescription:
         'Permanently delete your account and associated data. This cannot be undone.',
@@ -313,9 +333,6 @@ export default {
       deleteAccountConfirmation:
         'Enter your account email ({{email}}) to confirm.',
 
-      larkDescription: 'Sync files from a specified Lark folder.',
-      larkFolderTip: 'Leave blank to skip.',
-      larkWikiTip: 'Leave blank to skip.',
       openRouterProviderOrderTip:
         'Comma-separated provider list, e.g. Groq,Fireworks',
       requestAdminAddModel:

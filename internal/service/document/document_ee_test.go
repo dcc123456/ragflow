@@ -105,6 +105,63 @@ func assertUploadedDocumentOwnerGrant(t *testing.T, ctx context.Context, documen
 	}
 }
 
+func TestInsertDocumentGrantsDatasetOwnerAndUploader(t *testing.T) {
+	db := setupServiceTestDB(t)
+	pushServiceDB(t, db)
+	for _, model := range documentTestExtraModels() {
+		if err := db.AutoMigrate(model); err != nil {
+			t.Fatalf("migrate %T: %v", model, err)
+		}
+	}
+	insertTestKB(t, "kb-upload", "tenant-1", 0, 0, 0)
+	joined := string(entity.TenantMembershipStatusJoined)
+	if err := db.Create(&entity.User{ID: "uploader", Nickname: "uploader", Email: "uploader@test.com"}).Error; err != nil {
+		t.Fatalf("create uploader: %v", err)
+	}
+	if err := db.Create(&entity.UserTenant{
+		ID: "uploader-membership", UserID: "uploader", TenantID: "tenant-1", Role: "normal", Status: &joined,
+	}).Error; err != nil {
+		t.Fatalf("create uploader membership: %v", err)
+	}
+
+	name := "upload.txt"
+	doc := &entity.Document{
+		ID: "doc-upload", KbID: "kb-upload", Name: &name, CreatedBy: "uploader",
+		ParserID: "general", ParserConfig: entity.JSONMap{},
+	}
+	if err := testDocumentService(t).InsertDocument(t.Context(), doc); err != nil {
+		t.Fatalf("insert document: %v", err)
+	}
+	var persisted entity.Document
+	if err := db.Where("id = ?", doc.ID).Take(&persisted).Error; err != nil {
+		t.Fatalf("load inserted document: %v", err)
+	}
+	if persisted.UserID != "user-1" || persisted.CreatedBy != "uploader" {
+		t.Fatalf("document user_id/created_by = %q/%q, want KB owner user-1/uploader", persisted.UserID, persisted.CreatedBy)
+	}
+
+	var grants []entity.Permission
+	if err := db.Where("tenant_id = ? AND resource_type = ? AND resource_id = ? AND status = ?", "tenant-1", "document", doc.ID, string(entity.StatusValid)).Find(&grants).Error; err != nil {
+		t.Fatalf("load document grants: %v", err)
+	}
+	permissionsByMember := make(map[string]int32, len(grants))
+	for _, grant := range grants {
+		if grant.MemberID != nil {
+			permissionsByMember[*grant.MemberID] = grant.Permission
+		}
+	}
+	if permissionsByMember["uploader-membership"] != entity.ResourcePermissionManage {
+		t.Fatalf("uploader permission = %d, want manage", permissionsByMember["uploader-membership"])
+	}
+	var owner entity.UserTenant
+	if err := db.Where("tenant_id = ? AND user_id = ?", "tenant-1", "user-1").Take(&owner).Error; err != nil {
+		t.Fatalf("load dataset owner membership: %v", err)
+	}
+	if permissionsByMember[owner.ID] != entity.ResourcePermissionOwner {
+		t.Fatalf("dataset owner permission = %d, want owner", permissionsByMember[owner.ID])
+	}
+}
+
 func TestBatchUpdateDocumentStatusRetainsPartialFailure(t *testing.T) {
 	db := setupServiceTestDB(t)
 	pushServiceDB(t, db)

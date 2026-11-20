@@ -1,3 +1,21 @@
+//
+//  Copyright (c) 2026 InfiniFlow. All rights reserved.
+//
+//  RAGFlow Enterprise Edition — Proprietary and Confidential.
+//
+//  This file is part of the RAGFlow Enterprise Edition and is licensed,
+//  not sold, under the RAGFlow Enterprise Commercial License Agreement.
+//  Unauthorized copying, modification, distribution, or disclosure of this
+//  file, via any medium, is strictly prohibited.
+//
+//  Portions of this file may incorporate code from RAGFlow Community Edition,
+//  which is licensed under the Apache License, Version 2.0.
+//
+//  For commercial licensing inquiries: sales@infiniflow.ai
+//
+
+//go:build ee
+
 package connector
 
 import (
@@ -9,6 +27,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -98,8 +117,14 @@ func TestDingTalkAITableConnectorOpenSync(t *testing.T) {
 	if got := doc.UpdatedAt; !got.Equal(time.UnixMilli(1780000000000).UTC()) {
 		t.Fatalf("UpdatedAt = %s, want %s", got, time.UnixMilli(1780000000000).UTC())
 	}
-	if doc.Extension != ".json" || doc.SizeBytes != int64(len(doc.Blob)) || doc.Fingerprint == "" {
+	if doc.Extension != ".md" || doc.SizeBytes != int64(len(doc.Blob)) || doc.Fingerprint == "" {
 		t.Fatalf("document shape = ext %q size %d fingerprint %q", doc.Extension, doc.SizeBytes, doc.Fingerprint)
+	}
+	markdown := string(doc.Blob)
+	for _, want := range []string{"## Projects - Roadmap", "| Field | Value |", "| Title | Roadmap |", "| Count | 3 |"} {
+		if !strings.Contains(markdown, want) {
+			t.Fatalf("markdown missing %q:\n%s", want, markdown)
+		}
 	}
 	if got := doc.Metadata["record_id"]; got != "rec-1" {
 		t.Fatalf("record_id metadata = %v", got)
@@ -133,7 +158,7 @@ func TestDingTalkAITableConnectorOpenPrune(t *testing.T) {
 		operatorID:  "operator-1",
 		accessToken: "token-1",
 		batchSize:   10,
-		apiBaseURL:  dingTalkAITableAPIBaseURL,
+		apiBaseURL:  dingTalkAPIBaseURL,
 		getSheets: func(ctx context.Context) ([]dingTalkAITableSheet, error) {
 			return []dingTalkAITableSheet{{ID: "sheet-1", Name: "Projects"}}, nil
 		},
@@ -176,7 +201,7 @@ func TestDingTalkAITableConnectorOpenSyncFiltersByRecordLastModifiedTime(t *test
 		operatorID:  "operator-1",
 		accessToken: "token-1",
 		batchSize:   10,
-		apiBaseURL:  dingTalkAITableAPIBaseURL,
+		apiBaseURL:  dingTalkAPIBaseURL,
 		getSheets: func(ctx context.Context) ([]dingTalkAITableSheet, error) {
 			return []dingTalkAITableSheet{{ID: "sheet-1", Name: "Projects"}}, nil
 		},
@@ -215,7 +240,7 @@ func TestDingTalkAITableConnectorOpenSyncResumeRejectsMissingCheckpoint(t *testi
 		operatorID:  "operator-1",
 		accessToken: "token-1",
 		batchSize:   10,
-		apiBaseURL:  dingTalkAITableAPIBaseURL,
+		apiBaseURL:  dingTalkAPIBaseURL,
 		getSheets: func(ctx context.Context) ([]dingTalkAITableSheet, error) {
 			return []dingTalkAITableSheet{{ID: "sheet-1", Name: "Projects"}}, nil
 		},

@@ -680,8 +680,8 @@ func (p *enterprisePolicy) documentReadQueryScope(ctx context.Context, query Sco
 			tenantID, "document", string(entity.StatusValid), entity.ResourcePermissionOwner)
 	return QueryScope{apply: func(query *gorm.DB) *gorm.DB {
 		return query.Where("document.kb_id = ?", datasetID).
-			Where("EXISTS (?) OR ((document.user_id = ? OR (document.user_id = '' AND document.created_by = ?)) AND NOT EXISTS (?))",
-				documentGrant, userID, userID, documentOwnerGrant)
+			Where("EXISTS (?) OR (COALESCE(NULLIF(TRIM(document.user_id), ''), TRIM(document.created_by)) = ? AND (NULLIF(TRIM(document.user_id), '') IS NOT NULL OR NOT EXISTS (?)))",
+				documentGrant, userID, documentOwnerGrant)
 	}}, true, nil
 }
 
