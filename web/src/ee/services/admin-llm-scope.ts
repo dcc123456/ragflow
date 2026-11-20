@@ -14,7 +14,9 @@
  *  limitations under the License.
  */
 
+import { Authorization } from '@/constants/authorization';
 import { restAPIv1 } from '@/utils/api';
+import { adminStorage } from '@/utils/authorization-util';
 import request from '@/utils/next-request';
 
 /**
@@ -106,7 +108,19 @@ export function rewriteAdminLlmUrl(url?: string): string | undefined {
 // call goes through (`utils/register-server` -> `utils/next-request`). It
 // stays installed after leaving the admin area; harmless, since
 // `rewriteAdminLlmUrl` is gated on the route.
+//
+// A mirrored request also carries the admin credential and opts out of token
+// injection. `next-request` stamps the tenant user's token on every request,
+// but the admin gateway resolves that header against the admin session
+// (`internal/admin/handler.go` AuthMiddleware); in an admin-only session the
+// user token is empty, so the gateway answers 401 and `next-request` redirects
+// to the tenant `/login` page.
 request.interceptors.request.use((config) => {
-  config.url = rewriteAdminLlmUrl(config.url);
+  const url = rewriteAdminLlmUrl(config.url);
+  if (url === config.url) return config;
+
+  config.url = url;
+  config.headers.set(Authorization, adminStorage.getAuthorization());
+  (config as { skipToken?: boolean }).skipToken = true;
   return config;
 });
