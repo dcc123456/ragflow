@@ -105,3 +105,16 @@ func (h *SystemHandler) ListFeatures(c *gin.Context) {
 
 	common.RespondSuccess(c, features, "SUCCESS")
 }
+
+// CheckLicense /api/v1/system/license [GET]
+func (h *SystemHandler) CheckLicense(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	license, err := h.systemService.CheckLicense(ctx)
+	if err != nil {
+		common.RespondError(c, common.CodeServerError, err.Error())
+		return
+	}
+
+	common.RespondSuccess(c, license, "SUCCESS")
+}

@@ -44,6 +44,7 @@ func RegisterEENoAuthRouter(engine *gin.Engine, apiNoAuth *gin.RouterGroup, r *R
 	apiNoAuth.GET("/expose-model-provider", r.systemHandler.ExposeModelProvider)
 	apiNoAuth.GET("/expose-api", r.systemHandler.ExposeAPI)
 	apiNoAuth.GET("/system/features", r.systemHandler.ListFeatures)
+	apiNoAuth.GET("/system/license", r.systemHandler.CheckLicense)
 
 	// For EE
 	apiNoAuth.GET("/auth/login/channels", r.userHandler.GetLoginChannels)

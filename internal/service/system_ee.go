@@ -21,6 +21,7 @@ package service
 import (
 	"context"
 	"ragflow/internal/common"
+	"ragflow/internal/server/local"
 	"ragflow/internal/utility"
 )
 
@@ -31,4 +32,18 @@ func (s *SystemService) ListFeatures(ctx context.Context) (map[string]interface{
 		return nil, common.ErrNotFound
 	}
 	return apiServiceQuota.Features.ToMap(), nil
+}
+
+// CheckLicense check system license
+func (s *SystemService) CheckLicense(ctx context.Context) (map[string]interface{}, error) {
+
+	if local.IsAdminAvailable() {
+		apiServiceQuota := utility.GetAPIServiceQuota()
+		if apiServiceQuota.LicenseType == utility.SAAS {
+			return map[string]interface{}{"status": "saas"}, nil
+		}
+		return map[string]interface{}{"status": "valid"}, nil
+	}
+
+	return map[string]interface{}{"status": "invalid"}, nil
 }

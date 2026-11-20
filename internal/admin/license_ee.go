@@ -106,7 +106,7 @@ func InitLicense(ctx context.Context) error {
 	// Set to global status
 	GlobalServerStatusStore.SetLicense(license)
 
-	if license.Type == utility.Saas {
+	if license.Type == utility.SAAS {
 		common.Debug("SAAS license, skip time record")
 		return nil
 	}
@@ -223,7 +223,7 @@ func (s *Service) CheckLicense(ctx context.Context) (common.ErrorCode, error) {
 		return licenseCode, errors.New(licenseCheckResult)
 	}
 
-	if currentLicense.Type == utility.Saas {
+	if currentLicense.Type == utility.SAAS {
 		return common.CodeLicenseValid, errors.New("SaaS license")
 	}
 
@@ -282,7 +282,7 @@ func extractLicenseV2(licenseStr string) (*utility.LicenseV2, map[string]interfa
 	result["IssuedAt"] = formatLicenseTime(licenseV2.IssuedAt)
 	result["Type"] = licenseV2.Type
 	result["ValidFrom"] = formatLicenseTime(licenseV2.ValidFrom)
-	if licenseV2.Type == utility.Saas {
+	if licenseV2.Type == utility.SAAS {
 		result["ValidUntil"] = "No expiration"
 	} else {
 		result["ValidUntil"] = formatLicenseTime(licenseV2.ValidUntil)
@@ -360,7 +360,7 @@ func CheckLicenseValidity(currentLicense *utility.LicenseV2, licenseCode common.
 		return common.CodeLicenseNotFound
 	}
 
-	if currentLicense.Type == utility.Saas {
+	if currentLicense.Type == utility.SAAS {
 		return common.CodeLicenseValid
 	}
 
@@ -532,7 +532,7 @@ func StartTimeRecordService(interval time.Duration) error {
 	}
 
 	currentLicense := GlobalServerStatusStore.GetLicense()
-	if currentLicense.Type == utility.Saas {
+	if currentLicense.Type == utility.SAAS {
 		return errors.New("SaaS license")
 	}
 

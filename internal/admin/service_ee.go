@@ -158,7 +158,7 @@ func (s *Service) SetSystemLicense(ctx context.Context, licenseStr string) (map[
 
 	GlobalServerStatusStore.SetLicense(license)
 
-	if license.Type != utility.Saas {
+	if license.Type != utility.SAAS {
 		common.Info("SaaS license is valid")
 		return result, nil
 	}
@@ -227,7 +227,7 @@ func (s *Service) CheckSystemLicense(ctx context.Context) (map[string]interface{
 		}, nil
 	}
 
-	if currentLicense.Type == utility.Saas {
+	if currentLicense.Type == utility.SAAS {
 		return map[string]interface{}{
 			"result": "SaaS license",
 		}, nil
@@ -280,7 +280,7 @@ func (s *Service) CheckSystemLicense(ctx context.Context) (map[string]interface{
 
 func (s *Service) UpdateSystemLicenseConfig(ctx context.Context, timeRecordSaveInterval, timeRecordTaskDuration int64) error {
 	license := GlobalServerStatusStore.GetLicense()
-	if license.Type != utility.Saas {
+	if license.Type != utility.SAAS {
 		errorMessage := "SaaS license, skip time record config"
 		common.Info(errorMessage)
 		return errors.New(errorMessage)

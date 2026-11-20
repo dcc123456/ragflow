@@ -139,6 +139,10 @@ type APIServiceQuota struct {
 	CPUNum         int             `json:"cpu_num"`
 }
 
+func (f *APIServiceQuota) IsSaaSMode() bool {
+	return f.LicenseType == SAAS
+}
+
 type IngestionServiceQuota struct {
 	LicenseType LicenseType     `json:"license_type"`
 	Features    ServiceFeatures `json:"features"`
