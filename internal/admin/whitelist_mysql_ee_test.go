@@ -111,8 +111,8 @@ func TestWhitelistMySQLHTTP(t *testing.T) {
 		if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
 			t.Fatal(err)
 		}
-		if (want == http.StatusOK) != (result.Code == 0) {
-			t.Fatalf("HTTP status and business result disagree: %+v", result)
+		if want == http.StatusNoContent && result.Code != 0 {
+			t.Fatalf("unexpected business result: %+v", result)
 		}
 		return result
 	}
@@ -175,7 +175,7 @@ func TestWhitelistMySQLHTTP(t *testing.T) {
 	if err := db.Create(&entity.SystemSettings{Name: dao.WhitelistEnabledSettingName, DataType: "bool", Value: "true"}).Error; err != nil {
 		t.Fatal(err)
 	}
-	for email, status := range map[string]int{"alice@example.com": http.StatusNoContent, "ALICE@EXAMPLE.COM": http.StatusNoContent, "outsider@example.com": http.StatusForbidden, "álice@example.com": http.StatusNoContent, " alice@example.com ": http.StatusForbidden, "alice+tag@example.com": http.StatusForbidden} {
+	for email, status := range map[string]int{"alice@example.com": http.StatusNoContent, "ALICE@EXAMPLE.COM": http.StatusNoContent, "outsider@example.com": http.StatusOK, "álice@example.com": http.StatusNoContent, " alice@example.com ": http.StatusOK, "alice+tag@example.com": http.StatusOK} {
 		request := whitelistJSON(http.MethodPost, "", fmt.Sprintf(`{"email":%q}`, email))
 		request.URL.Path = "/api/v1/users"
 		call(request, status)

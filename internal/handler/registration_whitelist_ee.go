@@ -63,7 +63,7 @@ func RegistrationWhitelist() gin.HandlerFunc {
 		if err := service.CheckRegistrationWhitelist(c.Request.Context(), request.Email); err != nil {
 			var coded *common.CodedError
 			if errors.As(err, &coded) {
-				common.Respond(c, int(coded.Code), coded.Code, nil, coded.Message)
+				common.RespondError(c, coded.Code, coded.Message)
 			} else {
 				common.Error("Registration whitelist check failed", err)
 				common.Respond(c, http.StatusInternalServerError, common.CodeServerError, nil, "Registration is temporarily unavailable")

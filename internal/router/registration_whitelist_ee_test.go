@@ -77,8 +77,8 @@ func TestRouterSetupEnforcesRegistrationWhitelist(t *testing.T) {
 			req.Header.Set("Content-Type", "application/json")
 			response := httptest.NewRecorder()
 			engine.ServeHTTP(response, req)
-			if response.Code != http.StatusForbidden {
-				t.Fatalf("registration status = %d, body = %s; want 403", response.Code, response.Body.String())
+			if response.Code != http.StatusOK {
+				t.Fatalf("registration status = %d, body = %s; want 200", response.Code, response.Body.String())
 			}
 			var result struct {
 				Code    common.ErrorCode `json:"code"`
