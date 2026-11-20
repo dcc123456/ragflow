@@ -546,7 +546,7 @@ func TestUpdateChunkVisibilityOpensVersions(t *testing.T) {
 		},
 	}
 	svc := chunkVersionTestService(engine)
-	ctx := chunkTestContext(t, "user-1", "tenant-1")
+	ctx := chunkVersionManageContext(t, "tenant-1", "user-1", "doc-a")
 	applyEdit := func(update map[string]interface{}) {
 		engine.existingChunk = mergeChunkRow(engine.existingChunk.(map[string]interface{}), update)
 	}
@@ -693,7 +693,7 @@ func TestRestoreChunkVersionWritesSnapshotAndAppendsVersion(t *testing.T) {
 		wikiDirtyCalls = append(wikiDirtyCalls, chunkIDs)
 	}
 
-	resp, err := svc.RestoreVersion(chunkTestContext(t, "user-1", "tenant-1"), &service.ChunkVersionRequest{
+	resp, err := svc.RestoreVersion(chunkVersionManageContext(t, "tenant-1", "user-1", "doc-a"), &service.ChunkVersionRequest{
 		DatasetID:  "kb-1",
 		DocumentID: "doc-a",
 		ChunkID:    "chunk-1",
@@ -806,7 +806,7 @@ func TestRestoreChunkVersionHonoursADisabledDocument(t *testing.T) {
 		t.Fatalf("seed version: %v", err)
 	}
 
-	if _, err := svc.RestoreVersion(chunkTestContext(t, "user-1", "tenant-1"), &service.ChunkVersionRequest{
+	if _, err := svc.RestoreVersion(chunkVersionManageContext(t, "tenant-1", "user-1", "doc-a"), &service.ChunkVersionRequest{
 		DatasetID:  "kb-1",
 		DocumentID: "doc-a",
 		ChunkID:    "chunk-1",
@@ -850,7 +850,7 @@ func TestRestoreChunkVersionRejectsForeignScope(t *testing.T) {
 		t.Fatalf("seed version: %v", err)
 	}
 
-	_, err := svc.RestoreVersion(chunkTestContext(t, "user-1", "tenant-1"), &service.ChunkVersionRequest{
+	_, err := svc.RestoreVersion(chunkVersionManageContext(t, "tenant-1", "user-1", "doc-a"), &service.ChunkVersionRequest{
 		DatasetID:  "kb-1",
 		DocumentID: "doc-a",
 		ChunkID:    "chunk-1",
@@ -1476,7 +1476,7 @@ func TestRestoreVersionExpectedVersionRejectsStaleBase(t *testing.T) {
 		},
 	}
 	svc := chunkVersionTestService(engine)
-	ctx := chunkTestContext(t, "user-1", "tenant-1")
+	ctx := chunkVersionManageContext(t, "tenant-1", "user-1", "doc-a")
 
 	for _, content := range []string{"v1 body", "v2 body"} {
 		body := content
@@ -2031,7 +2031,7 @@ func TestDeleteChunkVersionDropsHistoryOnly(t *testing.T) {
 	}
 
 	svc := &ChunkService{kbDAO: dao.NewKnowledgebaseDAO(), documentDAO: dao.NewDocumentDAO()}
-	ctx := chunkTestContext(t, "user-1", "tenant-1")
+	ctx := chunkVersionManageContext(t, "tenant-1", "user-1", "doc-a")
 
 	resp, err := svc.DeleteVersion(ctx, &service.ChunkVersionRequest{
 		DatasetID: "kb-1", DocumentID: "doc-a", ChunkID: "chunk-1", Version: 1,
@@ -2110,7 +2110,7 @@ func TestDeleteChunkVersionReclaimsImageNobodyElseNeeds(t *testing.T) {
 	}
 
 	svc := &ChunkService{kbDAO: dao.NewKnowledgebaseDAO(), documentDAO: dao.NewDocumentDAO()}
-	if _, err := svc.DeleteVersion(chunkTestContext(t, "user-1", "tenant-1"), &service.ChunkVersionRequest{
+	if _, err := svc.DeleteVersion(chunkVersionManageContext(t, "tenant-1", "user-1", "doc-a"), &service.ChunkVersionRequest{
 		DatasetID: "kb-1", DocumentID: "doc-a", ChunkID: "chunk-1", Version: 1,
 	}); err != nil {
 		t.Fatalf("DeleteVersion() error = %v", err)
@@ -2158,7 +2158,7 @@ func TestDeleteChunkVersionKeepsImageAnotherRowNeeds(t *testing.T) {
 	}
 
 	svc := &ChunkService{kbDAO: dao.NewKnowledgebaseDAO(), documentDAO: dao.NewDocumentDAO()}
-	if _, err := svc.DeleteVersion(chunkTestContext(t, "user-1", "tenant-1"), &service.ChunkVersionRequest{
+	if _, err := svc.DeleteVersion(chunkVersionManageContext(t, "tenant-1", "user-1", "doc-a"), &service.ChunkVersionRequest{
 		DatasetID: "kb-1", DocumentID: "doc-a", ChunkID: "chunk-1", Version: 1,
 	}); err != nil {
 		t.Fatalf("DeleteVersion() error = %v", err)
@@ -2197,7 +2197,7 @@ func TestDeleteChunkVersionRefusesProtectedRows(t *testing.T) {
 	}
 
 	svc := &ChunkService{kbDAO: dao.NewKnowledgebaseDAO(), documentDAO: dao.NewDocumentDAO()}
-	ctx := chunkTestContext(t, "user-1", "tenant-1")
+	ctx := chunkVersionManageContext(t, "tenant-1", "user-1", "doc-a")
 
 	for _, tc := range []struct {
 		name    string
@@ -2279,7 +2279,7 @@ func TestDeleteChunkVersionRefusesARowADatasetVersionRestores(t *testing.T) {
 	}
 
 	svc := &ChunkService{kbDAO: dao.NewKnowledgebaseDAO(), documentDAO: dao.NewDocumentDAO()}
-	ctx := chunkTestContext(t, "user-1", "tenant-1")
+	ctx := chunkVersionManageContext(t, "tenant-1", "user-1", "doc-a")
 
 	// v1 is what version 1 restores, so it stays.
 	_, err := svc.DeleteVersion(ctx, &service.ChunkVersionRequest{
@@ -2345,7 +2345,7 @@ func TestDeleteChunkVersionAllowsARowItsSiblingAnswers(t *testing.T) {
 	}
 
 	svc := &ChunkService{kbDAO: dao.NewKnowledgebaseDAO(), documentDAO: dao.NewDocumentDAO()}
-	ctx := chunkTestContext(t, "user-1", "tenant-1")
+	ctx := chunkVersionManageContext(t, "tenant-1", "user-1", "doc-a")
 
 	if _, err := svc.DeleteVersion(ctx, &service.ChunkVersionRequest{
 		DatasetID: "kb-1", DocumentID: "doc-a", ChunkID: "chunk-3", Version: 0,
@@ -2422,7 +2422,7 @@ func TestRestoreChunkVersionCopiesTheStoredRow(t *testing.T) {
 		t.Fatalf("seed the version: %v", err)
 	}
 
-	resp, err := svc.RestoreVersion(chunkTestContext(t, "user-1", "tenant-1"), &service.ChunkVersionRequest{
+	resp, err := svc.RestoreVersion(chunkVersionManageContext(t, "tenant-1", "user-1", "doc-a"), &service.ChunkVersionRequest{
 		DatasetID:  "kb-1",
 		DocumentID: "doc-a",
 		ChunkID:    "chunk-1",
@@ -2504,7 +2504,7 @@ func TestRestoreChunkVersionCopiesTheStoredVectorOfAnotherModel(t *testing.T) {
 		t.Fatalf("seed the version: %v", err)
 	}
 
-	if _, err := svc.RestoreVersion(chunkTestContext(t, "user-1", "tenant-1"), &service.ChunkVersionRequest{
+	if _, err := svc.RestoreVersion(chunkVersionManageContext(t, "tenant-1", "user-1", "doc-a"), &service.ChunkVersionRequest{
 		DatasetID:  "kb-1",
 		DocumentID: "doc-a",
 		ChunkID:    "chunk-1",

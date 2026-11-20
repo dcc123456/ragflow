@@ -247,7 +247,7 @@ func TestRestoreVersionRestoresTheStoredBodyWithoutEmbedding(t *testing.T) {
 	stub := &stubChunkEmbedder{field: "q_3_vec", vector: []float64{0, 1, 0}}
 	installStubChunkEmbedder(t, stub)
 
-	if _, err := svc.RestoreVersion(chunkTestContext(t, "user-1", "tenant-1"), &service.ChunkVersionRequest{
+	if _, err := svc.RestoreVersion(chunkVersionManageContext(t, "tenant-1", "user-1", "doc-a"), &service.ChunkVersionRequest{
 		DatasetID:  "kb-1",
 		DocumentID: "doc-a",
 		ChunkID:    "chunk-1",
@@ -313,7 +313,7 @@ func TestRestoreVersionIgnoresAnUnavailableEmbeddingModel(t *testing.T) {
 
 	installStubChunkEmbedder(t, &stubChunkEmbedder{err: errors.New("provider timeout")})
 
-	if _, err := svc.RestoreVersion(chunkTestContext(t, "user-1", "tenant-1"), &service.ChunkVersionRequest{
+	if _, err := svc.RestoreVersion(chunkVersionManageContext(t, "tenant-1", "user-1", "doc-a"), &service.ChunkVersionRequest{
 		DatasetID:  "kb-1",
 		DocumentID: "doc-a",
 		ChunkID:    "chunk-1",

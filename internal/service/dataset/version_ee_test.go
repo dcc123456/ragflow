@@ -897,7 +897,7 @@ func restoreConfigVersion(ctx context.Context, svc *DatasetService, req *Restore
 	if req == nil {
 		return nil, datasetVersionError{code: common.CodeArgumentError, message: "request is required"}
 	}
-	datasetID, err := datasetVersionTarget(ctx, req.DatasetID, permission.OperationUpdate)
+	datasetID, err := datasetVersionTarget(ctx, req.DatasetID, permission.ResourcePermissionManage, permission.ActionWrite)
 	if err != nil {
 		return nil, err
 	}

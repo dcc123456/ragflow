@@ -117,6 +117,20 @@ func (p *enterprisePolicy) CheckResource(ctx context.Context, ref ResourceRef, o
 	return nil
 }
 
+func (p *enterprisePolicy) CheckResourcePermission(ctx context.Context, ref ResourceRef, required int32) error {
+	if !validResourcePermission(required) {
+		return ErrInvalidPermission
+	}
+	state, err := p.resolveResourcePermission(ctx, ref)
+	if err != nil {
+		return err
+	}
+	if !resourcePermissionAllows(state.mask, required) {
+		return ErrPermissionDenied
+	}
+	return nil
+}
+
 func (p *enterprisePolicy) CheckDependency(ctx context.Context, entryRef, dependencyRef ResourceRef, entryOperation, dependencyOperation Operation) error {
 	var err error
 	ctx, err = p.withTenantContext(ctx)
@@ -146,61 +160,55 @@ func (p *enterprisePolicy) CheckDependency(ctx context.Context, entryRef, depend
 	return nil
 }
 
-func (p *enterprisePolicy) ResolveAccess(ctx context.Context, ref ResourceRef) (Access, error) {
+type enterpriseResourcePermission struct {
+	resource   Resource
+	mask       int32
+	source     AccessSource
+	membership *enterpriseMembership
+	ctx        context.Context
+}
+
+func (p *enterprisePolicy) resolveResourcePermission(ctx context.Context, ref ResourceRef) (*enterpriseResourcePermission, error) {
 	var err error
 	ctx, err = p.withTenantContext(ctx)
 	if err != nil {
-		return Access{}, err
+		return nil, err
 	}
 	resourceType, ok := enterpriseResourceType(ref.Kind)
 	if !ok || !validResourceRef(ref) {
-		return Access{}, ErrInvalidPermission
+		return nil, ErrInvalidPermission
 	}
 	membership, err := p.loadMembership(ctx)
 	if err != nil {
-		return Access{}, err
+		return nil, err
 	}
 	resources, err := p.source.GetResources(ctx, []ResourceRef{ref})
 	if err != nil {
-		return Access{}, fmt.Errorf("permission: load resource: %w", err)
+		return nil, fmt.Errorf("permission: load resource: %w", err)
 	}
 	if len(resources) != 1 {
-		return Access{}, ErrResourceNotFound
+		return nil, ErrResourceNotFound
 	}
 	resource := resources[0]
 	if resource.TenantID != TenantIDFromContext(ctx) {
-		return Access{}, ErrResourceNotFound
+		return nil, ErrResourceNotFound
 	}
 	if !resource.Active {
-		return Access{}, ErrResourceNotFound
-	}
-	feature, hasFeature := enterpriseFeature(ref.Kind)
-	featureMask := entity.RoleActionAll
-	if hasFeature {
-		featureMask, err = p.effectiveFeatureMask(ctx, UserIDFromContext(ctx), membership, feature)
-		if err != nil {
-			return Access{}, err
-		}
-		if featureMask&entity.RoleActionEnable == 0 {
-			return Access{}, ErrPermissionDenied
-		}
-		if feature == "model_provider" {
-			featureMask |= entity.RoleActionRead | entity.RoleActionWrite | entity.RoleActionShare
-		}
+		return nil, ErrResourceNotFound
 	}
 	resourceIDs, err := p.permissionResourceIDs(ctx, ref)
 	if err != nil {
-		return Access{}, err
+		return nil, err
 	}
 	resourceMask, source, err := p.effectiveResourceMask(ctx, membership, resourceType, resourceIDs)
 	if err != nil {
-		return Access{}, err
+		return nil, err
 	}
 	isTenantRootFolder := false
 	if ref.Kind == ResourceKindFolder {
 		isRoot, err := p.isTenantRootFolder(ctx, ref.ID, TenantIDFromContext(ctx))
 		if err != nil {
-			return Access{}, fmt.Errorf("permission: check tenant root folder: %w", err)
+			return nil, fmt.Errorf("permission: check tenant root folder: %w", err)
 		}
 		isTenantRootFolder = isRoot
 		if isRoot {
@@ -213,7 +221,7 @@ func (p *enterprisePolicy) ResolveAccess(ctx context.Context, ref ResourceRef) (
 	if ref.Kind != ResourceKindModelProvider && !isTenantRootFolder && resource.OwnerUserID == UserIDFromContext(ctx) {
 		hasOwnerGrant, err := p.hasResourceOwnerGrant(ctx, TenantIDFromContext(ctx), resourceType, resourceIDs)
 		if err != nil {
-			return Access{}, err
+			return nil, err
 		}
 		if !hasOwnerGrant {
 			resourceMask |= entity.ResourcePermissionOwner
@@ -224,8 +232,32 @@ func (p *enterprisePolicy) ResolveAccess(ctx context.Context, ref ResourceRef) (
 		resourceMask = entity.ResourcePermissionRead | entity.ResourcePermissionWrite | entity.ResourcePermissionManage | entity.ResourcePermissionOwner
 		source = AccessSourceOwner
 	}
-	operations := operationsForMasks(featureMask, resourceMask, hasFeature)
-	if ref.Kind == ResourceKindModelProvider && resource.OwnerUserID != UserIDFromContext(ctx) {
+	return &enterpriseResourcePermission{
+		resource: resource, mask: resourceMask, source: source, membership: membership, ctx: ctx,
+	}, nil
+}
+
+func (p *enterprisePolicy) ResolveAccess(ctx context.Context, ref ResourceRef) (Access, error) {
+	state, err := p.resolveResourcePermission(ctx, ref)
+	if err != nil {
+		return Access{}, err
+	}
+	feature, hasFeature := enterpriseFeature(ref.Kind)
+	featureMask := entity.RoleActionAll
+	if hasFeature {
+		featureMask, err = p.effectiveFeatureMask(state.ctx, UserIDFromContext(state.ctx), state.membership, feature)
+		if err != nil {
+			return Access{}, err
+		}
+		if featureMask&entity.RoleActionEnable == 0 {
+			return Access{}, ErrPermissionDenied
+		}
+		if feature == "model_provider" {
+			featureMask |= entity.RoleActionRead | entity.RoleActionWrite | entity.RoleActionShare
+		}
+	}
+	operations := operationsForMasks(featureMask, state.mask, hasFeature)
+	if ref.Kind == ResourceKindModelProvider && state.resource.OwnerUserID != UserIDFromContext(state.ctx) {
 		operations = retainReadOperations(operations)
 	}
 	if len(operations) == 0 {
@@ -233,9 +265,9 @@ func (p *enterprisePolicy) ResolveAccess(ctx context.Context, ref ResourceRef) (
 	}
 	return Access{
 		Resource:       ref,
-		TenantID:       TenantIDFromContext(ctx),
-		Source:         source,
-		PermissionMask: resourceMask,
+		TenantID:       TenantIDFromContext(state.ctx),
+		Source:         state.source,
+		PermissionMask: state.mask,
 		Operations:     operations,
 	}, nil
 }
