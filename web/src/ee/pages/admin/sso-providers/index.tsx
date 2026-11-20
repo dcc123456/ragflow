@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { LucideCircle, LucideCircleDot } from 'lucide-react';
@@ -12,15 +13,55 @@ import {
 
 import Spotlight from '@/components/spotlight';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { cn } from '@/lib/utils';
 
 import { SSO_CLOUD_IDP_PROVIDERS } from './cloud-idp';
 import SSOProviderLDAPList from './ldap-list';
+import SSOProviderCASList from './cas';
 
-import { useSSOVariables } from '@/ee/pages/admin/hooks/useSSOVariables';
+import {
+  type CASChannel,
+  type ProviderType,
+  hasCASConnectionSettings,
+  useSSOVariables,
+} from '@/ee/pages/admin/hooks/useSSOVariables';
 
 function AdminSSOProviders() {
   const { t } = useTranslation();
-  const { providerType, switchProviderType } = useSSOVariables();
+  const [isConfiguringCAS, setIsConfiguringCAS] = useState(false);
+  const {
+    variables,
+    providerType: activeProviderType,
+    switchProviderType,
+    isFetching,
+    isUpdating,
+  } = useSSOVariables();
+  const providerType = isConfiguringCAS ? 'cas' : activeProviderType;
+  const isCASSelected = providerType === 'cas';
+  const casProviders = variables.cas;
+  const firstReadyCASChannel = (
+    Object.keys(casProviders).sort() as CASChannel[]
+  ).find((channel) => hasCASConnectionSettings(casProviders[channel]));
+  const casBusy = isFetching || isUpdating;
+
+  const handleSelectProvider = (type: Exclude<ProviderType, 'cas'>) => {
+    setIsConfiguringCAS(false);
+    if (type !== activeProviderType) {
+      return switchProviderType(type);
+    }
+  };
+
+  const handleSelectCAS = () => {
+    if (firstReadyCASChannel) {
+      return switchProviderType('cas', firstReadyCASChannel);
+    }
+    setIsConfiguringCAS(true);
+  };
+
+  const handleEnableCAS = async (channel: CASChannel) => {
+    await switchProviderType('cas', channel);
+    setIsConfiguringCAS(false);
+  };
 
   return (
     <>
@@ -50,11 +91,7 @@ function AdminSSOProviders() {
                 aria-checked={providerType === 'none'}
                 aria-disabled={providerType === 'none'}
                 data-state={providerType === 'none' ? 'on' : 'off'}
-                onClick={() => {
-                  if (providerType !== 'none') {
-                    switchProviderType('none');
-                  }
-                }}
+                onClick={() => handleSelectProvider('none')}
                 disabled={providerType === 'none'}
               >
                 <Card className="bg-transparent">
@@ -88,11 +125,7 @@ function AdminSSOProviders() {
                         type="button"
                         className="w-full text-lg space-y-0 flex justify-between items-center gap-3 text-text-disabled group-aria-checked:text-text-primary transition-colors"
                         disabled={providerType === 'idp'}
-                        onClick={() => {
-                          if (providerType !== 'idp') {
-                            switchProviderType('idp');
-                          }
-                        }}
+                        onClick={() => handleSelectProvider('idp')}
                       >
                         <span>
                           {t('admin.ssoProviderRadioGroup.values.cloud_idp')}
@@ -134,11 +167,7 @@ function AdminSSOProviders() {
                         className="w-full text-lg space-y-0 flex justify-between items-center gap-3 text-text-disabled group-aria-checked:text-text-primary transition-colors"
                         type="button"
                         disabled={providerType === 'ldap'}
-                        onClick={() => {
-                          if (providerType !== 'ldap') {
-                            switchProviderType('ldap');
-                          }
-                        }}
+                        onClick={() => handleSelectProvider('ldap')}
                       >
                         <span>
                           {t('admin.ssoProviderRadioGroup.values.ldap')}
@@ -155,6 +184,43 @@ function AdminSSOProviders() {
 
                   <CardContent className="px-4 pb-4 opacity-50 group-aria-checked:opacity-100 transition-opacity">
                     <SSOProviderLDAPList disabled={providerType !== 'ldap'} />
+                  </CardContent>
+                </Card>
+              </div>
+              <div>
+                <Card className="bg-transparent">
+                  <CardHeader className="p-4">
+                    <CardTitle>
+                      <button
+                        type="button"
+                        role="radio"
+                        aria-checked={isCASSelected}
+                        className="w-full text-lg flex justify-between items-center gap-3 text-text-disabled aria-checked:text-text-primary transition-colors"
+                        disabled={isCASSelected || casBusy}
+                        onClick={handleSelectCAS}
+                      >
+                        <span>
+                          {t('admin.ssoProviderRadioGroup.values.cas')}
+                        </span>
+                        {isCASSelected ? (
+                          <LucideCircleDot className="size-[1em] text-accent-primary" />
+                        ) : (
+                          <LucideCircle className="size-[1em] text-border-button" />
+                        )}
+                      </button>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent
+                    className={cn(
+                      'px-4 pb-4 transition-opacity',
+                      isCASSelected ? 'opacity-100' : 'opacity-50',
+                    )}
+                  >
+                    <SSOProviderCASList
+                      providers={casProviders}
+                      disabled={!isCASSelected || casBusy}
+                      onEnable={handleEnableCAS}
+                    />
                   </CardContent>
                 </Card>
               </div>

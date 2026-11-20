@@ -6,18 +6,10 @@ import z from 'zod';
 
 import { useId } from 'react';
 
-import { LucidePlus, LucideSettings, LucideTrash2 } from 'lucide-react';
+import { LucideSettings, LucideTrash2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import {
   Form,
   FormControl,
@@ -36,6 +28,11 @@ import {
   useMutateLdapServer,
   useSSOVariables,
 } from '@/ee/pages/admin/hooks/useSSOVariables';
+
+import {
+  SSOProviderAddButton,
+  SSOProviderFormDialog,
+} from './provider-form-dialog';
 
 export function SSOProviderLDAPForm({
   id,
@@ -196,63 +193,32 @@ function SSOProviderLDAPAddButton({
 
   const mutation = useAddLdapServer();
 
-  const _formId = useId();
+  const formId = useId();
+
+  const handleAdd = async (data: SchemaType) => {
+    await mutation.add(data);
+    hideModal();
+  };
 
   return (
     <>
-      <Button
-        variant="transparent"
-        size="icon"
-        className="w-full h-10 border-dashed"
-        onClick={showModal}
-        disabled={disabled}
+      <SSOProviderAddButton onClick={showModal} disabled={disabled}>
+        {tCommon('add')}
+      </SSOProviderAddButton>
+      <SSOProviderFormDialog
+        open={visible}
+        onClose={hideModal}
+        title={t('addDialogTitle')}
+        formId={formId}
+        submitLabel={tCommon('add')}
+        pending={mutation.isAdding}
       >
-        <LucidePlus />
-        <span>{tCommon('add')}</span>
-      </Button>
-
-      <Dialog open={visible} onOpenChange={hideModal}>
-        <DialogContent closable={false} closeDisabled={mutation.isAdding}>
-          <DialogHeader>
-            <DialogTitle>{t('addDialogTitle')}</DialogTitle>
-          </DialogHeader>
-
-          <DialogDescription className="sr-only">
-            {t('addDialogTitle')}
-          </DialogDescription>
-
-          <div className="px-6">
-            <SSOProviderLDAPForm
-              id={_formId}
-              onSubmit={async (data) => {
-                await mutation.add(data);
-                hideModal();
-              }}
-              defaultValues={SSOProviderLDAPForm.defaultValues}
-            />
-          </div>
-
-          <DialogFooter className="px-6 py-4">
-            <Button
-              className="px-4 h-10"
-              variant="outline"
-              onClick={hideModal}
-              disabled={mutation.isAdding}
-            >
-              {tCommon('cancel')}
-            </Button>
-
-            <Button
-              form={_formId}
-              type="submit"
-              className="px-4 h-10"
-              loading={mutation.isAdding}
-            >
-              {tCommon('add')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        <SSOProviderLDAPForm
+          id={formId}
+          onSubmit={handleAdd}
+          defaultValues={SSOProviderLDAPForm.defaultValues}
+        />
+      </SSOProviderFormDialog>
     </>
   );
 }
@@ -276,7 +242,12 @@ function SSOProviderLDAPListItem(props: ListItemProps) {
   const { visible, showModal, hideModal } = useSetModalState();
   const mutation = useMutateLdapServer(id);
 
-  const _formId = useId();
+  const formId = useId();
+
+  const handleUpdate = async (data: SchemaType) => {
+    await mutation.update(data);
+    hideModal();
+  };
 
   return (
     <Card className={cn('bg-transparent', mutation.isDeleting && 'opacity-50')}>
@@ -322,48 +293,20 @@ function SSOProviderLDAPListItem(props: ListItemProps) {
         </div>
       </CardContent>
 
-      <Dialog open={visible} onOpenChange={hideModal}>
-        <DialogContent closable={false} closeDisabled={mutation.isUpdating}>
-          <DialogHeader>
-            <DialogTitle>{t('editDialogTitle')}</DialogTitle>
-          </DialogHeader>
-
-          <DialogDescription className="sr-only">
-            {t('editDialogTitle')}
-          </DialogDescription>
-
-          <div className="px-6">
-            <SSOProviderLDAPForm
-              id={_formId}
-              defaultValues={mapValues(data, 'value')}
-              onSubmit={async (data) => {
-                await mutation.update(data);
-                hideModal();
-              }}
-            />
-          </div>
-
-          <DialogFooter className="px-6 py-4">
-            <Button
-              className="px-4 h-10"
-              variant="outline"
-              onClick={hideModal}
-              disabled={mutation.isUpdating}
-            >
-              {tCommon('cancel')}
-            </Button>
-
-            <Button
-              form={_formId}
-              type="submit"
-              className="px-4 h-10"
-              loading={mutation.isUpdating}
-            >
-              {tCommon('confirm')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <SSOProviderFormDialog
+        open={visible}
+        onClose={hideModal}
+        title={t('editDialogTitle')}
+        formId={formId}
+        submitLabel={tCommon('confirm')}
+        pending={mutation.isUpdating}
+      >
+        <SSOProviderLDAPForm
+          id={formId}
+          defaultValues={mapValues(data, 'value')}
+          onSubmit={handleUpdate}
+        />
+      </SSOProviderFormDialog>
     </Card>
   );
 }

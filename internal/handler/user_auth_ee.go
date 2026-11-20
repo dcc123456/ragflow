@@ -171,6 +171,11 @@ func (h *UserHandler) OAuthLogin(c *gin.Context) {
 		return
 	}
 
+	if service.IsCASChannel(channel) {
+		h.casLogin(c, channel, false)
+		return
+	}
+
 	// A directory channel shares this route with the OAuth providers because
 	// the login page posts a channel name either way, but it authenticates
 	// inline instead of redirecting to a provider.
@@ -219,6 +224,11 @@ func (h *UserHandler) OAuthLoginInitiate(c *gin.Context) {
 	channel := c.Param("channel")
 	if channel == "" {
 		common.Respond(c, http.StatusBadRequest, common.CodeArgumentError, nil, "channel is required")
+		return
+	}
+
+	if service.IsCASChannel(channel) {
+		h.casLogin(c, channel, true)
 		return
 	}
 

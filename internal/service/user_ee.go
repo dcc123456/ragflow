@@ -65,6 +65,10 @@ func (s *UserService) GetLoginChannels() ([]*LoginChannel, common.ErrorCode, err
 			Icon:        "ldap",
 		})
 	}
+	for channel, provider := range loadCASProviders(ctx) {
+		channels = append(channels, &LoginChannel{Channel: channel, DisplayName: provider.DisplayName, Icon: "cas"})
+	}
+
 	sort.Slice(channels, func(i, j int) bool {
 		return channels[i].Channel < channels[j].Channel
 	})

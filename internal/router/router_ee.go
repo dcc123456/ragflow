@@ -52,6 +52,7 @@ func RegisterEENoAuthRouter(engine *gin.Engine, apiNoAuth *gin.RouterGroup, r *R
 	// returns the authorization parameters instead of redirecting, so the
 	// login page can render the provider's QR code on the card itself.
 	apiNoAuth.GET("/auth/login/:channel/initiate", r.userHandler.OAuthLoginInitiate)
+	apiNoAuth.GET("/auth/cas/callback", r.userHandler.CASCallback)
 	apiNoAuth.GET("/auth/oauth/:channel/callback", r.userHandler.OAuthChannelCallback)
 	apiNoAuth.GET("/auth/oauth/callback", r.userHandler.OAuthCallback)
 	apiNoAuth.POST("/auth/register/captcha", r.userHandler.Captcha)

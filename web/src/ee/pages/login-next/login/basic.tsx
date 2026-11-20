@@ -18,7 +18,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { useTranslate } from '@/hooks/common-hooks';
 
-import SvgIcon from '@/components/svg-icon';
+import { TruncatedText } from '@/components/truncated-text';
 import { Button } from '@/components/ui/button';
 import {
   useChannelLoginInitiate,
@@ -37,7 +37,9 @@ import DingtalkQrLogin from '@/ee/pages/login-next/login/dingtalk-qr-login';
 import { useAuth } from '@/hooks/auth-hooks';
 import { SSO_CLOUD_IDP_PROVIDERS } from '@/ee/pages/admin/sso-providers/cloud-idp';
 
-const SSO_PROVIDER_ICON_MAP = keyBy(SSO_CLOUD_IDP_PROVIDERS, 'key');
+const SSO_PROVIDER_ICON_MAP: Partial<
+  Record<string, (typeof SSO_CLOUD_IDP_PROVIDERS)[number]>
+> = keyBy(SSO_CLOUD_IDP_PROVIDERS, 'key');
 
 const schema = z.object({
   email: z
@@ -269,23 +271,38 @@ export default function BasicLogin({ onLicenseError }: BasicLoginProps) {
       </div>
 
       {currentChannelType === 'sso' && typeGroupedChannels.sso?.length ? (
-        <div className="mt-8 flex justify-center items-center gap-5">
-          {typeGroupedChannels.sso.map((ch) => {
-            const IconComponent =
-              SSO_PROVIDER_ICON_MAP[ch.channel as any]?.Icon;
+        <div className="mt-8 flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
+          {typeGroupedChannels.sso.map((channel) => {
+            const IconComponent = SSO_PROVIDER_ICON_MAP[channel.channel]?.Icon;
+            const name = channel.display_name || channel.channel;
+            const handleClick = () => handleChannelClick(channel.channel);
 
             return (
-              <div
-                className="cursor-pointer"
-                key={ch.channel}
-                onClick={() => handleChannelClick(ch.channel)}
+              <Button
+                key={channel.channel}
+                type="button"
+                variant={IconComponent ? 'icon' : 'outline'}
+                size={IconComponent ? 'icon-xs' : 'default'}
+                className={
+                  IconComponent
+                    ? 'border-0 focus-visible:ring-2 focus-visible:ring-accent-primary'
+                    : 'h-10 w-full min-w-0'
+                }
+                aria-label={name}
+                onClick={handleClick}
               >
                 {IconComponent ? (
                   <IconComponent className="size-6" />
                 ) : (
-                  <SvgIcon name="sso" width={24} height={24} />
+                  <TruncatedText
+                    as="span"
+                    className="min-w-0 truncate"
+                    tooltip={name}
+                  >
+                    {name}
+                  </TruncatedText>
                 )}
-              </div>
+              </Button>
             );
           })}
         </div>

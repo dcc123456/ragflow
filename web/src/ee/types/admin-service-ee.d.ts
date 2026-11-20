@@ -264,6 +264,8 @@ declare namespace AdminServiceEe {
         | 'feishu|sso'
         | 'wecom|sso'
         | 'dingtalk|sso'
+        | 'cas|sso'
+        | `cas-${string}|sso`
         | `ldap|${string}`;
       type DataType = keyof ValueDataTypeMap;
 
@@ -323,6 +325,25 @@ declare namespace AdminServiceEe {
     >;
 
     export namespace SSO {
+      export type CASChannel = 'cas' | `cas-${string}`;
+
+      export type CAS = Utilities.DefineVariables<
+        {
+          enabled: 'bool';
+          name: 'string';
+          login_url: 'string';
+          validation_url: 'string';
+          redirect_uri: 'string';
+          protocol_version: 'string';
+          email_source: 'string';
+          email_attribute: 'string';
+          nickname_source: 'string';
+          nickname_attribute: 'string';
+        },
+        `${CASChannel}|sso`,
+        `${CASChannel}|sso`
+      >;
+
       export namespace IDP {
         export type ProviderId =
           | 'google'
@@ -419,6 +440,10 @@ declare namespace AdminServiceEe {
     PrefixKeys<SystemVariables.SSO.IDP.Feishu, 'feishu|sso'> &
     PrefixKeys<SystemVariables.SSO.IDP.Wecom, 'wecom|sso'> &
     PrefixKeys<SystemVariables.SSO.IDP.Dingtalk, 'dingtalk|sso'> &
+    PrefixKeys<
+      SystemVariables.SSO.CAS,
+      `${SystemVariables.SSO.CASChannel}|sso`
+    > &
     PrefixKeys<SystemVariables.SSO.LDAP, `ldap|${string}`>;
 
   export type SetVariablesInput = Partial<

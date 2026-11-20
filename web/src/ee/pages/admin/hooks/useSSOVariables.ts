@@ -1,12 +1,5 @@
 import { useMutation } from '@tanstack/react-query';
-import {
-  chain,
-  difference,
-  identity,
-  isEmpty,
-  mapKeys,
-  mapValues,
-} from 'lodash';
+import { chain, difference, identity, isEmpty, mapKeys } from 'lodash';
 import { useCallback, useMemo } from 'react';
 
 import { deleteLdapServer } from '@/ee/services/admin-service';
@@ -21,7 +14,7 @@ const SSO_VARNAME_SEPARATOR = '.';
 type SSORegExpExecGroups = {
   groups: {
     id: string;
-    type: 'sso' | 'ldap';
+    type: 'sso' | 'ldap' | 'cas';
     varName: string;
   };
 };
@@ -33,6 +26,8 @@ const SSO_IDP_EXTRACTOR_REGEX = new RegExp(
 const SSO_LDAP_EXTRACTOR_REGEX = new RegExp(
   `^(?<type>ldap)\\${SSO_ID_SEPARATOR}(?<id>.+?)\\${SSO_VARNAME_SEPARATOR}(?<varName>.+)$`,
 );
+
+const CASChannelPattern = /^cas(?:-[0-9a-f]{32})?$/;
 
 export type IdpData =
   | AdminServiceEe.SystemVariables.SSO.IDP.Google
@@ -53,12 +48,28 @@ export type GroupedLDAPVariables = {
   [x: string]: AdminServiceEe.SystemVariables.SSO.LDAP;
 };
 
+export type CASChannel = AdminServiceEe.SystemVariables.SSO.CASChannel;
+export type CASProviderVariables =
+  Partial<AdminServiceEe.SystemVariables.SSO.CAS>;
+export type GroupedCASVariables = Partial<
+  Record<CASChannel, CASProviderVariables>
+>;
+
+export function hasCASConnectionSettings(provider?: CASProviderVariables) {
+  return Boolean(
+    provider?.login_url?.value?.trim() &&
+    provider?.validation_url?.value?.trim() &&
+    provider?.redirect_uri?.value?.trim(),
+  );
+}
+
 export type GroupedSSOVariables = {
   sso: GroupedIDPVariables;
   ldap: GroupedLDAPVariables;
+  cas: GroupedCASVariables;
 };
 
-export type ProviderType = 'none' | 'idp' | 'ldap';
+export type ProviderType = 'none' | 'idp' | 'ldap' | 'cas';
 
 export function useAddLdapServer() {
   const { refetch, setVariables } = useAdminVariables();
@@ -151,7 +162,7 @@ export function useMutateLdapServer(id: string) {
 }
 
 export function useMutateIdpProvider(
-  id: AdminServiceEe.SystemVariables.SSO.IDP.ProviderId,
+  id: AdminServiceEe.SystemVariables.SSO.IDP.ProviderId | CASChannel,
 ) {
   const { refetch, setVariables } = useAdminVariables();
 
@@ -178,7 +189,7 @@ export function useMutateIdpProvider(
 
   const { mutateAsync: update, isPending: isUpdating } = useMutation({
     mutationKey: ['admin/updateIdpProvider', id],
-    mutationFn: async (data: GroupedIDPVariables) => {
+    mutationFn: async (data: Record<string, string | boolean>) => {
       return setVariables(
         mapKeys(
           data,
@@ -214,6 +225,7 @@ export function useSSOVariables() {
       return {
         sso: {},
         ldap: {},
+        cas: {},
       } as GroupedSSOVariables;
     }
 
@@ -228,6 +240,11 @@ export function useSSOVariables() {
           return matchResult
             ? {
                 ...matchResult.groups,
+                type:
+                  matchResult.groups.type === 'sso' &&
+                  CASChannelPattern.test(matchResult.groups.id)
+                    ? 'cas'
+                    : matchResult.groups.type,
                 data: variable,
               }
             : null;
@@ -243,23 +260,37 @@ export function useSSOVariables() {
             )
             .value(),
         )
+        .defaults({ sso: {}, ldap: {}, cas: {} })
         .value() as GroupedSSOVariables
     );
   }, [allVariables]);
 
   const providerType: ProviderType = useMemo(() => {
-    const reducedEnabled = mapValues(ssoVariables, (t) =>
-      chain(t)
-        .mapValues((g) => !!g.enabled?.value)
-        .some(identity)
-        .value(),
-    );
-
-    return reducedEnabled.sso ? 'idp' : reducedEnabled.ldap ? 'ldap' : 'none';
+    if (
+      Object.values(ssoVariables.cas).some(
+        (provider) =>
+          provider?.enabled?.value && hasCASConnectionSettings(provider),
+      )
+    ) {
+      return 'cas';
+    }
+    if (
+      Object.values(ssoVariables.sso).some(
+        (provider) => provider?.enabled?.value,
+      )
+    ) {
+      return 'idp';
+    }
+    if (
+      Object.values(ssoVariables.ldap).some((server) => server?.enabled?.value)
+    ) {
+      return 'ldap';
+    }
+    return 'none';
   }, [ssoVariables]);
 
   const switchProviderType = useCallback(
-    (type?: ProviderType) => {
+    (type?: ProviderType, casChannel?: CASChannel) => {
       const idpNames = [
         'github|sso',
         'google|sso',
@@ -268,22 +299,30 @@ export function useSSOVariables() {
         'dingtalk|sso',
       ];
       const ldapNames = Object.keys(ssoVariables.ldap).map((n) => `ldap|${n}`);
-      const allNames = [...idpNames, ...ldapNames];
+      const nonCASNames = [...idpNames, ...ldapNames];
+      const casNames = Object.keys(ssoVariables.cas).map((id) => `${id}|sso`);
+      const allNames = [...nonCASNames, ...casNames];
+
+      if (
+        type === 'cas' &&
+        (!casChannel || !hasCASConnectionSettings(ssoVariables.cas[casChannel]))
+      ) {
+        return;
+      }
 
       const enableNames =
         type === 'idp'
-          ? [
-              'github|sso',
-              'google|sso',
-              'feishu|sso',
-              'wecom|sso',
-              'dingtalk|sso',
-            ] // Auto expand to all SSO providers
+          ? idpNames
           : type === 'ldap'
             ? ldapNames // Auto expand to all LDAP servers
-            : [];
+            : type === 'cas' && casChannel
+              ? [`${casChannel}|sso`]
+              : [];
 
-      const disableNames = difference(allNames, enableNames);
+      const disableNames = difference(
+        type === 'cas' ? nonCASNames : allNames,
+        enableNames,
+      );
 
       return setVariables(
         Object.fromEntries([
@@ -292,7 +331,7 @@ export function useSSOVariables() {
         ]) as AdminServiceEe.SetVariablesInput,
       );
     },
-    [setVariables, ssoVariables.ldap],
+    [setVariables, ssoVariables.cas, ssoVariables.ldap],
   );
 
   return {

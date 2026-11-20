@@ -502,16 +502,39 @@ export default {
       settings: 'Settings',
       ssoProvider: 'SSO provider',
       ssoProviderSubtitle:
-        'Choose one identity source for your organization: Cloud IDP or Enterprise directory (LDAP).',
+        'Choose one identity source for your organization: Cloud IDP, LDAP, or CAS.',
       ssoProviderRadioGroup: {
         label: 'Provider',
         values: {
           none: 'None',
           cloud_idp: 'Cloud IDP',
           ldap: 'LDAP',
+          cas: 'CAS',
         },
       },
       ssoProviderTabs: {
+        cas: {
+          addDialogTitle: 'Add CAS',
+          dialogTitle: 'Configure {{name}}',
+          fields: {
+            name: 'Display name',
+            protocolVersion: 'CAS version',
+            loginUrl: 'Login URL',
+            validationUrl: 'Ticket validation URL',
+            redirectUri: 'Redirect URI',
+            emailAttribute: 'Email attribute',
+            nicknameAttribute: 'Display name attribute',
+          },
+          description: {
+            emailFromUsername:
+              'RAGFlow requires an email address as the CAS 1.0 username.',
+            emailAttribute:
+              'Leave blank if the CAS username is an email address.',
+            nicknameAttribute: 'Leave blank to use the CAS username.',
+            redirectUri:
+              'Register this URL as the login callback in your CAS provider.',
+          },
+        },
         cloud_idp: {
           title: 'Cloud identity providers',
           github: {
