@@ -2,7 +2,7 @@ import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { SelectWithSearch } from '@/components/originui/select-with-search';
-import { TableEmpty } from '@/components/table-skeleton';
+import { TableEmpty, TableSkeleton } from '@/components/table-skeleton';
 import {
   Table,
   TableBody,
@@ -112,14 +112,7 @@ export function RankingTable({
         </TableHeader>
         <TableBody>
           {isLoading ? (
-            <TableRow>
-              <TableCell
-                colSpan={3}
-                className="h-24 text-center text-text-secondary"
-              >
-                {t('common.loading')}
-              </TableCell>
-            </TableRow>
+            <TableSkeleton columnsLength={3} />
           ) : items.length ? (
             items.map((item, index) => (
               <RankingRow

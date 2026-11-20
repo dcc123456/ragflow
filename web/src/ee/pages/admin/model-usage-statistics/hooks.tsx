@@ -1,14 +1,26 @@
+import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
+
 import { useQuery } from '@tanstack/react-query';
+import { createColumnHelper } from '@tanstack/react-table';
 import dayjs from 'dayjs';
 
 import type { DateRange } from '@/components/originui/calendar';
+import { TruncatedText } from '@/components/truncated-text';
 import {
   getTokenStatsDetail,
   getTokenStatsSummary,
   getTokenStatsUsers,
 } from '@/ee/services/admin-service';
 
-import type { TokenStatsGranularity, TokenStatsWindow } from './types';
+import type {
+  TokenStatsDetailItem,
+  TokenStatsGranularity,
+  TokenStatsWindow,
+} from './types';
+import { formatCount, formatStatDate, formatSuccessRate } from './utils';
+
+const detailColumnHelper = createColumnHelper<TokenStatsDetailItem>();
 
 export const TokenStatsDateFormat = 'YYYY-MM-DD HH:mm:ss';
 
@@ -88,4 +100,52 @@ export function useTokenStatsDetail(
     enabled: !!email,
     retry: false,
   });
+}
+
+export function useUsageDetailColumns(granularity: TokenStatsGranularity) {
+  const { t } = useTranslation();
+
+  return useMemo(
+    () => [
+      detailColumnHelper.accessor('stat_date', {
+        header: t('admin.modelUsage.statDate'),
+        size: 16,
+        cell: ({ getValue }) => formatStatDate(getValue(), granularity),
+      }),
+      detailColumnHelper.accessor('total_tokens', {
+        header: t('admin.modelUsage.tokens'),
+        size: 15,
+        cell: ({ getValue }) => formatCount(getValue()),
+      }),
+      detailColumnHelper.accessor('request_count', {
+        header: t('admin.modelUsage.requests'),
+        size: 13,
+        cell: ({ getValue }) => formatCount(getValue()),
+      }),
+      detailColumnHelper.accessor('success_rate', {
+        header: t('admin.modelUsage.successRate'),
+        size: 14,
+        cell: ({ getValue }) => formatSuccessRate(getValue()),
+      }),
+      detailColumnHelper.accessor('model_name', {
+        header: t('admin.modelUsage.modelName'),
+        size: 21,
+        cell: ({ getValue }) => (
+          <TruncatedText className="truncate" tooltip={getValue()}>
+            {getValue()}
+          </TruncatedText>
+        ),
+      }),
+      detailColumnHelper.accessor('provider_name', {
+        header: t('admin.modelUsage.providerName'),
+        size: 21,
+        cell: ({ getValue }) => (
+          <TruncatedText className="truncate" tooltip={getValue()}>
+            {getValue()}
+          </TruncatedText>
+        ),
+      }),
+    ],
+    [granularity, t],
+  );
 }

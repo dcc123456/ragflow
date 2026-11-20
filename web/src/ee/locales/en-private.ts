@@ -776,11 +776,9 @@ export default {
         usageDetail: 'Usage detail',
         statDate: 'Stat date',
         modelName: 'Model name',
-        instanceName: 'Instance name',
         providerName: 'Provider name',
-        selectUser: 'Select user',
-        selectUserHint:
-          'Select a user from the dropdown to inspect their usage.',
+        userEmailPlaceholder: 'Enter user email',
+        selectUserHint: 'Enter a user email to inspect their usage.',
         topN: 'Top {{count}}',
         today: 'Today',
         yesterday: 'Yesterday',

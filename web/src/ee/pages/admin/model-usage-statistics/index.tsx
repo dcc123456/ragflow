@@ -30,12 +30,12 @@ export default function ModelUsageStatistics() {
   const [top, setTop] = useState(DefaultTopN);
   const [granularity, setGranularity] =
     useState<TokenStatsGranularity>(DefaultGranularity);
-  const [selectedEmail, setSelectedEmail] = useState('');
+  const [selectedEmail, setSelectedEmail] = useState<string | undefined>();
 
   const window = useMemo(() => toTokenStatsWindow(range), [range]);
 
   const { data: users, isLoading } = useTokenStatsUsers(window, top);
-  const activeEmail = selectedEmail || users?.[0]?.email || '';
+  const activeEmail = selectedEmail ?? users?.[0]?.email ?? '';
 
   const handleRangeChange = useCallback((nextRange: DateRange) => {
     setRange({
@@ -60,7 +60,6 @@ export default function ModelUsageStatistics() {
 
               <UsageDetail
                 window={window}
-                users={users ?? []}
                 email={activeEmail}
                 onEmailChange={setSelectedEmail}
                 granularity={granularity}

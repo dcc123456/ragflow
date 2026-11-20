@@ -568,7 +568,6 @@ declare namespace AdminServiceEe {
     app_name: string;
     provider_name: string;
     model_name: string;
-    instance_name?: string;
     request_count: number;
     total_input_tokens: number;
     total_output_tokens: number;
