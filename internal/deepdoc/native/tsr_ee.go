@@ -280,3 +280,17 @@ func (r TSREEResult) Wire() string {
 	out, _ := json.Marshal(map[string]any{"bboxes": rows})
 	return string(out)
 }
+
+func maxf(a, b float32) float32 {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func minf(a, b float32) float32 {
+	if a < b {
+		return a
+	}
+	return b
+}
