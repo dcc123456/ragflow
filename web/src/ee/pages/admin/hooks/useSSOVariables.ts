@@ -38,13 +38,15 @@ export type IdpData =
   | AdminServiceEe.SystemVariables.SSO.IDP.Google
   | AdminServiceEe.SystemVariables.SSO.IDP.GitHub
   | AdminServiceEe.SystemVariables.SSO.IDP.Feishu
-  | AdminServiceEe.SystemVariables.SSO.IDP.Wecom;
+  | AdminServiceEe.SystemVariables.SSO.IDP.Wecom
+  | AdminServiceEe.SystemVariables.SSO.IDP.Dingtalk;
 
 export type GroupedIDPVariables = {
   google: AdminServiceEe.SystemVariables.SSO.IDP.Google;
   github: AdminServiceEe.SystemVariables.SSO.IDP.GitHub;
   feishu: AdminServiceEe.SystemVariables.SSO.IDP.Feishu;
   wecom: AdminServiceEe.SystemVariables.SSO.IDP.Wecom;
+  dingtalk: AdminServiceEe.SystemVariables.SSO.IDP.Dingtalk;
 };
 
 export type GroupedLDAPVariables = {
@@ -258,13 +260,25 @@ export function useSSOVariables() {
 
   const switchProviderType = useCallback(
     (type?: ProviderType) => {
-      const idpNames = ['github|sso', 'google|sso', 'feishu|sso', 'wecom|sso'];
+      const idpNames = [
+        'github|sso',
+        'google|sso',
+        'feishu|sso',
+        'wecom|sso',
+        'dingtalk|sso',
+      ];
       const ldapNames = Object.keys(ssoVariables.ldap).map((n) => `ldap|${n}`);
       const allNames = [...idpNames, ...ldapNames];
 
       const enableNames =
         type === 'idp'
-          ? ['github|sso', 'google|sso', 'feishu|sso', 'wecom|sso'] // Auto expand to all SSO providers
+          ? [
+              'github|sso',
+              'google|sso',
+              'feishu|sso',
+              'wecom|sso',
+              'dingtalk|sso',
+            ] // Auto expand to all SSO providers
           : type === 'ldap'
             ? ldapNames // Auto expand to all LDAP servers
             : [];

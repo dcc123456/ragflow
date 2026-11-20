@@ -130,6 +130,23 @@ var ssoProviderSpecs = map[string]ssoProviderSpec{
 		RedirectURI:         "redirect_uri",
 		RedirectURIRequired: true,
 	},
+	// DingTalk binds the login to the member's unionId, which stays stable
+	// across re-installing the app in a different organization. The callback
+	// URL is mandatory: the embedded QR widget hands the authCode to it, and
+	// DingTalk requires the page rendering the QR to share the redirect's
+	// origin, so there is no out-of-band registration to fall back on.
+	//
+	// Email requires the "通讯录个人信息读" permission (Contact.User.Read) on
+	// the DingTalk app; an app without it produces members the login cannot
+	// bind, reported as email_missing.
+	"dingtalk": {
+		Type:                "dingtalk",
+		ClientID:            "client_id",
+		Secret:              "client_secret",
+		RedirectURI:         "redirect_uri",
+		RedirectURIRequired: true,
+		ScopeSetting:        "scope",
+	},
 }
 
 // parseSSOBool reads the enabled flag the admin console stores. The console

@@ -262,6 +262,8 @@ declare namespace AdminServiceEe {
         | 'google|sso'
         | 'github|sso'
         | 'feishu|sso'
+        | 'wecom|sso'
+        | 'dingtalk|sso'
         | `ldap|${string}`;
       type DataType = keyof ValueDataTypeMap;
 
@@ -322,7 +324,12 @@ declare namespace AdminServiceEe {
 
     export namespace SSO {
       export namespace IDP {
-        export type ProviderId = 'google' | 'github' | 'feishu' | 'wecom';
+        export type ProviderId =
+          | 'google'
+          | 'github'
+          | 'feishu'
+          | 'wecom'
+          | 'dingtalk';
         export type Google = Utilities.DefineVariables<
           {
             enabled: 'bool';
@@ -367,6 +374,18 @@ declare namespace AdminServiceEe {
           'wecom|sso',
           'wecom|sso'
         >;
+
+        export type Dingtalk = Utilities.DefineVariables<
+          {
+            enabled: 'bool';
+            client_id: 'string';
+            client_secret: 'string';
+            redirect_uri: 'string';
+            scope: 'string';
+          },
+          'dingtalk|sso',
+          'dingtalk|sso'
+        >;
       }
 
       export type LDAP = Utilities.DefineVariables<
@@ -399,6 +418,7 @@ declare namespace AdminServiceEe {
     PrefixKeys<SystemVariables.SSO.IDP.GitHub, 'github|sso'> &
     PrefixKeys<SystemVariables.SSO.IDP.Feishu, 'feishu|sso'> &
     PrefixKeys<SystemVariables.SSO.IDP.Wecom, 'wecom|sso'> &
+    PrefixKeys<SystemVariables.SSO.IDP.Dingtalk, 'dingtalk|sso'> &
     PrefixKeys<SystemVariables.SSO.LDAP, `ldap|${string}`>;
 
   export type SetVariablesInput = Partial<

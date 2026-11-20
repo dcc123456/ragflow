@@ -32,6 +32,7 @@ import { isLicenseError, rsaPsw } from '@/ee/utils';
 import RememberMeCheckbox from '@/ee/pages/login-next/components/RememberMeCheckbox';
 import FeishuQrLogin from '@/ee/pages/login-next/login/feishu-qr-login';
 import WecomQrLogin from '@/ee/pages/login-next/login/wecom-qr-login';
+import DingtalkQrLogin from '@/ee/pages/login-next/login/dingtalk-qr-login';
 
 import { useAuth } from '@/hooks/auth-hooks';
 import { SSO_CLOUD_IDP_PROVIDERS } from '@/ee/pages/admin/sso-providers/cloud-idp';
@@ -95,14 +96,14 @@ export default function BasicLogin({ onLicenseError }: BasicLoginProps) {
   const allowRegister = config?.registerEnabled !== 0;
   const email = form.watch('email');
 
-  // The Feishu and WeCom channels embed the official QR SDK on the card
-  // itself instead of leaving the page: initiate fetches the authorize
+  // The Feishu, WeCom and DingTalk channels embed the official QR SDK on the
+  // card itself instead of leaving the page: initiate fetches the authorize
   // parameters (the state cookie is written server-side), the widget renders
   // the code from them. Any failure — config incomplete, SDK unreachable —
   // falls back to the original full-page redirect flow.
   const handleChannelClick = useCallback(
     async (channel: string) => {
-      if (channel !== 'lark' && channel !== 'wecom') {
+      if (channel !== 'lark' && channel !== 'wecom' && channel !== 'dingtalk') {
         loginWithChannel(channel);
         return;
       }
@@ -151,6 +152,14 @@ export default function BasicLogin({ onLicenseError }: BasicLoginProps) {
       return (
         <WecomQrLogin
           authUrl={embeddedQr.initiation.auth_url}
+          onBack={() => setEmbeddedQr(null)}
+        />
+      );
+    }
+    if (embeddedQr.channel === 'dingtalk') {
+      return (
+        <DingtalkQrLogin
+          initiation={embeddedQr.initiation}
           onBack={() => setEmbeddedQr(null)}
         />
       );

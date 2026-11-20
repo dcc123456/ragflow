@@ -204,6 +204,9 @@ export default {
       wecomQrTitle: 'Scan the QR code with your WeCom app',
       wecomQrFailed:
         'Failed to load the QR code. Use the WeCom icon below to sign in instead.',
+      dingtalkQrTitle: 'Scan the QR code with your DingTalk app',
+      dingtalkQrFailed:
+        'Failed to load the QR code. Use the DingTalk icon below to sign in instead.',
       usernameLabel: 'Username',
       usernamePlaceholder: 'Please input username',
       ldapServerLabel: 'LDAP server',
@@ -571,6 +574,26 @@ export default {
                 'The "AgentId" of the self-built application used for login.',
               redirectUri:
                 'Members are handed the code here after scanning. Register the same URL as the trusted callback domain of the application, and give the application the contact permission so login can read the biz_mail.',
+            },
+          },
+          dingtalk: {
+            title: 'DingTalk',
+            dialogTitle: 'Configure DingTalk SSO',
+            loginTip: 'Login with DingTalk',
+            fields: {
+              clientId: 'AppKey (client_id)',
+              clientSecret: 'AppSecret (client_secret)',
+              redirectUri: 'Redirect URI',
+            },
+            placeholder: {
+              redirectUri:
+                'http://<domain>/api/v1/auth/oauth/dingtalk/callback',
+            },
+            description: {
+              clientId:
+                'The "AppKey" of the enterprise internal application used for login.',
+              redirectUri:
+                "Members are handed the authCode here after scanning. The page rendering the QR must share this URL's origin, and the application needs the contact personal-information read permission so login can read the email.",
             },
           },
         },

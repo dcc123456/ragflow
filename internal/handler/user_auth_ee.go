@@ -281,7 +281,11 @@ func (h *UserHandler) OAuthChannelCallback(c *gin.Context) {
 		HandleNoRoute(c)
 		return
 	}
-	queryCode := c.Query("code")
+	// DingTalk names the authorization-code query parameter `authCode`
+	// instead of the OAuth-standard `code`, both on the standard redirect
+	// and on the URL the embedded QR widget navigates to, so accept either
+	// spelling here.
+	queryCode := channelCallbackCode(c)
 	queryState := c.Query("state")
 	cookieState := readOAuthStateCookie(c, channel)
 	// Clear before any response is written: the state is single-use, and a
@@ -383,6 +387,17 @@ func setOAuthStateCookie(c *gin.Context, channel, state string, maxAgeSec int) {
 		SameSite: http.SameSiteLaxMode,
 		Secure:   c.Request.TLS != nil,
 	})
+}
+
+// channelCallbackCode reads the authorization code from the callback query.
+// Every provider but DingTalk names it `code`; DingTalk names it `authCode`,
+// both on the standard redirect and on the URL the embedded QR widget
+// navigates to, so either spelling is accepted.
+func channelCallbackCode(c *gin.Context) string {
+	if code := c.Query("code"); code != "" {
+		return code
+	}
+	return c.Query("authCode")
 }
 
 func readOAuthStateCookie(c *gin.Context, channel string) string {
