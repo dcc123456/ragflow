@@ -169,34 +169,16 @@ func (c *Client) OCRDetect(ctx context.Context, img image.Image) ([]deepdoctype.
 }
 
 // OCRRecognize recognizes text in one cropped region by POSTing to
-// /predict/ocr_rec. The EE service returns a flat JSON array of
-// {"text","score"} items; this maps the single-image result and applies the
-// drop_score blanking contract shared with the OSS backend.
+// /predict/ocr_rec. It is the single-crop form of OCRRecognizeBatch and shares
+// that method's encoding, decode, count-check and drop_score contract, so the
+// parser's fallback from a failed batch to per-crop recognition can never change
+// the result produced for the same crop.
 func (c *Client) OCRRecognize(ctx context.Context, img image.Image) ([]deepdoctype.OCRText, error) {
-	b64 := encodeImageB64(img)
-	payload, err := json.Marshal(map[string]any{"images": []string{b64}})
-	if err != nil {
+	rows, err := c.OCRRecognizeBatch(ctx, []image.Image{img})
+	if err != nil || len(rows) == 0 {
 		return nil, err
 	}
-	raw, err := c.do(ctx, http.MethodPost, "/predict/ocr_rec", payload)
-	if err != nil {
-		return nil, err
-	}
-	var items []struct {
-		Text  string  `json:"text"`
-		Score float64 `json:"score"`
-	}
-	if err := json.Unmarshal(raw, &items); err != nil {
-		return nil, fmt.Errorf("client OCRRecognize decode: %w", err)
-	}
-	if len(items) == 0 {
-		return nil, nil
-	}
-	it := items[0]
-	if it.Score < c.dropScore {
-		return []deepdoctype.OCRText{{Text: "", Confidence: it.Score}}, nil
-	}
-	return []deepdoctype.OCRText{{Text: it.Text, Confidence: it.Score}}, nil
+	return rows[0], nil
 }
 
 // Health reports whether the EE service is reachable and reports ok. It
@@ -288,4 +270,55 @@ func encodeImageB64(img image.Image) string {
 		return ""
 	}
 	return base64.StdEncoding.EncodeToString(buf.Bytes())
+}
+
+// OCRRecognizeBatch recognizes a batch of cropped text regions in a single
+// POST to /predict/ocr_rec. It implements the parser's optional batch OCR
+// capability, so a page's crops cost one HTTP round-trip instead of one per
+// text line. The service returns a flat, order-correspondent array of
+// {text, score} items; each input maps to one single-element OCRText slice,
+// exactly as the in-process analyzer does. Low-confidence text is blanked
+// while its real score is preserved (the shared drop_score contract).
+func (c *Client) OCRRecognizeBatch(ctx context.Context, imgs []image.Image) ([][]deepdoctype.OCRText, error) {
+	n := len(imgs)
+	if n == 0 {
+		return nil, nil
+	}
+	b64s := make([]string, n)
+	for i, img := range imgs {
+		b64s[i] = encodeImageB64(img)
+	}
+	payload, err := json.Marshal(map[string]any{"images": b64s})
+	if err != nil {
+		return nil, err
+	}
+	raw, err := c.do(ctx, http.MethodPost, "/predict/ocr_rec", payload)
+	if err != nil {
+		return nil, err
+	}
+	var items []struct {
+		Text  string  `json:"text"`
+		Score float64 `json:"score"`
+	}
+	if err := json.Unmarshal(raw, &items); err != nil {
+		return nil, fmt.Errorf("client OCRRecognizeBatch decode: %w", err)
+	}
+	if len(items) == 0 {
+		// An empty array is the service's "no text for any crop" answer, not a
+		// misalignment. Mirror OCRRecognize's historical nil result per crop so
+		// the batch and per-crop paths agree on the same input.
+		return make([][]deepdoctype.OCRText, n), nil
+	}
+	if len(items) != n {
+		return nil, fmt.Errorf("client OCRRecognizeBatch: got %d results for %d images", len(items), n)
+	}
+	out := make([][]deepdoctype.OCRText, n)
+	for i, it := range items {
+		if it.Score < c.dropScore {
+			out[i] = []deepdoctype.OCRText{{Text: "", Confidence: it.Score}}
+			continue
+		}
+		out[i] = []deepdoctype.OCRText{{Text: it.Text, Confidence: it.Score}}
+	}
+	return out, nil
 }
