@@ -599,7 +599,7 @@ func (s *ChunkService) annotateChunkVersionsEE(ctx context.Context, chunks []map
 }
 
 func (s *ChunkService) ListVersions(ctx context.Context, req *service.ChunkVersionRequest) (*service.ListChunkVersionsResponse, error) {
-	doc, _, err := s.versionTarget(ctx, req, permission.OperationRead)
+	doc, _, err := s.versionTarget(ctx, req, permission.ResourcePermissionRead, permission.ActionRead)
 	if err != nil {
 		return nil, err
 	}
@@ -700,7 +700,7 @@ func resolveChunkVersionActors(ctx context.Context, versions []service.ChunkVers
 
 // GetVersion returns one version with the field set it stored.
 func (s *ChunkService) GetVersion(ctx context.Context, req *service.ChunkVersionRequest) (*service.GetChunkVersionResponse, error) {
-	doc, _, err := s.versionTarget(ctx, req, permission.OperationRead)
+	doc, _, err := s.versionTarget(ctx, req, permission.ResourcePermissionRead, permission.ActionRead)
 	if err != nil {
 		return nil, err
 	}
@@ -840,7 +840,7 @@ func (s *ChunkService) DeleteVersion(ctx context.Context, req *service.ChunkVers
 	if req == nil || req.ChunkID == "" {
 		return nil, chunkVersionError{code: common.CodeArgumentError, message: "chunk_id is required"}
 	}
-	doc, _, err := s.versionTarget(ctx, req, permission.OperationUpdate)
+	doc, _, err := s.versionTarget(ctx, req, permission.ResourcePermissionManage, permission.ActionWrite)
 	if err != nil {
 		return nil, err
 	}
@@ -998,7 +998,7 @@ func (s *ChunkService) DiffVersions(ctx context.Context, req *service.ChunkVersi
 		DatasetID:  req.DatasetID,
 		DocumentID: req.DocumentID,
 		ChunkID:    req.ChunkID,
-	}, permission.OperationRead)
+	}, permission.ResourcePermissionRead, permission.ActionRead)
 	if err != nil {
 		return nil, err
 	}
@@ -1060,7 +1060,7 @@ func (s *ChunkService) VersionImage(ctx context.Context, req *service.ChunkVersi
 	if req == nil {
 		return nil, fmt.Errorf("chunk_id is required")
 	}
-	doc, _, err := s.versionTarget(ctx, req, permission.OperationRead)
+	doc, _, err := s.versionTarget(ctx, req, permission.ResourcePermissionRead, permission.ActionRead)
 	if err != nil {
 		return nil, err
 	}
@@ -1305,7 +1305,7 @@ func (s *ChunkService) RestoreVersion(ctx context.Context, req *service.ChunkVer
 	if s.docEngine == nil {
 		return nil, fmt.Errorf("doc engine not initialized")
 	}
-	doc, kb, err := s.versionTarget(ctx, req, permission.OperationUpdate)
+	doc, kb, err := s.versionTarget(ctx, req, permission.ResourcePermissionManage, permission.ActionWrite)
 	if err != nil {
 		return nil, err
 	}
@@ -1418,15 +1418,24 @@ func (s *ChunkService) RestoreVersion(ctx context.Context, req *service.ChunkVer
 }
 
 // versionTarget resolves the chunk's dataset and document and enforces that
-// the route's dataset and document agree. It is the shared guard of the
-// version endpoints, mirroring UpdateChunk's ownership checks.
-func (s *ChunkService) versionTarget(ctx context.Context, req *service.ChunkVersionRequest, operation permission.Operation) (*entity.Document, *entity.Knowledgebase, error) {
+// the route's dataset and document agree. Dataset resource access stays at
+// read, dataset role access follows the operation, and the document grant sets
+// the required resource level.
+func (s *ChunkService) versionTarget(ctx context.Context, req *service.ChunkVersionRequest, documentPermission int32, roleAction permission.Action) (*entity.Document, *entity.Knowledgebase, error) {
 	if req == nil || req.ChunkID == "" {
 		return nil, nil, fmt.Errorf("chunk_id is required")
 	}
-	kb, err := s.getAccessibleKnowledgebase(ctx, req.DatasetID, operation)
-	if err != nil {
+	checker := permission.NewDatabaseChecker(dao.DB)
+	datasetRef := permission.ResourceRef{Kind: permission.ResourceKindDataset, ID: req.DatasetID}
+	if err := checker.CheckResourcePermission(ctx, datasetRef, permission.ResourcePermissionRead); err != nil {
 		return nil, nil, err
+	}
+	if err := checker.CheckFeature(ctx, permission.FeatureDataset, roleAction); err != nil {
+		return nil, nil, err
+	}
+	kb, err := s.getKnowledgebaseByID(ctx, req.DatasetID)
+	if err != nil || kb == nil {
+		return nil, nil, fmt.Errorf("knowledge base not found")
 	}
 	doc, err := dao.NewDocumentDAO().GetByID(ctx, dao.DB, req.DocumentID)
 	if err != nil || doc == nil {
@@ -1434,6 +1443,9 @@ func (s *ChunkService) versionTarget(ctx context.Context, req *service.ChunkVers
 	}
 	if doc.KbID != req.DatasetID {
 		return nil, nil, fmt.Errorf("document does not belong to this dataset")
+	}
+	if err := checker.CheckResourcePermission(ctx, permission.ResourceRef{Kind: permission.ResourceKindDocument, ID: doc.ID}, documentPermission); err != nil {
+		return nil, nil, err
 	}
 	return doc, kb, nil
 }

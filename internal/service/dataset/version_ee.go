@@ -517,7 +517,7 @@ type DatasetConfigChange struct {
 
 // ListDatasetVersions lists a dataset's versions newest first.
 func (d *DatasetService) ListDatasetVersions(ctx context.Context, req *ListDatasetVersionsRequest) (*ListDatasetVersionsResponse, error) {
-	datasetID, err := datasetVersionTarget(ctx, req.DatasetID, permission.OperationRead)
+	datasetID, err := datasetVersionTarget(ctx, req.DatasetID, permission.ResourcePermissionRead, permission.ActionRead)
 	if err != nil {
 		return nil, err
 	}
@@ -551,7 +551,7 @@ func datasetVersionPageSize(limit int) int {
 
 // GetDatasetVersion returns one version including its configuration snapshot.
 func (d *DatasetService) GetDatasetVersion(ctx context.Context, req *DatasetVersionRequest) (*GetDatasetVersionResponse, error) {
-	datasetID, err := datasetVersionTarget(ctx, req.DatasetID, permission.OperationRead)
+	datasetID, err := datasetVersionTarget(ctx, req.DatasetID, permission.ResourcePermissionRead, permission.ActionRead)
 	if err != nil {
 		return nil, err
 	}
@@ -825,7 +825,7 @@ func (d *DatasetService) DeleteDatasetVersion(ctx context.Context, req *DeleteDa
 	if req == nil {
 		return nil, datasetVersionError{code: common.CodeArgumentError, message: "request is required"}
 	}
-	datasetID, err := datasetVersionTarget(ctx, req.DatasetID, permission.OperationUpdate)
+	datasetID, err := datasetVersionTarget(ctx, req.DatasetID, permission.ResourcePermissionManage, permission.ActionWrite)
 	if err != nil {
 		return nil, err
 	}
@@ -919,37 +919,57 @@ func (d *DatasetService) DeleteDatasetVersion(ctx context.Context, req *DeleteDa
 	}, nil
 }
 
-// datasetVersionTarget authorizes the caller against the dataset and normalizes
-// its id, mirroring the chunk version endpoints.
-func datasetVersionTarget(ctx context.Context, datasetID string, operation permission.Operation) (string, error) {
+// datasetVersionTarget checks the resource grant and tenant role independently.
+func datasetVersionTarget(ctx context.Context, datasetID string, resourcePermission int32, roleAction permission.Action) (string, error) {
 	normalizedID := strings.TrimSpace(datasetID)
 	if normalizedID == "" {
 		return "", datasetVersionError{code: common.CodeArgumentError, message: "dataset_id is required"}
 	}
-	if err := permission.NewDatabaseChecker(dao.DB).CheckResource(
-		ctx,
-		permission.ResourceRef{Kind: permission.ResourceKindDataset, ID: normalizedID},
-		operation,
-	); err != nil {
-		code, permissionErr := permissionresponse.NormalizeHidden(err)
+	checker := permission.NewDatabaseChecker(dao.DB)
+	datasetRef := permission.ResourceRef{Kind: permission.ResourceKindDataset, ID: normalizedID}
+	if err := checker.CheckResourcePermission(ctx, datasetRef, resourcePermission); err != nil {
+		code, permissionErr := normalizeDatasetVersionPermissionError(ctx, checker, datasetRef, err)
+		return "", datasetVersionError{code: code, message: permissionErr.Error()}
+	}
+	if err := checker.CheckFeature(ctx, permission.FeatureDataset, roleAction); err != nil {
+		code, permissionErr := normalizeDatasetVersionPermissionError(ctx, checker, datasetRef, err)
 		return "", datasetVersionError{code: code, message: permissionErr.Error()}
 	}
 	return normalizedID, nil
 }
 
+func normalizeDatasetVersionPermissionError(ctx context.Context, checker *permission.Checker, datasetRef permission.ResourceRef, err error) (common.ErrorCode, error) {
+	if !permissionresponse.IsPermissionError(err) {
+		return permissionresponse.Normalize(err)
+	}
+	if readErr := checker.CheckResourcePermission(ctx, datasetRef, permission.ResourcePermissionRead); readErr != nil {
+		if permissionresponse.IsPermissionError(readErr) {
+			return permissionresponse.NormalizeHidden(err)
+		}
+		return permissionresponse.Normalize(readErr)
+	}
+	if readErr := checker.CheckFeature(ctx, permission.FeatureDataset, permission.ActionRead); readErr != nil {
+		if permissionresponse.IsPermissionError(readErr) {
+			return permissionresponse.NormalizeHidden(err)
+		}
+		return permissionresponse.Normalize(readErr)
+	}
+	return permissionresponse.Normalize(err)
+}
+
 // ResolveDatasetVersionTarget resolves the dataset a version request addresses
-// and checks update permission. The content-restore service lives in its own
+// and checks manage permission plus the dataset role's write capability. The content-restore service lives in its own
 // package, so it applies the check through this exported entry point instead of
 // duplicating the permission wiring.
 func ResolveDatasetVersionTarget(ctx context.Context, datasetID string) (string, error) {
-	return datasetVersionTarget(ctx, datasetID, permission.OperationUpdate)
+	return datasetVersionTarget(ctx, datasetID, permission.ResourcePermissionManage, permission.ActionWrite)
 }
 
 // ResolveDatasetVersionReadTarget is the read side of
 // ResolveDatasetVersionTarget: listing what a content version can still restore
 // is version history, which a reader may see without being able to change it.
 func ResolveDatasetVersionReadTarget(ctx context.Context, datasetID string) (string, error) {
-	return datasetVersionTarget(ctx, datasetID, permission.OperationRead)
+	return datasetVersionTarget(ctx, datasetID, permission.ResourcePermissionRead, permission.ActionRead)
 }
 
 func datasetVersionSummaryOf(row *entity.DatasetVersion) DatasetVersionSummary {
