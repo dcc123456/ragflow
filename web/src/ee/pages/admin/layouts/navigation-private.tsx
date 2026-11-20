@@ -5,6 +5,7 @@ import {
   Building2,
   LucideBox,
   LucideChartColumn,
+  LucideListChecks,
   LucideMonitor,
   LucideSettings,
   LucideSquareUserRound,
@@ -68,6 +69,11 @@ export function useEnterpriseAdminNav(): AdminNavExtension {
         path: Routes.AdminMonitoring,
         name: t('admin.monitoring'),
         icon: <LucideMonitor className="size-[1em]" />,
+      },
+      {
+        path: PrivateRoutes.AdminIngestionTasks,
+        name: t('admin.ingestionTasks.title'),
+        icon: <LucideListChecks className="size-[1em]" />,
       },
       {
         path: PrivateRoutes.AdminSettings,

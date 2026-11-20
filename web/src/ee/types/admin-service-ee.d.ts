@@ -601,6 +601,62 @@ declare namespace AdminServiceEe {
     error_count: number;
     success_rate: number;
   };
+
+  // Ingestion task monitoring types
+  export type IngestionTaskStatusName =
+    | 'CREATED'
+    | 'SCHEDULED'
+    | 'RUNNING'
+    | 'STOPPING'
+    | 'COMPLETED'
+    | 'FAILED'
+    | 'STOPPED';
+
+  export type IngestionTaskItem = {
+    id: string;
+    pipeline_log_id: string | null;
+    pipeline_id: string | null;
+    pipeline_name: string;
+    user_id: string;
+    nickname: string;
+    email: string;
+    document_id: string;
+    document_name: string;
+    dataset_id: string;
+    dataset_name: string;
+    status: IngestionTaskStatusName;
+    create_date: string | null;
+    update_date: string | null;
+  };
+
+  export type IngestionTaskListParams = {
+    user_name?: string;
+    dataset_id?: string;
+    status?: IngestionTaskStatusName;
+    dataset_name?: string;
+    document_name?: string;
+    page?: number;
+    page_size?: number;
+    order_by?: 'create_time' | 'update_time';
+    desc?: boolean;
+  };
+
+  export type IngestionLogDetail = {
+    id: string;
+    document_id: string;
+    run_count: number;
+    name: string;
+    suffix: string;
+    nickname: string;
+    create_date: string | null;
+    size: number | null;
+    chunk_count: number | null;
+    process_begin_at: string | null;
+    process_duration: number | null;
+    // "0" unstart, "1" running, "2" canceled, "3" success, "4" failed,
+    // "5" scheduled.
+    operation_status: string;
+  };
   // License types
   export type LicenseType = 'trial' | 'standard' | 'perpetual' | 'saas';
   export type LicenseStatus = 'valid' | 'expired' | 'pending' | 'inactive';

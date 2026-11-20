@@ -130,6 +130,11 @@ export default {
   adminTokenStats: '/api/v1/admin/stats/token',
   adminTokenStatsUsers: '/api/v1/admin/stats/token/users',
   adminTokenStatsSummary: '/api/v1/admin/stats/token/summary',
+  adminIngestionTasks: `${restAPIv1}/admin/ingestion/tasks`,
+  adminIngestionLog: (logId: string) =>
+    `${restAPIv1}/admin/ingestion/logs/${encodeURIComponent(logId)}`,
+  adminIngestionLogMessages: (logId: string) =>
+    `${restAPIv1}/admin/ingestion/logs/${encodeURIComponent(logId)}/messages`,
   adminGetLicense: '/api/v1/admin/system/license',
   adminSetLicense: '/api/v1/admin/system/license',
   adminGetFingerprint: '/api/v1/admin/fingerprint',

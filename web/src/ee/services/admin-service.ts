@@ -44,6 +44,10 @@ import {
   IMyLlmValue,
   IThirdOAIModelCollection,
 } from '@/interfaces/database/llm';
+import type {
+  IngestionMessageParams,
+  IngestionMessagesResponse,
+} from '@/interfaces/database/ingestion';
 import { isLocalLlmFactory } from '@/pages/user-setting/utils';
 import api from '@/utils/api';
 import { keyBy } from 'lodash';
@@ -584,6 +588,29 @@ export const getTokenStatsSummary = (
 ) =>
   request.get<ResponseData<AdminServiceEe.TokenStatsSummary>>(
     API.adminTokenStatsSummary,
+    { params },
+  );
+
+// Ingestion task monitoring
+export const listIngestionTasks = (
+  params: AdminServiceEe.IngestionTaskListParams,
+) =>
+  request.get<ResponseData<AdminServiceEe.IngestionTaskItem[]>>(
+    API.adminIngestionTasks,
+    { params },
+  );
+
+export const getIngestionLog = (logId: string) =>
+  request.get<ResponseData<AdminServiceEe.IngestionLogDetail>>(
+    API.adminIngestionLog(logId),
+  );
+
+export const listIngestionLogMessages = (
+  logId: string,
+  params: IngestionMessageParams,
+) =>
+  request.get<ResponseData<IngestionMessagesResponse>>(
+    API.adminIngestionLogMessages(logId),
     { params },
   );
 // License APIs
