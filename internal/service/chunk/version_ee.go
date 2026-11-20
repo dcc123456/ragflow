@@ -52,7 +52,7 @@ const (
 	// than this many writers collide.
 	chunkVersionWriteAttempts = 3
 
-	chunkVersionTimeFormat = "2006-01-02T15:04:05"
+	chunkVersionTimeFormat = "2006-01-02 15:04:05"
 )
 
 // chunkVersionFullSnapshot stores the whole engine row, tokens and vector
@@ -628,7 +628,7 @@ func (s *ChunkService) ListVersions(ctx context.Context, req *service.ChunkVersi
 			Version:      row.Version,
 			CreatedBy:    row.CreatedBy,
 			RestoredFrom: row.RestoredFrom,
-			CreateTime:   row.CreateTime,
+			CreateTime:   chunkVersionCreatedAt(row.CreateTime),
 			CreateDate:   formatChunkVersionTime(row.CreateTime),
 			Latest:       row.Version == latest,
 			Kind:         row.Kind,
@@ -732,6 +732,7 @@ func (s *ChunkService) GetVersion(ctx context.Context, req *service.ChunkVersion
 		Version:      row.Version,
 		CreatedBy:    row.CreatedBy,
 		RestoredFrom: row.RestoredFrom,
+		CreateTime:   chunkVersionCreatedAt(row.CreateTime),
 		CreateDate:   formatChunkVersionTime(row.CreateTime),
 		Latest:       row.Version == latest,
 		Kind:         row.Kind,
@@ -765,7 +766,7 @@ func chunkVersionDeleteRefusal(row *entity.ChunkVersion, latest int) error {
 	if row.Version == latest {
 		return chunkVersionError{
 			code:    common.CodeConflict,
-			message: fmt.Sprintf("version %d is the latest version and cannot be deleted", row.Version),
+			message: fmt.Sprintf("version %d is the current version and cannot be deleted", row.Version),
 		}
 	}
 	switch row.Kind {
@@ -1534,10 +1535,19 @@ func chunkVerbatimRestore(snapshot entity.JSONMap) (map[string]interface{}, bool
 	return update, true
 }
 
-// formatChunkVersionTime renders the millisecond a version was written in the
-// history panel's format. The row stores the millisecond only - it is what a
-// replay ranges over - so the display date is derived from it here rather than
-// stored a second time in a column that could disagree with it.
+// chunkVersionCreatedAt mirrors datasetVersionCreatedAt: hand the raw
+// millisecond instant to the client, which formats it in the reader's time
+// zone. A missing timestamp coalesces to 0 so the JSON shape is stable.
+func chunkVersionCreatedAt(millis *int64) int64 {
+	if millis != nil && *millis > 0 {
+		return *millis
+	}
+	return 0
+}
+
+// formatChunkVersionTime renders the legacy create_date string for clients
+// that still read it. The web UI uses chunkVersionCreatedAt and formats the
+// raw instant locally, like the dataset version list.
 func formatChunkVersionTime(millis *int64) string {
 	if millis == nil {
 		return ""

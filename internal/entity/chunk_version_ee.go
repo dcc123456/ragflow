@@ -75,8 +75,9 @@ type ChunkVersion struct {
 	// same millisecond. Always set: a row with no version could not be placed
 	// on the timeline.
 	DatasetVersion int64 `gorm:"column:dataset_version;not null" json:"dataset_version"`
-	// RestoredFrom is the version a restore copied this row from; 0 for a row
-	// recorded by a normal edit.
+	// RestoredFrom is the version a restore copied this row from. It is 0 both
+	// for a normal edit and for a restore of v0 (the parse baseline), so Kind is
+	// the discriminator; do not infer "restored" from RestoredFrom > 0.
 	RestoredFrom int `gorm:"column:restored_from;not null;default:0" json:"restored_from"`
 	// CreatedBy is the authenticated user that produced the version.
 	CreatedBy string `gorm:"column:created_by;size:32;not null;default:''" json:"created_by"`

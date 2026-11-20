@@ -911,8 +911,13 @@ func TestListAndGetChunkVersionShape(t *testing.T) {
 	if list.Versions[1].Version != 0 || list.Versions[1].Latest {
 		t.Fatalf("second entry = %#v, want v0 not latest", list.Versions[1])
 	}
-	if list.Versions[0].CreateDate == "" {
-		t.Fatalf("first entry create_date is empty")
+	if list.Versions[0].CreateTime <= 0 {
+		t.Fatalf("first entry create_time = %d, want raw millis", list.Versions[0].CreateTime)
+	}
+	// create_date stays for older clients, but it must not reintroduce the
+	// RFC3339 'T' the version panel used to show.
+	if list.Versions[0].CreateDate == "" || strings.Contains(list.Versions[0].CreateDate, "T") {
+		t.Fatalf("first entry create_date = %q, want a no-T display string", list.Versions[0].CreateDate)
 	}
 	// The list has to carry the row kind: the panel mirrors the server's refusal
 	// to delete a parse/add/delete row off this field, so an empty kind would
@@ -932,6 +937,10 @@ func TestListAndGetChunkVersionShape(t *testing.T) {
 	}
 	if detail.Version != 0 || detail.Latest {
 		t.Fatalf("detail = %#v, want v0 not latest", detail)
+	}
+	if detail.CreateTime <= 0 || detail.CreateTime != list.Versions[1].CreateTime {
+		t.Fatalf("detail create_time = %d, want %d from the matching list row",
+			detail.CreateTime, list.Versions[1].CreateTime)
 	}
 	if detail.Kind != entity.ChunkVersionKindParse {
 		t.Fatalf("detail kind = %q, want parse", detail.Kind)

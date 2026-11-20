@@ -15,6 +15,7 @@
  */
 
 import {
+  useDeleteChunkVersion,
   useFetchChunkVersionDiff,
   useFetchChunkVersions,
   useRestoreChunkVersion,
@@ -25,6 +26,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 const mockList = jest.fn();
 const mockDiff = jest.fn();
 const mockRestore = jest.fn();
+const mockDelete = jest.fn();
 
 jest.mock('@/ee/services/chunk-version-service', () => ({
   __esModule: true,
@@ -32,6 +34,7 @@ jest.mock('@/ee/services/chunk-version-service', () => ({
   getChunkVersion: jest.fn(),
   getChunkVersionDiff: (...args: unknown[]) => mockDiff(...args),
   restoreChunkVersion: (...args: unknown[]) => mockRestore(...args),
+  deleteChunkVersion: (...args: unknown[]) => mockDelete(...args),
 }));
 
 jest.mock('@/components/ui/message', () => ({
@@ -71,6 +74,7 @@ describe('chunk version hooks', () => {
     mockList.mockReset();
     mockDiff.mockReset();
     mockRestore.mockReset();
+    mockDelete.mockReset();
   });
 
   it('lists a chunk history newest first through the dataset route', async () => {
@@ -219,5 +223,67 @@ describe('chunk version hooks', () => {
     expect(queryClient.getQueryState(['fetchChunkList'])?.isInvalidated).toBe(
       true,
     );
+  });
+
+  it('drops a version without refetching the caches keyed by it', async () => {
+    mockDelete.mockResolvedValue({
+      code: 0,
+      message: 'success',
+      status: 200,
+      data: { chunk_id: 'chunk-1', deleted_version: 5 },
+    });
+
+    const { result, queryClient } = renderWithQueryClient(() =>
+      useDeleteChunkVersion(),
+    );
+    const invalidate = jest.spyOn(queryClient, 'invalidateQueries');
+    // Seed the per-version caches the delete must mark stale: the comparison
+    // names version 5, the version the delete removes.
+    queryClient.setQueryData(
+      ['fetchChunkVersion', 'kb-1', 'doc-1', 'chunk-1', 5],
+      {},
+    );
+    queryClient.setQueryData(
+      ['fetchChunkVersionDiff', 'kb-1', 'doc-1', 'chunk-1', 4, 5],
+      {},
+    );
+
+    // Annotated rather than inferred: a `let` assigned inside the act callback
+    // evolves to `undefined`, which TypeScript then narrows to `never`.
+    let outcome: { code: number } | undefined;
+    await act(async () => {
+      outcome = await result.current.deleteChunkVersion({
+        kb_id: 'kb-1',
+        doc_id: 'doc-1',
+        chunk_id: 'chunk-1',
+        version: 5,
+      });
+    });
+
+    expect(outcome?.code).toBe(0);
+    // The list is what shows the gap, so it is refetched as usual.
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: ['fetchChunkVersions'],
+    });
+    // The two caches that name version 5 are only marked stale: refetching them
+    // would ask for the row the delete removed and 404 by construction.
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: ['fetchChunkVersion'],
+      refetchType: 'none',
+    });
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: ['fetchChunkVersionDiff'],
+      refetchType: 'none',
+    });
+    expect(
+      queryClient.getQueryState([
+        'fetchChunkVersionDiff',
+        'kb-1',
+        'doc-1',
+        'chunk-1',
+        4,
+        5,
+      ])?.isInvalidated,
+    ).toBe(true);
   });
 });

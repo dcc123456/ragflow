@@ -8,7 +8,11 @@ export default {
   translation: {
     chunk: {
       versionHistory: 'Version history',
-      latestVersion: 'Latest',
+      // The head version, i.e. the one the chunk is at. A restore appends a new
+      // version, so the newest row is also the current state; content history
+      // says "Current" (datasetVersion.current) while "Latest" stays with
+      // published artifacts such as agent and pipeline versions.
+      currentVersion: 'Current',
       noVersions: 'No versions yet. Edit this chunk to start its history.',
       versionEmpty: 'This version stored no content.',
       // A removal marker holds no state: both panes say what it records.
@@ -24,11 +28,11 @@ export default {
       deleteVersion: 'Delete',
       deleteVersionTitle: 'Are you sure to delete version {{version}}?',
       deleteVersionDescription:
-        'This version is removed from the history permanently. The latest version, the parser baseline and the record of a removal are kept.',
+        'This version is removed from the history permanently. The current version, the parser baseline and the record of a removal are kept.',
       versionDeleted: 'Version deleted',
       versionNotDeletable: 'This version cannot be deleted',
       versionNotDeletableDescription:
-        'The version is still needed: the latest state, the parser baseline, the record of a removal, and any state a dataset version restores from are kept.',
+        'The version is still needed: the current state, the parser baseline, the record of a removal, and any state a dataset version restores from are kept.',
       tags: 'Tags',
       versionHistoryTip: 'Pick a version to preview what it stored.',
       versionChanges: 'Changes',
@@ -47,7 +51,7 @@ export default {
       noImage: 'No image',
     },
     datasetVersion: {
-      latest: 'Current',
+      current: 'Current',
       noVersions:
         'No versions yet. Change the configuration to start its history.',
       restoredFrom: 'Restored from v{{version}}',
@@ -59,6 +63,8 @@ export default {
       documentsTitle: 'Files:',
       documentsShowAll: 'Show {{count}} more',
       documentsShowLess: 'Show fewer',
+      changesShowAll: 'Show {{count}} more',
+      changesShowLess: 'Show fewer',
       columnVersion: 'Version',
       columnKind: 'Change',
       columnTime: 'Time',
@@ -148,14 +154,13 @@ export default {
       changesRenameLine: '{{action}} {{entity}} {{before}} to {{after}}',
       changesMetadataLine: '{{action}} metadata for {{name}}',
       // The writer stores a bounded set and keeps the true count beside it: a
-      // shorter list is a sample, and the reader has to be told.
+      // shorter list is a sample, and the reader has to be told. "Recorded", not
+      // "listed": the fold above is the panel's own preview of the stored set,
+      // while this sentence is about the stored set itself being partial.
       changesTruncated:
-        'Only the first {{shown}} of {{total}} changes are listed.',
+        'Only the first {{shown}} of {{total}} changes were recorded.',
       chunkChangeLine: '{{action}} chunk {{chunk}} of document {{document}}',
       chunkVersionTag: '(chunk version: v{{version}})',
-      // Removals collapse into one line: the id, the text and the type of a chunk
-      // that went away are in its own history, not in this list.
-      chunkRemovedLine: 'Removed {{count}} chunk(s)',
       changeEntityDocument: 'document',
       changeEntityChunk: 'chunk',
       changeEntityArtifact: 'wiki page',

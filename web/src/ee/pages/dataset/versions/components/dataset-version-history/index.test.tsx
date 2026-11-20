@@ -41,9 +41,18 @@ jest.mock('react-i18next', () => {
   return {
     ...actual,
     useTranslation: () => ({
-      t: (key: string, options?: { user?: string }) => {
+      t: (
+        key: string,
+        options?: { user?: string; chunk?: string; document?: string },
+      ) => {
         if (options?.user !== undefined) {
           return `${key}: ${options.user}`;
+        }
+        // A chunk sentence names the chunk and its document, which is what the
+        // tests assert on, so only it interpolates; every other line keeps its
+        // bare key and the assertions that name it stay exact.
+        if (key === 'datasetVersion.chunkChangeLine') {
+          return `${key}: ${options?.chunk} of ${options?.document}`;
         }
         return key;
       },
@@ -497,7 +506,9 @@ describe('dataset version history list', () => {
     // the text the chunk held stays in the chunk's own history instead of being
     // pasted under every edit.
     expect(
-      screen.getByText('datasetVersion.chunkChangeLine'),
+      screen.getByText(
+        'datasetVersion.chunkChangeLine: chunk-1 of 三国人物2.txt',
+      ),
     ).toBeInTheDocument();
     // The entry names the version it produced, so the row can be opened next to
     // the change that made it.
@@ -515,7 +526,7 @@ describe('dataset version history list', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('collapses chunk removals into one counted line', () => {
+  it('lists every removed chunk as its own sentence', () => {
     mockVersions.current = [
       {
         version: 9,
@@ -557,19 +568,202 @@ describe('dataset version history list', () => {
 
     render(<DatasetVersionHistory datasetId="ds-1" />);
 
-    // The removals say one thing however many chunks they touched: no id, no text
-    // and no type per chunk.
+    // A removal is one sentence per chunk, read exactly like an edit: which
+    // chunk of which document went. Two removals and the edit are three lines.
     expect(
-      screen.getByText('datasetVersion.chunkRemovedLine'),
+      screen.getAllByText(/^datasetVersion\.chunkChangeLine: chunk-\d/),
+    ).toHaveLength(3);
+    expect(
+      screen.getByText(
+        'datasetVersion.chunkChangeLine: chunk-1 of 三国人物2.txt',
+      ),
     ).toBeInTheDocument();
-    expect(screen.queryByText(/chunk-1/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/chunk-2/)).not.toBeInTheDocument();
-    // An edit is still one sentence per chunk, naming it and its document; the
-    // text it now holds stays in the chunk's history.
     expect(
-      screen.getByText('datasetVersion.chunkChangeLine'),
+      screen.getByText(
+        'datasetVersion.chunkChangeLine: chunk-2 of 三国人物2.txt',
+      ),
+    ).toBeInTheDocument();
+    // The edit beside them is its own sentence too, and the text it now holds
+    // stays in the chunk's history.
+    expect(
+      screen.getByText(
+        'datasetVersion.chunkChangeLine: chunk-3 of 三国人物2.txt',
+      ),
     ).toBeInTheDocument();
     expect(screen.queryByText('曹操，字孟德。')).not.toBeInTheDocument();
+  });
+
+  it('names the document of a removed chunk, falling back to what it knows', () => {
+    mockVersions.current = [
+      {
+        version: 9,
+        kind: 'chunk_delete',
+        created_by: 'user-1',
+        create_time: 1762850700000,
+      },
+    ];
+    mockDetail.current = {
+      version: 9,
+      kind: 'chunk_delete',
+      documents: [],
+      changes: [
+        {
+          entity: 'chunk',
+          action: 'delete',
+          doc_id: 'doc-1',
+          chunk_id: 'chunk-1',
+          doc_name: '三国人物2.txt',
+          // The tombstone the removal wrote: what the reader opens the chunk's
+          // own history at.
+          chunk_version: 5,
+        },
+        // The document was deleted from the dataset: its name is gone, and the
+        // id it still knows is what the line falls back to.
+        {
+          entity: 'chunk',
+          action: 'delete',
+          doc_id: 'doc-3',
+          chunk_id: 'chunk-3',
+        },
+        // Neither a name nor an id: the line still names the chunk, and the
+        // document slot is the panel's dash.
+        {
+          entity: 'chunk',
+          action: 'delete',
+          chunk_id: 'chunk-4',
+        },
+      ],
+      config: {},
+    };
+
+    render(<DatasetVersionHistory datasetId="ds-1" />);
+
+    expect(
+      screen.getAllByText(/^datasetVersion\.chunkChangeLine: chunk-\d/),
+    ).toHaveLength(3);
+    expect(
+      screen.getByText(
+        'datasetVersion.chunkChangeLine: chunk-1 of 三国人物2.txt',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('datasetVersion.chunkChangeLine: chunk-3 of doc-3'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('datasetVersion.chunkChangeLine: chunk-4 of —'),
+    ).toBeInTheDocument();
+    // The version the removal recorded travels too; a removal whose history was
+    // pruned shows its id alone.
+    expect(screen.getAllByText('datasetVersion.chunkVersionTag')).toHaveLength(
+      1,
+    );
+  });
+
+  it('gives two chunks of same-named documents a line each', () => {
+    mockVersions.current = [
+      {
+        version: 9,
+        kind: 'chunk_delete',
+        created_by: 'user-1',
+        create_time: 1762850700000,
+      },
+    ];
+    mockDetail.current = {
+      version: 9,
+      kind: 'chunk_delete',
+      documents: [],
+      changes: [
+        // Two uploads of the same file: the names match, the documents do not.
+        // A chunk line names its chunk, so the two removals stay apart.
+        {
+          entity: 'chunk',
+          action: 'delete',
+          doc_id: 'doc-1',
+          chunk_id: 'chunk-1',
+          doc_name: 'handbook.pdf',
+        },
+        {
+          entity: 'chunk',
+          action: 'delete',
+          doc_id: 'doc-2',
+          chunk_id: 'chunk-2',
+          doc_name: 'handbook.pdf',
+        },
+      ],
+      config: {},
+    };
+
+    render(<DatasetVersionHistory datasetId="ds-1" />);
+
+    expect(
+      screen.getByText(
+        'datasetVersion.chunkChangeLine: chunk-1 of handbook.pdf',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'datasetVersion.chunkChangeLine: chunk-2 of handbook.pdf',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('folds a long change list behind a toggle', () => {
+    mockVersions.current = [
+      {
+        version: 9,
+        kind: 'chunk_delete',
+        created_by: 'user-1',
+        create_time: 1762850700000,
+      },
+    ];
+    mockDetail.current = {
+      version: 9,
+      kind: 'chunk_delete',
+      documents: [],
+      // A bulk delete of twelve chunks: the fold keeps the list readable, and the
+      // toggle says how many rows are still folded.
+      changes: Array.from({ length: 12 }, (_, index) => ({
+        entity: 'chunk',
+        action: 'delete',
+        doc_id: 'doc-1',
+        chunk_id: `chunk-${index + 1}`,
+        doc_name: 'handbook.pdf',
+      })),
+      // The writer kept only these twelve of fifteen changes: the fold and the
+      // sample note are two different limits, and both are true at once.
+      changes_total: 15,
+      config: {},
+    };
+
+    render(<DatasetVersionHistory datasetId="ds-1" />);
+
+    expect(
+      screen.getAllByText(/^datasetVersion\.chunkChangeLine: chunk-\d/),
+    ).toHaveLength(10);
+    expect(
+      screen.getByText('datasetVersion.changesShowAll'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/chunkChangeLine: chunk-12/),
+    ).not.toBeInTheDocument();
+    // The sample note sits beside the fold and speaks about what was recorded,
+    // not about what the fold hides: the two counts never read as one number.
+    expect(
+      screen.getByText('datasetVersion.changesTruncated'),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('datasetVersion.changesShowAll'));
+
+    expect(
+      screen.getAllByText(/^datasetVersion\.chunkChangeLine: chunk-\d/),
+    ).toHaveLength(12);
+    expect(
+      screen.getByText('datasetVersion.changesShowLess'),
+    ).toBeInTheDocument();
+    // Expanding the fold cannot reveal what the writer never stored.
+    expect(
+      screen.getByText('datasetVersion.changesTruncated'),
+    ).toBeInTheDocument();
   });
 
   it('names the metadata keys a metadata version moved', () => {
@@ -729,7 +923,9 @@ describe('dataset version history list', () => {
     // text it held at this version is the chunk's own history, not part of the
     // change list.
     expect(
-      screen.getByText('datasetVersion.chunkChangeLine'),
+      screen.getByText(
+        'datasetVersion.chunkChangeLine: chunk-1 of 三国人物2.txt',
+      ),
     ).toBeInTheDocument();
     expect(
       screen.queryByText('datasetVersion.currentChunk'),
@@ -737,7 +933,7 @@ describe('dataset version history list', () => {
     expect(screen.queryByText('曹操，字孟德')).not.toBeInTheDocument();
     // The head marker qualifies the summary, so it sits on that block; a content
     // version has nothing else that could carry it.
-    expect(screen.getByText('datasetVersion.latest')).toBeInTheDocument();
+    expect(screen.getByText('datasetVersion.current')).toBeInTheDocument();
     // Who made the change is the list's column now; the panel does not repeat it.
     expect(screen.queryByText(/changedBy/)).not.toBeInTheDocument();
     // The panel no longer explains a restore in a sentence of its own. The only

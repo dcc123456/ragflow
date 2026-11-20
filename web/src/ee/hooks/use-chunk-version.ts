@@ -164,9 +164,23 @@ export const useDeleteChunkVersion = () => {
         if (data?.code === 0) {
           message.success(t('chunk.versionDeleted'));
           queryClient.invalidateQueries({ queryKey: ['fetchChunkVersions'] });
-          queryClient.invalidateQueries({ queryKey: ['fetchChunkVersion'] });
+          // The two caches below are keyed by the version that just went away:
+          // their keys name the deleted one, so refetching them - the default for
+          // an invalidated query that still has an observer - would ask for a row
+          // the delete removed and 404 by construction. That 404 reaches the
+          // request layer's global handler, which reports it as an error the
+          // reader cannot act on; the panel already explains a missing version
+          // itself. Mark them stale instead: the panel drops its selection and
+          // lands on the newest row in the same turn, so these keys are never
+          // observed again. No other version's cached comparison is stale - each
+          // one is keyed by the pair it compares.
+          queryClient.invalidateQueries({
+            queryKey: ['fetchChunkVersion'],
+            refetchType: 'none',
+          });
           queryClient.invalidateQueries({
             queryKey: ['fetchChunkVersionDiff'],
+            refetchType: 'none',
           });
           return { code: 0, message: '' };
         }

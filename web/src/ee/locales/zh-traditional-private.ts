@@ -7,7 +7,10 @@ export default {
     },
     chunk: {
       versionHistory: '版本歷史',
-      latestVersion: '最新',
+      // 頭版本，即該 chunk 目前所在的版本。恢復會追加新版本，故最新的行也就是
+      // 目前狀態；內容歷史統一稱「目前」（datasetVersion.current），
+      // 「最新」留給 agent / pipeline 版本這類發布物。
+      currentVersion: '目前',
       noVersions: '尚無版本，編輯此解析塊後將開始記錄版本。',
       versionEmpty: '該版本沒有保存內容。',
       versionChunkDeleted: '該 chunk 在該版本中被刪除。',
@@ -22,11 +25,11 @@ export default {
       deleteVersion: '刪除',
       deleteVersionTitle: '確定刪除版本 {{version}}？',
       deleteVersionDescription:
-        '該版本將從歷史中永久移除。最新版本、解析基線，以及「該 chunk 被移除」的記錄會被保留。',
+        '該版本將從歷史中永久移除。目前版本、解析基線，以及「該 chunk 被移除」的記錄會被保留。',
       versionDeleted: '版本已刪除',
       versionNotDeletable: '無法刪除此版本',
       versionNotDeletableDescription:
-        '該版本仍被需要：最新狀態、解析基線、刪除記錄，以及資料集版本還原時依賴的狀態都不會被刪除。',
+        '該版本仍被需要：目前狀態、解析基線、刪除記錄，以及資料集版本還原時依賴的狀態都不會被刪除。',
       tags: '標籤',
       versionHistoryTip: '選擇一個版本可以查看它保存的內容。',
       versionChanges: '變更',
@@ -45,7 +48,7 @@ export default {
       noImage: '無圖片',
     },
     datasetVersion: {
-      latest: '目前',
+      current: '目前',
       noVersions: '尚無版本，修改資料集設定後將開始記錄。',
       restoredFrom: '從 v{{version}} 恢復',
       summaryTitle: '概要：',
@@ -53,6 +56,8 @@ export default {
       documentsTitle: '文件：',
       documentsShowAll: '展開其餘 {{count}} 個文件',
       documentsShowLess: '收合',
+      changesShowAll: '展開其餘 {{count}} 條變更',
+      changesShowLess: '收合',
       columnVersion: '版本',
       columnKind: '變更類型',
       columnTime: '時間',
@@ -124,11 +129,11 @@ export default {
       changesLine: '{{action}}{{entity}} {{name}}',
       changesRenameLine: '{{action}}{{entity}} {{before}} 為 {{after}}',
       changesMetadataLine: '{{action}}{{name}} 的中繼資料',
-      changesTruncated: '僅顯示前 {{shown}} 筆變更，共 {{total}} 筆。',
+      // 說的是「記錄」，不是「顯示」：上面的折疊是面板的預覽，這句說的是存下來的
+      // 變更本身就不全（寫入時只保留前若干筆）。
+      changesTruncated: '僅記錄了前 {{shown}} 筆變更（共 {{total}} 筆）。',
       chunkChangeLine: '{{action}}解析塊 {{chunk}}（文件 {{document}}）',
       chunkVersionTag: '（解析塊版本：v{{version}}）',
-      // 刪除合併為一行：被刪解析塊的 id、內容與類型都在它自己的歷史裡。
-      chunkRemovedLine: '已刪除 {{count}} 個解析塊',
       changeEntityDocument: '文件',
       changeEntityChunk: '解析塊',
       changeEntityArtifact: '知識頁',

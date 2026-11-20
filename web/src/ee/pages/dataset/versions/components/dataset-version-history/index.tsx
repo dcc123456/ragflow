@@ -102,6 +102,58 @@ const VERSION_PAGE_SIZE = 50;
 // column that would otherwise be nothing but names.
 const DOCUMENTS_PREVIEW_LIMIT = 5;
 
+// How many change rows the detail lists before it folds the rest behind the same
+// toggle: a bulk chunk delete writes one row per chunk, so a single version can
+// carry hundreds of lines that would push everything else out of view.
+const CHANGES_PREVIEW_LIMIT = 10;
+
+// Both lists a version's detail prints can run long, and both fold the same way:
+// a preview, then a toggle naming how many lines are still hidden. The fold lives
+// in one place so the two lists cannot drift into two behaviours.
+const useFold = (total: number, limit: number, resetKey?: unknown) => {
+  const [expanded, setExpanded] = useState(false);
+  // A new selection folds the list again: the fold is about the set the reader is
+  // looking at, not a preference carried between versions.
+  useEffect(() => {
+    setExpanded(false);
+  }, [resetKey]);
+  return {
+    expanded,
+    hidden: Math.max(total - limit, 0),
+    shown: expanded ? total : Math.min(total, limit),
+    toggle: () => setExpanded((open) => !open),
+  };
+};
+
+// The toggle sits under the lines it folds, at their indent, so a folded list
+// still reads as one block: it says the list is folded rather than silently cut.
+const FoldToggle = ({
+  fold,
+  showAllKey,
+  showLessKey,
+}: {
+  fold: ReturnType<typeof useFold>;
+  /** Locale key of the folded label; `{{count}}` is how many lines are hidden. */
+  showAllKey: string;
+  showLessKey: string;
+}) => {
+  const { t } = useTranslation();
+  if (fold.hidden <= 0) {
+    return null;
+  }
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      className="ml-1 self-start text-sm"
+      onClick={fold.toggle}
+    >
+      {fold.expanded ? t(showLessKey) : t(showAllKey, { count: fold.hidden })}
+    </Button>
+  );
+};
+
 // MAX_VERSION_PAGE mirrors the server's own ceiling (maxDatasetVersionPageSize in
 // internal/service/dataset/version_ee.go). A larger limit is clamped there, so
 // asking again past it would only re-read the same rows: the list stops instead.
@@ -159,11 +211,10 @@ const formatValue = (value: unknown): string => {
  * chunk fc0b414f of document handbook.pdf"). The text the chunk held at that
  * version is not repeated here - it is the chunk's own history, one click away,
  * and pasting it under every edit turned a list of changes into pages of prose.
- *
- * Extending a chunk set is read one chunk at a time, because which chunk came in
- * is the point. Shrinking it is not: a removal says nothing about the chunk that
- * carried it, so the removals collapse into one counted line, and the ids and
- * their type stay in the chunk's own history.
+ * A removal reads the same way ("Removed chunk fc0b414f of document
+ * handbook.pdf"): the text it carried is still its own history, while which
+ * chunk went is what the reader came to find, and a bulk delete is simply one
+ * such line per chunk it removed.
  *
  * A wiki page entry carries a diff, replayed from that page's own commit chain:
  * the sentence names the page, and the diff underneath says what moved in it,
@@ -173,41 +224,40 @@ const formatValue = (value: unknown): string => {
 function VersionChangeList({
   changes,
   coveredDocIDs,
+  version,
 }: {
   changes?: IDatasetVersionChange[];
   // coveredDocIDs are the documents the parse settings block below names in its
   // head line: repeating "Changed document X" above it would say it twice.
   coveredDocIDs?: Set<string>;
+  // The version the rows were read from: the fold closes when the reader moves
+  // to another one, since it is about this version's change set.
+  version?: number;
 }) {
   const { t } = useTranslation();
-  if (!changes?.length) {
-    return null;
-  }
   // An entity or action the server adds later shows its raw value.
   const actionLabel = (value: string) =>
     CHANGE_ACTION_LABELS[value] ? t(CHANGE_ACTION_LABELS[value]) : value;
   const entityLabel = (value: string) =>
     CHANGE_ENTITY_LABELS[value] ? t(CHANGE_ENTITY_LABELS[value]) : value;
-  // Removing chunks is one fact however many chunks it touched. Listing them one
-  // per line turns a bulk delete into a wall of ids that all say the same thing,
-  // and the text a removed chunk held is what the chunk's own history is for. The
-  // count travels; the ids, their text and their type do not.
-  const removedChunkCount = changes.filter(
-    (change) => change.entity === 'chunk' && change.action === 'delete',
-  ).length;
+  // A document entry the parse settings block already names in its head line is
+  // dropped before the count, not after it: otherwise the toggle would offer rows
+  // that render nothing.
+  const rows = (changes ?? []).filter(
+    (change) =>
+      !(
+        change.entity === 'document' &&
+        change.doc_id &&
+        coveredDocIDs?.has(change.doc_id)
+      ),
+  );
+  const fold = useFold(rows.length, CHANGES_PREVIEW_LIMIT, version);
+  if (!rows.length) {
+    return null;
+  }
   return (
     <div className="space-y-2">
-      {changes.map((change, index) => {
-        if (
-          change.entity === 'document' &&
-          change.doc_id &&
-          coveredDocIDs?.has(change.doc_id)
-        ) {
-          return null;
-        }
-        if (change.entity === 'chunk' && change.action === 'delete') {
-          return null;
-        }
+      {rows.slice(0, fold.shown).map((change, index) => {
         const action = actionLabel(change.action);
         // A chunk entry keys on its chunk, a document entry on its document:
         // each entry has one id, and it is the one its entity uses.
@@ -300,11 +350,11 @@ function VersionChangeList({
           </div>
         );
       })}
-      {removedChunkCount > 0 && (
-        <p className="pl-3 text-sm">
-          {t('datasetVersion.chunkRemovedLine', { count: removedChunkCount })}
-        </p>
-      )}
+      <FoldToggle
+        fold={fold}
+        showAllKey="datasetVersion.changesShowAll"
+        showLessKey="datasetVersion.changesShowLess"
+      />
     </div>
   );
 }
@@ -671,10 +721,6 @@ function DatasetVersionHistory({
   >();
   const [restoreOpen, setRestoreOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  // Whether the file list is showing every name or only the head of it. Kept per
-  // panel rather than per version, and reset when the reader moves to another
-  // version: the fold is about this version's file set.
-  const [documentsExpanded, setDocumentsExpanded] = useState(false);
 
   // What the action bar acts on: the row the list has highlighted.
   const actionVersion = selectedVersion;
@@ -808,14 +854,11 @@ function DatasetVersionHistory({
   const documents = detail?.documents ?? [];
   // The names the panel shows: the first few, or all of them once the reader
   // opened the fold. The count the heading reports is always the whole set.
-  const visibleDocuments = documentsExpanded
-    ? documents
-    : documents.slice(0, DOCUMENTS_PREVIEW_LIMIT);
-  // A new selection folds the list again: the fold is about the set the reader is
-  // looking at, not a preference carried between versions.
-  useEffect(() => {
-    setDocumentsExpanded(false);
-  }, [detail?.version]);
+  const documentsFold = useFold(
+    documents.length,
+    DOCUMENTS_PREVIEW_LIMIT,
+    detail?.version,
+  );
   // Both kinds are restorable: a configuration version writes its snapshot
   // back, a content version rebuilds its document set. The server picks the
   // path from the version's kind.
@@ -1117,7 +1160,7 @@ function DatasetVersionHistory({
                             would drift away from the block it describes. */}
                       {detail.version === currentVersion && (
                         <span className="rounded-sm bg-bg-card px-1 text-sm text-text-secondary">
-                          {t('datasetVersion.latest')}
+                          {t('datasetVersion.current')}
                         </span>
                       )}
                     </div>
@@ -1144,38 +1187,27 @@ function DatasetVersionHistory({
                           because none had been produced yet, not because a
                           restore lost them. */}
                     <ul className="space-y-1 pl-3">
-                      {visibleDocuments.map((document) => (
-                        <li
-                          key={document.id}
-                          className="flex items-baseline gap-2 text-sm"
-                        >
-                          <span
-                            className="min-w-0 flex-1 truncate"
-                            title={document.name || document.id}
+                      {documents
+                        .slice(0, documentsFold.shown)
+                        .map((document) => (
+                          <li
+                            key={document.id}
+                            className="flex items-baseline gap-2 text-sm"
                           >
-                            {document.name || document.id}
-                          </span>
-                        </li>
-                      ))}
+                            <span
+                              className="min-w-0 flex-1 truncate"
+                              title={document.name || document.id}
+                            >
+                              {document.name || document.id}
+                            </span>
+                          </li>
+                        ))}
                     </ul>
-                    {documents.length > DOCUMENTS_PREVIEW_LIMIT && (
-                      // The toggle sits under the names at the same indent, so the
-                      // list still reads as one block: a big set is folded, not
-                      // truncated without saying so.
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="ml-1 self-start text-sm"
-                        onClick={() => setDocumentsExpanded((open) => !open)}
-                      >
-                        {documentsExpanded
-                          ? t('datasetVersion.documentsShowLess')
-                          : t('datasetVersion.documentsShowAll', {
-                              count: documents.length - DOCUMENTS_PREVIEW_LIMIT,
-                            })}
-                      </Button>
-                    )}
+                    <FoldToggle
+                      fold={documentsFold}
+                      showAllKey="datasetVersion.documentsShowAll"
+                      showLessKey="datasetVersion.documentsShowLess"
+                    />
                   </section>
                 )}
                 {showChanges && (
@@ -1199,11 +1231,14 @@ function DatasetVersionHistory({
                         <VersionChangeList
                           changes={detail?.changes}
                           coveredDocIDs={describedDocIDs}
+                          version={detail?.version}
                         />
                         {changesTruncated && (
-                          // The list stops at the writer's limit; the count beside it
-                          // is the whole change. Said here, right after the rows, so
-                          // the reader knows the list ends early before scrolling on.
+                          // Two different limits meet here: the fold above is the
+                          // panel's preview of the recorded rows, while this one is
+                          // the writer's cap - the recorded set itself is partial.
+                          // The sentence says "recorded", so the two counts are not
+                          // read as one number.
                           <p className="pl-3 text-sm text-text-secondary">
                             {t('datasetVersion.changesTruncated', {
                               shown: storedChanges,

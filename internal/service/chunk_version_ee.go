@@ -52,8 +52,13 @@ type ChunkVersionSummary struct {
 	// user no longer exists; the client falls back to CreatedBy then.
 	CreatedByName string `json:"created_by_name,omitempty"`
 	RestoredFrom  int    `json:"restored_from"`
-	CreateTime    *int64 `json:"create_time,omitempty"`
-	CreateDate    string `json:"create_date,omitempty"`
+	// CreateTime is the version's moment in milliseconds, the only timestamp the
+	// version records. Clients format it themselves so the display follows the
+	// reader's time zone, as the dataset version list does.
+	CreateTime int64 `json:"create_time"`
+	// CreateDate is the legacy server-formatted display string. Kept for
+	// compatibility; the web UI reads CreateTime instead.
+	CreateDate string `json:"create_date,omitempty"`
 	// Latest marks the highest version, which is the state the last edit left
 	// in the document engine.
 	Latest bool `json:"latest"`
@@ -78,12 +83,17 @@ type GetChunkVersionResponse struct {
 	CreatedBy string `json:"created_by"`
 	// CreatedByName is the actor's display name, resolved the same way as in the
 	// list; empty when the actor has no user row.
-	CreatedByName string                 `json:"created_by_name,omitempty"`
-	RestoredFrom  int                    `json:"restored_from"`
-	CreateDate    string                 `json:"create_date,omitempty"`
-	Latest        bool                   `json:"latest"`
-	Kind          string                 `json:"kind"`
-	Chunk         map[string]interface{} `json:"chunk"`
+	CreatedByName string `json:"created_by_name,omitempty"`
+	RestoredFrom  int    `json:"restored_from"`
+	// CreateTime is the same raw millisecond instant as in the list; the client
+	// formats it in the reader's time zone.
+	CreateTime int64 `json:"create_time"`
+	// CreateDate is the legacy server-formatted display string, kept for
+	// compatibility; the web UI reads CreateTime instead.
+	CreateDate string                 `json:"create_date,omitempty"`
+	Latest     bool                   `json:"latest"`
+	Kind       string                 `json:"kind"`
+	Chunk      map[string]interface{} `json:"chunk"`
 }
 
 // ChunkVersionDiffRequest names the two versions to compare. To is optional:

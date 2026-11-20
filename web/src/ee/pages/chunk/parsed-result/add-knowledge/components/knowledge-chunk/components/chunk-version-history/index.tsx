@@ -28,10 +28,11 @@ import {
 } from '@/ee/hooks/use-chunk-version';
 import { IChunkVersion } from '@/ee/interfaces/chunk-version';
 import { getChunkVersionImageUrl } from '@/ee/services/chunk-version-service';
+import { sanitizeHtmlWithoutImages } from '@/ee/utils/dom-util';
 import { versionActorLabel } from '@/ee/utils/version-actor';
 import { useGetKnowledgeSearchParams } from '@/hooks/route-hook';
 import { cn } from '@/lib/utils';
-import { sanitizeHtmlWithoutImages } from '@/ee/utils/dom-util';
+import { formatDate } from '@/utils/date';
 import { ReactNode, useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import ChunkVersionDiffPanel from './chunk-version-diff';
@@ -48,6 +49,11 @@ interface VersionRowProps {
   selected: boolean;
   onSelect: (version: number) => void;
 }
+
+// A version row written before the timestamp column existed carries 0: the
+// instant is unknown, so both panes leave the slot empty rather than formatting
+// it into the epoch. One rule, so the list and the header cannot disagree.
+const versionTime = (millis?: number) => (millis ? formatDate(millis) : '');
 
 function VersionRow({ item, selected, onSelect }: VersionRowProps) {
   const { t } = useTranslation();
@@ -73,19 +79,21 @@ function VersionRow({ item, selected, onSelect }: VersionRowProps) {
         </span>
         {item.latest && (
           <span className="rounded-sm bg-bg-card px-1 text-xs text-text-secondary">
-            {t('chunk.latestVersion')}
+            {t('chunk.currentVersion')}
           </span>
         )}
       </div>
       <div className="truncate text-xs text-text-secondary">
-        {item.create_date || ''}
+        {versionTime(item.create_time)}
       </div>
       {!!actor && (
         <div className="truncate text-xs text-text-secondary" title={actor}>
           {t('chunk.changedBy', { user: actor })}
         </div>
       )}
-      {item.restored_from > 0 && (
+      {/* v0 is the parse baseline, so restored_from 0 is a valid source. Kind,
+          not the numeric value, says whether the row is a restore. */}
+      {item.kind === 'restore' && (
         <div className="truncate text-xs text-text-secondary">
           {t('chunk.restoredFrom', { version: item.restored_from })}
         </div>
@@ -314,6 +322,9 @@ function ChunkVersionHistory({ chunkId, docId }: ChunkVersionHistoryProps) {
   const detailActor = detail
     ? versionActorLabel(detail, t('chunk.systemActor'))
     : '';
+  // Empty for a row that records no instant, so the header omits the slot
+  // instead of spending a gap on an empty span.
+  const detailTime = versionTime(detail?.create_time);
   const selectedKind = detail?.kind ?? selectedEntry?.kind;
   // A removal marker describes no state: it records that the chunk was gone from
   // that version on, and a tombstone carries no snapshot to read. Both panes say
@@ -528,18 +539,19 @@ function ChunkVersionHistory({ chunkId, docId }: ChunkVersionHistoryProps) {
                       <span className="font-medium text-text-primary">
                         v{detail.version}
                       </span>
-                      {detail.latest && <span>{t('chunk.latestVersion')}</span>}
-                      {detail.restored_from > 0 && (
+                      {detail.latest && (
+                        <span>{t('chunk.currentVersion')}</span>
+                      )}
+                      {/* Same v0 caveat as the list: kind is the restore flag. */}
+                      {detail.kind === 'restore' && (
                         <span>
                           {t('chunk.restoredFrom', {
                             version: detail.restored_from,
                           })}
                         </span>
                       )}
-                      {!!detail.create_date && (
-                        <span className="tabular-nums">
-                          {detail.create_date}
-                        </span>
+                      {!!detailTime && (
+                        <span className="tabular-nums">{detailTime}</span>
                       )}
                       {/* The server resolves the actor id to a nickname; the id
                           is only a fallback for a user that no longer exists. */}

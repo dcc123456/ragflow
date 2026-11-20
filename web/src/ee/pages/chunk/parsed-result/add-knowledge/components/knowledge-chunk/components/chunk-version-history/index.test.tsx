@@ -58,7 +58,7 @@ const versionRow = (version: number, latest = false) => ({
   version,
   created_by: '',
   restored_from: 0,
-  create_date: `2026-11-1${version}T10:00:00`,
+  create_time: Date.parse(`2026-11-1${version}T10:00:00Z`),
   latest,
   kind: 'edit',
 });
@@ -310,6 +310,24 @@ describe('chunk version history content preview', () => {
     versionsState.current = [versionRow(3, true), versionRow(2), versionRow(1)];
   });
 
+  it('shows the restored-from v0 label in the detail header', () => {
+    mockDetailState.current = {
+      version: 2,
+      kind: 'restore',
+      latest: true,
+      restored_from: 0,
+      create_time: Date.parse('2026-11-10T10:00:00Z'),
+      chunk: { content_with_weight: 'text' },
+    };
+
+    render(<ChunkVersionHistory chunkId="c-1" docId="doc-1" />);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'chunk.versionContent' }),
+    );
+
+    expect(screen.getByText('chunk.restoredFrom: v0')).toBeInTheDocument();
+  });
+
   it('shows the text of a version without the picture it was cut from', () => {
     // A PDF chunk carries the picture of the region it came from as well as the
     // text; the history reads as text, so the picture is not rendered.
@@ -398,6 +416,40 @@ describe('chunk version history list', () => {
     versionsState.current = [];
   });
 
+  it('formats the raw version time like the dataset list, without a T', () => {
+    versionsState.current = [versionRow(3, true)];
+
+    render(<ChunkVersionHistory chunkId="chunk-1" docId="doc-1" />);
+
+    const row = screen.getByRole('button', { name: /^v3\b/ });
+    expect(row.textContent).toMatch(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/);
+    expect(row.textContent).not.toContain('T10:00:00');
+  });
+
+  it('leaves the time slot empty for a row that records no instant', () => {
+    // A row written before the timestamp column existed carries 0: the panel
+    // shows no date rather than formatting the epoch.
+    versionsState.current = [{ ...versionRow(3, true), create_time: 0 }];
+
+    render(<ChunkVersionHistory chunkId="chunk-1" docId="doc-1" />);
+
+    const row = screen.getByRole('button', { name: /^v3\b/ });
+    expect(row.textContent).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+    expect(row.textContent).not.toContain('1970');
+  });
+
+  it('labels a restore of the v0 baseline, not just restores above zero', () => {
+    versionsState.current = [
+      { ...versionRow(3, true), kind: 'restore', restored_from: 1 },
+      { ...versionRow(2), kind: 'restore', restored_from: 0 },
+    ];
+
+    render(<ChunkVersionHistory chunkId="chunk-1" docId="doc-1" />);
+
+    expect(screen.getByText('chunk.restoredFrom: v1')).toBeInTheDocument();
+    expect(screen.getByText('chunk.restoredFrom: v0')).toBeInTheDocument();
+  });
+
   it('names the actor of every version, falling back to the id', () => {
     versionsState.current = [
       {
@@ -405,7 +457,7 @@ describe('chunk version history list', () => {
         created_by: 'user-3',
         created_by_name: 'Alice',
         restored_from: 0,
-        create_date: '2026-11-10T10:00:00',
+        create_time: Date.parse('2026-11-10T10:00:00Z'),
         latest: true,
         kind: 'edit',
       },
@@ -415,7 +467,7 @@ describe('chunk version history list', () => {
         version: 2,
         created_by: 'deleted-user-id',
         restored_from: 0,
-        create_date: '2026-11-09T10:00:00',
+        create_time: Date.parse('2026-11-09T10:00:00Z'),
         latest: false,
         kind: 'restore',
       },
@@ -424,7 +476,7 @@ describe('chunk version history list', () => {
         version: 0,
         created_by: 'system',
         restored_from: 0,
-        create_date: '2026-11-08T10:00:00',
+        create_time: Date.parse('2026-11-08T10:00:00Z'),
         latest: false,
         kind: 'parse',
       },
@@ -449,7 +501,7 @@ describe('chunk version history list', () => {
         version: 0,
         created_by: '',
         restored_from: 0,
-        create_date: '2026-11-08T10:00:00',
+        create_time: Date.parse('2026-11-08T10:00:00Z'),
         latest: true,
         kind: 'edit',
       },
@@ -469,7 +521,7 @@ describe('chunk version history comparison', () => {
         version: 3,
         created_by: '',
         restored_from: 0,
-        create_date: '2026-11-10T10:00:00',
+        create_time: Date.parse('2026-11-10T10:00:00Z'),
         latest: true,
         kind: 'edit',
       },
@@ -477,7 +529,7 @@ describe('chunk version history comparison', () => {
         version: 2,
         created_by: '',
         restored_from: 0,
-        create_date: '2026-11-09T10:00:00',
+        create_time: Date.parse('2026-11-09T10:00:00Z'),
         latest: false,
         kind: 'edit',
       },
@@ -485,7 +537,7 @@ describe('chunk version history comparison', () => {
         version: 0,
         created_by: '',
         restored_from: 0,
-        create_date: '2026-11-08T10:00:00',
+        create_time: Date.parse('2026-11-08T10:00:00Z'),
         latest: false,
         kind: 'parse',
       },

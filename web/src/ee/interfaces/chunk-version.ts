@@ -14,9 +14,15 @@ export interface IChunkVersion {
   // a delete marker) or when the user no longer exists; render created_by only
   // as the fallback.
   created_by_name?: string;
-  // restored_from is the version a restore copied from; 0 for a plain edit.
+  // restored_from is the version a restore copied from. 0 is both a plain edit
+  // and a restore of the v0 baseline, so check kind === 'restore' rather than
+  // the numeric value.
   restored_from: number;
-  create_time?: number;
+  // create_time is the version's instant in milliseconds — the only timestamp
+  // a version records, so format it in the reader's time zone like the dataset
+  // version list does.
+  create_time: number;
+  // create_date is the legacy server-formatted string, kept for older clients.
   create_date?: string;
   // latest marks the newest version, i.e. the state the last edit left.
   latest: boolean;
@@ -63,7 +69,11 @@ export interface IChunkVersionDetail {
   created_by: string;
   // created_by_name is resolved the same way as in the list entry.
   created_by_name?: string;
+  // Same meaning as the list: 0 can be a restore of v0, so use kind.
   restored_from: number;
+  // Same raw millisecond instant as the list; the client formats it locally.
+  create_time: number;
+  // create_date is the legacy server-formatted string, kept for older clients.
   create_date?: string;
   latest: boolean;
   // kind is what produced the row: parse (the parser's baseline), add (a chunk
