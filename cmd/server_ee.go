@@ -98,8 +98,6 @@ func printHelp(args *bootstrap.ServerArgs) {
 	}
 	if args.Mode == nil || *args.Mode == "ingestor" {
 		fmt.Fprintln(os.Stderr, "  --ingestor-tier string\tIngestion lanes to consume")
-	}
-	if args.Mode == nil || *args.Mode == "api" || *args.Mode == "ingestor" || *args.Mode == "chatter" {
 		fmt.Fprintln(os.Stderr, "  --deepdoc-inference-concurrency int\tIn-process inference concurrency")
 		fmt.Fprintln(os.Stderr, "  --deepdoc-inference-cpu-cores int\tInference CPU budget (0: all cores)")
 	}
