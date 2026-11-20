@@ -41,7 +41,7 @@ const (
 	TRIAL     LicenseType = "trial"
 	Standard  LicenseType = "standard"
 	Perpetual LicenseType = "perpetual"
-	Cluster   LicenseType = "Cluster"
+	Saas      LicenseType = "saas"
 )
 
 // LicenseBinding defines how the license is bound to hardware

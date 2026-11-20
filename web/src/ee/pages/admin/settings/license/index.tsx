@@ -83,12 +83,12 @@ function LicenseTable({
 
   const formatDate = (dateString: string) => {
     if (!dateString) return '-';
-    try {
-      const date = new Date(dateString);
-      return date.toLocaleString();
-    } catch {
-      return dateString;
-    }
+    const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) return dateString;
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const datePart = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+    const timePart = `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+    return `${datePart} ${timePart}`;
   };
 
   if (isLoading) {
@@ -114,9 +114,7 @@ function LicenseTable({
     <Table rootClassName="bg-transparent border-border-button border">
       <TableHeader className="bg-transparent [&_tr]:border-b-0">
         <TableRow>
-          <TableHead className="w-[120px] truncate">
-            {t('license.table.id', 'ID')}
-          </TableHead>
+          <TableHead>{t('license.table.type', 'Type')}</TableHead>
           <TableHead>{t('license.table.startTime', 'Start time')}</TableHead>
           <TableHead>{t('license.table.expiryTime', 'Expiry time')}</TableHead>
           <TableHead className="w-[100px]">
@@ -126,9 +124,7 @@ function LicenseTable({
       </TableHeader>
       <TableBody>
         <TableRow>
-          <TableCell className="font-medium truncate max-w-[120px]">
-            {license.ID || '-'}
-          </TableCell>
+          <TableCell>{formatDate(license.Type)}</TableCell>
           <TableCell>{formatDate(license.ValidFrom)}</TableCell>
           <TableCell>{formatDate(license.ValidUntil)}</TableCell>
           <TableCell>

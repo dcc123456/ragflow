@@ -133,24 +133,33 @@ func (f *ServiceFeatures) ToMap() map[string]interface{} {
 }
 
 type APIServiceQuota struct {
+	LicenseType    LicenseType     `json:"license_type"`
 	Features       ServiceFeatures `json:"features"`
 	MaxConcurrency int             `json:"max_concurrency"`
 	CPUNum         int             `json:"cpu_num"`
 }
 
 type IngestionServiceQuota struct {
-	Features  ServiceFeatures `json:"features"`
-	CPUNum    int             `json:"cpu_num"`
-	WorkerNum int             `json:"worker_num"`
+	LicenseType LicenseType     `json:"license_type"`
+	Features    ServiceFeatures `json:"features"`
+	CPUNum      int             `json:"cpu_num"`
+	WorkerNum   int             `json:"worker_num"`
 }
 
 type SyncServiceQuota struct {
-	Features  ServiceFeatures `json:"features"`
-	CPUNum    int             `json:"cpu_num"`
-	WorkerNum int             `json:"worker_num"`
+	LicenseType LicenseType     `json:"license_type"`
+	Features    ServiceFeatures `json:"features"`
+	CPUNum      int             `json:"cpu_num"`
+	WorkerNum   int             `json:"worker_num"`
+}
+
+type ChatterServiceQuota struct {
+	LicenseType LicenseType     `json:"license_type"`
+	Features    ServiceFeatures `json:"features"`
 }
 
 type deepDocCPUQuota struct {
+	LicenseType    LicenseType     `json:"license_type"`
 	Features       ServiceFeatures `json:"features"`
 	MaxConcurrency int             `json:"max_concurrency"`
 	CPUNum         int             `json:"cpu_num"`
@@ -158,6 +167,7 @@ type deepDocCPUQuota struct {
 }
 
 type deepDocGPUQuota struct {
+	LicenseType    LicenseType     `json:"license_type"`
 	Features       ServiceFeatures `json:"features"`
 	MaxConcurrency int             `json:"max_concurrency"`
 	CPUNum         int             `json:"cpu_num"`
@@ -170,6 +180,7 @@ type ServiceQuota struct {
 	apiServiceQuota *APIServiceQuota
 	ingestorQuota   *IngestionServiceQuota
 	syncerQuota     *SyncServiceQuota
+	chatterQuota    *ChatterServiceQuota
 	deepDocCPUQuota *deepDocCPUQuota
 	deepDocGPUQuota *deepDocGPUQuota
 	LastUpdateTime  time.Time
@@ -201,6 +212,8 @@ func InitServiceQuota(serverType common.ServerType) {
 		serviceQuotaInstance.deepDocCPUQuota = &deepDocCPUQuota{}
 	case common.ServerTypeDeepDocGPU:
 		serviceQuotaInstance.deepDocGPUQuota = &deepDocGPUQuota{}
+	case common.ServerTypeChatter:
+		serviceQuotaInstance.chatterQuota = &ChatterServiceQuota{}
 	}
 }
 
@@ -209,6 +222,8 @@ func updateAPIServiceQuota(quota APIServerHeartbeatResponse) {
 	serviceQuotaInstance.apiServiceQuota.CPUNum = quota.CPUNum
 	serviceQuotaInstance.apiServiceQuota.MaxConcurrency = quota.MaxConcurrency
 	serviceQuotaInstance.apiServiceQuota.Features = NewServiceFeatures(quota.Features)
+	serviceQuotaInstance.apiServiceQuota.LicenseType = LicenseType(quota.LicenseType)
+
 	serviceQuotaInstance.LastUpdateTime = time.Now()
 }
 
@@ -216,6 +231,7 @@ func updateIngestorQuota(quota IngestorHeartbeatResponse) {
 	serviceQuotaInstance.ingestorQuota.CPUNum = quota.CPUNum
 	serviceQuotaInstance.ingestorQuota.WorkerNum = quota.WorkerNum
 	serviceQuotaInstance.ingestorQuota.Features = NewServiceFeatures(quota.Features)
+	serviceQuotaInstance.ingestorQuota.LicenseType = LicenseType(quota.LicenseType)
 
 	serviceQuotaInstance.LastUpdateTime = time.Now()
 }
@@ -224,6 +240,14 @@ func updateSyncerQuota(quota FileSyncerHeartbeatResponse) {
 	serviceQuotaInstance.syncerQuota.CPUNum = quota.CPUNum
 	serviceQuotaInstance.syncerQuota.WorkerNum = quota.WorkerNum
 	serviceQuotaInstance.syncerQuota.Features = NewServiceFeatures(quota.Features)
+	serviceQuotaInstance.syncerQuota.LicenseType = LicenseType(quota.LicenseType)
+
+	serviceQuotaInstance.LastUpdateTime = time.Now()
+}
+
+func updateChatterQuota(quota ChatterHeartbeatResponse) {
+	serviceQuotaInstance.chatterQuota.Features = NewServiceFeatures(quota.Features)
+	serviceQuotaInstance.chatterQuota.LicenseType = LicenseType(quota.LicenseType)
 
 	serviceQuotaInstance.LastUpdateTime = time.Now()
 }
@@ -233,6 +257,7 @@ func updateDeepDocCPUQuota(quota DeepDocCPUHeartbeatResponse) {
 	serviceQuotaInstance.deepDocCPUQuota.WorkerNum = quota.WorkerNum
 	serviceQuotaInstance.deepDocCPUQuota.MaxConcurrency = quota.MaxConcurrency
 	serviceQuotaInstance.deepDocCPUQuota.Features = NewServiceFeatures(quota.Features)
+	serviceQuotaInstance.deepDocCPUQuota.LicenseType = LicenseType(quota.LicenseType)
 
 	serviceQuotaInstance.LastUpdateTime = time.Now()
 }
@@ -243,6 +268,7 @@ func updateDeepDocGPUQuota(quota DeepDocGPUHeartbeatResponse) {
 	serviceQuotaInstance.deepDocGPUQuota.WorkerNum = quota.WorkerNum
 	serviceQuotaInstance.deepDocGPUQuota.MaxConcurrency = quota.MaxConcurrency
 	serviceQuotaInstance.deepDocGPUQuota.Features = NewServiceFeatures(quota.Features)
+	serviceQuotaInstance.deepDocGPUQuota.LicenseType = LicenseType(quota.LicenseType)
 
 	serviceQuotaInstance.LastUpdateTime = time.Now()
 }
@@ -276,8 +302,12 @@ func UpdateServiceQuota(serverType common.ServerType, payload []byte) error {
 		updateSyncerQuota(resp)
 
 	case common.ServerTypeChatter:
-		// Chatter reports health but has no service quota to update.
-		return nil
+		var resp ChatterHeartbeatResponse
+		if err := json.Unmarshal(payload, &resp); err != nil {
+			return err
+		}
+		common.Info("Chatter server heartbeat response", zap.Any("resp", resp))
+		updateChatterQuota(resp)
 
 	case common.ServerTypeDeepDocCPU:
 		var resp DeepDocCPUHeartbeatResponse

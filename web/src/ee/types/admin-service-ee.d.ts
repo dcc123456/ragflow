@@ -631,12 +631,13 @@ declare namespace AdminServiceEe {
     avg_duration_ms: number;
   };
   // License types
-  export type LicenseType = 'trial' | 'standard' | 'perpetual' | 'cluster';
+  export type LicenseType = 'trial' | 'standard' | 'perpetual' | 'saas';
   export type LicenseStatus = 'valid' | 'expired' | 'pending' | 'inactive';
 
   export type LicenseInfo = {
     ID: string;
     Version: string;
+    Type: string;
     CustomerName: string;
     IssuedAt: string;
     ValidFrom: string;

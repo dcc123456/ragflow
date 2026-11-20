@@ -60,17 +60,19 @@ func TestChatterHeartbeat(t *testing.T) {
 		t.Fatal(err)
 	}
 	configPath := filepath.Join(t.TempDir(), "service_conf.yaml")
-	if err := os.WriteFile(configPath, []byte("{}\n"), 0600); err != nil {
+	if err = os.WriteFile(configPath, []byte("{}\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("RAGFLOW_ADMIN_HOST", host)
 	t.Setenv("RAGFLOW_ADMIN_HTTP_PORT", port)
-	if err := server.Init(configPath); err != nil {
+	if err = server.Init(configPath); err != nil {
 		t.Fatal(err)
 	}
 
+	utility.InitServiceQuota(common.ServerTypeChatter)
+
 	client := service.NewAdminClient(common.ServerTypeChatter, "chatter-test", host, 0)
-	if err := client.SendHeartbeat(); err != nil {
+	if err = client.SendHeartbeat(); err != nil {
 		t.Fatalf("send Chatter heartbeat: %v", err)
 	}
 	status, ok := GlobalServerStatusStore.GetStatus("chatter-test")
@@ -100,7 +102,7 @@ func TestReportsPreservesHeartbeatResponse(t *testing.T) {
 			status:  http.StatusOK,
 			code:    common.CodeLicenseValid,
 			message: "License valid",
-			data:    map[string]any{"cpu_num": float64(2), "max_concurrency": float64(4), "features": map[string]any{"RBAC": true}},
+			data:    map[string]any{"cpu_num": float64(2), "license_type": "", "max_concurrency": float64(4), "features": map[string]any{"RBAC": true}},
 		},
 		{
 			name:    "service error retains code and message",

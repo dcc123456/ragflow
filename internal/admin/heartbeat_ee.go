@@ -100,6 +100,7 @@ func (s *ServerStatusStore) UpdateStatus(serverName string, status *common.BaseM
 			CPUNum:         s.CurrentLicense.APIQuota.CPUNum,
 			MaxConcurrency: s.CurrentLicense.APIQuota.MaxConcurrency,
 			Features:       s.CurrentLicense.Features,
+			LicenseType:    string(s.CurrentLicense.Type),
 		}
 		serverStatusResponse = apiServerResponse.ToMap()
 
@@ -119,9 +120,10 @@ func (s *ServerStatusStore) UpdateStatus(serverName string, status *common.BaseM
 		}
 		common.Info("Update Ingestion server status", zap.String("status", ingestorStatus.PrintAll()))
 		ingestorResponse := utility.IngestorHeartbeatResponse{
-			CPUNum:    s.CurrentLicense.IngestorQuota.CPUNum,
-			WorkerNum: s.CurrentLicense.IngestorQuota.WorkerNum,
-			Features:  s.CurrentLicense.Features,
+			CPUNum:      s.CurrentLicense.IngestorQuota.CPUNum,
+			WorkerNum:   s.CurrentLicense.IngestorQuota.WorkerNum,
+			Features:    s.CurrentLicense.Features,
+			LicenseType: string(s.CurrentLicense.Type),
 		}
 		serverStatusResponse = ingestorResponse.ToMap()
 	case common.ServerTypeFileSyncer:
@@ -140,9 +142,10 @@ func (s *ServerStatusStore) UpdateStatus(serverName string, status *common.BaseM
 		}
 		common.Info("Update File syncer server status", zap.String("status", fileSyncerStatus.PrintAll()))
 		fileSyncerResponse := utility.FileSyncerHeartbeatResponse{
-			CPUNum:    s.CurrentLicense.SyncerQuota.CPUNum,
-			WorkerNum: s.CurrentLicense.SyncerQuota.WorkerNum,
-			Features:  s.CurrentLicense.Features,
+			CPUNum:      s.CurrentLicense.SyncerQuota.CPUNum,
+			WorkerNum:   s.CurrentLicense.SyncerQuota.WorkerNum,
+			Features:    s.CurrentLicense.Features,
+			LicenseType: string(s.CurrentLicense.Type),
 		}
 		serverStatusResponse = fileSyncerResponse.ToMap()
 	case common.ServerTypeChatter:
@@ -151,7 +154,11 @@ func (s *ServerStatusStore) UpdateStatus(serverName string, status *common.BaseM
 			return nil, err
 		}
 		common.Info("Update Chatter server status", zap.String("status", chatterStatus.PrintAll()))
-		serverStatusResponse = map[string]interface{}{}
+		chatterResponse := utility.ChatterHeartbeatResponse{
+			Features:    s.CurrentLicense.Features,
+			LicenseType: string(s.CurrentLicense.Type),
+		}
+		serverStatusResponse = chatterResponse.ToMap()
 	case common.ServerTypeDeepDocCPU:
 		// DeepDoc CPU server
 		if s.CurrentLicense.DeepDocCPUQuota.Count > 0 {
@@ -172,6 +179,7 @@ func (s *ServerStatusStore) UpdateStatus(serverName string, status *common.BaseM
 			MaxConcurrency: s.CurrentLicense.DeepDocCPUQuota.MaxConcurrency,
 			WorkerNum:      s.CurrentLicense.DeepDocCPUQuota.WorkerNum,
 			Features:       s.CurrentLicense.Features,
+			LicenseType:    string(s.CurrentLicense.Type),
 		}
 		serverStatusResponse = deepDocCPUResponse.ToMap()
 	case common.ServerTypeDeepDocGPU:
@@ -195,6 +203,7 @@ func (s *ServerStatusStore) UpdateStatus(serverName string, status *common.BaseM
 			MaxConcurrency: s.CurrentLicense.DeepDocGPUQuota.MaxConcurrency,
 			WorkerNum:      s.CurrentLicense.DeepDocGPUQuota.WorkerNum,
 			Features:       s.CurrentLicense.Features,
+			LicenseType:    string(s.CurrentLicense.Type),
 		}
 		serverStatusResponse = deepDocGPUResponse.ToMap()
 	default:

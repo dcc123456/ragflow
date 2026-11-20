@@ -646,6 +646,7 @@ type APIServerHeartbeatResponse struct {
 	CPUNum         int             `json:"cpu_num"`
 	MaxConcurrency int             `json:"max_concurrency"`
 	Features       map[string]bool `json:"features"`
+	LicenseType    string          `json:"license_type"`
 }
 
 func (a *APIServerHeartbeatResponse) ToMap() map[string]interface{} {
@@ -653,34 +654,51 @@ func (a *APIServerHeartbeatResponse) ToMap() map[string]interface{} {
 		"cpu_num":         a.CPUNum,
 		"max_concurrency": a.MaxConcurrency,
 		"features":        a.Features,
+		"license_type":    a.LicenseType,
 	}
 }
 
 type IngestorHeartbeatResponse struct {
-	CPUNum    int             `json:"cpu_num"`
-	WorkerNum int             `json:"worker_num"`
-	Features  map[string]bool `json:"features"`
+	CPUNum      int             `json:"cpu_num"`
+	WorkerNum   int             `json:"worker_num"`
+	Features    map[string]bool `json:"features"`
+	LicenseType string          `json:"license_type"`
 }
 
 func (i *IngestorHeartbeatResponse) ToMap() map[string]interface{} {
 	return map[string]interface{}{
-		"cpu_num":    i.CPUNum,
-		"worker_num": i.WorkerNum,
-		"features":   i.Features,
+		"cpu_num":      i.CPUNum,
+		"worker_num":   i.WorkerNum,
+		"features":     i.Features,
+		"license_type": i.LicenseType,
 	}
 }
 
 type FileSyncerHeartbeatResponse struct {
-	CPUNum    int             `json:"cpu_num"`
-	WorkerNum int             `json:"worker_num"`
-	Features  map[string]bool `json:"features"`
+	CPUNum      int             `json:"cpu_num"`
+	WorkerNum   int             `json:"worker_num"`
+	Features    map[string]bool `json:"features"`
+	LicenseType string          `json:"license_type"`
 }
 
 func (f *FileSyncerHeartbeatResponse) ToMap() map[string]interface{} {
 	return map[string]interface{}{
-		"cpu_num":    f.CPUNum,
-		"worker_num": f.WorkerNum,
-		"features":   f.Features,
+		"cpu_num":      f.CPUNum,
+		"worker_num":   f.WorkerNum,
+		"features":     f.Features,
+		"license_type": f.LicenseType,
+	}
+}
+
+type ChatterHeartbeatResponse struct {
+	Features    map[string]bool `json:"features"`
+	LicenseType string          `json:"license_type"`
+}
+
+func (f *ChatterHeartbeatResponse) ToMap() map[string]interface{} {
+	return map[string]interface{}{
+		"features":     f.Features,
+		"license_type": f.LicenseType,
 	}
 }
 
@@ -689,6 +707,7 @@ type DeepDocCPUHeartbeatResponse struct {
 	MaxConcurrency int             `json:"max_concurrency"`
 	WorkerNum      int             `json:"worker_num"`
 	Features       map[string]bool `json:"features"`
+	LicenseType    string          `json:"license_type"`
 }
 
 func (d *DeepDocCPUHeartbeatResponse) ToMap() map[string]interface{} {
@@ -697,6 +716,7 @@ func (d *DeepDocCPUHeartbeatResponse) ToMap() map[string]interface{} {
 		"max_concurrency": d.MaxConcurrency,
 		"worker_num":      d.WorkerNum,
 		"features":        d.Features,
+		"license_type":    d.LicenseType,
 	}
 }
 
@@ -706,6 +726,7 @@ type DeepDocGPUHeartbeatResponse struct {
 	MaxConcurrency int             `json:"max_concurrency"`
 	WorkerNum      int             `json:"worker_num"`
 	Features       map[string]bool `json:"features"`
+	LicenseType    string          `json:"license_type"`
 }
 
 func (d *DeepDocGPUHeartbeatResponse) ToMap() map[string]interface{} {
@@ -714,5 +735,7 @@ func (d *DeepDocGPUHeartbeatResponse) ToMap() map[string]interface{} {
 		"gpu_num":         d.GPUNum,
 		"max_concurrency": d.MaxConcurrency,
 		"worker_num":      d.WorkerNum,
+		"features":        d.Features,
+		"license_type":    d.LicenseType,
 	}
 }

@@ -105,6 +105,12 @@ func InitLicense(ctx context.Context) error {
 
 	// Set to global status
 	GlobalServerStatusStore.SetLicense(license)
+
+	if license.Type == utility.Saas {
+		common.Debug("SAAS license, skip time record")
+		return nil
+	}
+
 	err = InitFirstTimeRecord(ctx)
 	if err != nil {
 		common.Fatal("Error initializing first time record: %v", zap.Error(err))
@@ -217,6 +223,10 @@ func (s *Service) CheckLicense(ctx context.Context) (common.ErrorCode, error) {
 		return licenseCode, errors.New(licenseCheckResult)
 	}
 
+	if currentLicense.Type == utility.Saas {
+		return common.CodeLicenseValid, errors.New("SaaS license")
+	}
+
 	lastRecord, err := GetLastTimeRecord(ctx)
 	if err != nil {
 		common.Warn(fmt.Sprintf("Fail to get last time record: %v", err))
@@ -270,8 +280,14 @@ func extractLicenseV2(licenseStr string) (*utility.LicenseV2, map[string]interfa
 	result["Version"] = licenseV2.Version
 	result["CustomerName"] = licenseV2.CustomerName
 	result["IssuedAt"] = formatLicenseTime(licenseV2.IssuedAt)
+	result["Type"] = licenseV2.Type
 	result["ValidFrom"] = formatLicenseTime(licenseV2.ValidFrom)
-	result["ValidUntil"] = formatLicenseTime(licenseV2.ValidUntil)
+	if licenseV2.Type == utility.Saas {
+		result["ValidUntil"] = "No expiration"
+	} else {
+		result["ValidUntil"] = formatLicenseTime(licenseV2.ValidUntil)
+	}
+
 	if licenseV2.APIQuota.Count == 0 {
 		result["API Server count"] = "Unlimited"
 	} else {
@@ -342,6 +358,10 @@ func CheckLicenseValidity(currentLicense *utility.LicenseV2, licenseCode common.
 
 	if currentLicense == nil {
 		return common.CodeLicenseNotFound
+	}
+
+	if currentLicense.Type == utility.Saas {
+		return common.CodeLicenseValid
 	}
 
 	now := time.Now()
@@ -490,6 +510,7 @@ func CleanOldRecords(ctx context.Context) error {
 }
 
 func InitFirstTimeRecord(ctx context.Context) error {
+	common.Debug("Init first time record")
 	_, err := GetLastTimeRecord(ctx)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = SaveTimeRecord(ctx, nil)
@@ -511,6 +532,10 @@ func StartTimeRecordService(interval time.Duration) error {
 	}
 
 	currentLicense := GlobalServerStatusStore.GetLicense()
+	if currentLicense.Type == utility.Saas {
+		return errors.New("SaaS license")
+	}
+
 	if lastData.Nonce != currentLicense.Digest {
 		GlobalServerStatusStore.SetLicenseStatusCode(common.CodeLicenseDigestError)
 		return errors.New("digest error")

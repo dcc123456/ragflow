@@ -157,6 +157,12 @@ func (s *Service) SetSystemLicense(ctx context.Context, licenseStr string) (map[
 	}
 
 	GlobalServerStatusStore.SetLicense(license)
+
+	if license.Type != utility.Saas {
+		common.Info("SaaS license is valid")
+		return result, nil
+	}
+
 	err = InitFirstTimeRecord(ctx)
 	if err != nil {
 		common.Fatal("Error initializing first time record: %v", zap.Error(err))
@@ -221,6 +227,12 @@ func (s *Service) CheckSystemLicense(ctx context.Context) (map[string]interface{
 		}, nil
 	}
 
+	if currentLicense.Type == utility.Saas {
+		return map[string]interface{}{
+			"result": "SaaS license",
+		}, nil
+	}
+
 	lastRecord, err := GetLastTimeRecord(ctx)
 	if err != nil {
 		common.Warn(fmt.Sprintf("Fail to get last time record: %v", err))
@@ -267,6 +279,13 @@ func (s *Service) CheckSystemLicense(ctx context.Context) (map[string]interface{
 }
 
 func (s *Service) UpdateSystemLicenseConfig(ctx context.Context, timeRecordSaveInterval, timeRecordTaskDuration int64) error {
+	license := GlobalServerStatusStore.GetLicense()
+	if license.Type != utility.Saas {
+		errorMessage := "SaaS license, skip time record config"
+		common.Info(errorMessage)
+		return errors.New(errorMessage)
+	}
+
 	if !(timeRecordSaveInterval >= 3 && timeRecordSaveInterval <= 86400) {
 		return errors.New("Value1 value range:  [3, 86400]")
 	}
