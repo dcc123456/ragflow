@@ -36,6 +36,12 @@ func init() {
 // installed on the model info, cloned with the call-scoped fields reset, so
 // call sites that pass nil still produce an attributable usage row (tenant,
 // user, provider, instance, model, group).
+//
+// The clone deliberately resets StartAt: usageFor, the single entry every
+// typed call passes through, stamps the resolved record with the call start
+// right after this resolver returns. Call sites that pass an explicit usage
+// should still set StartAt themselves (or leave it zero and let usageFor
+// stamp it).
 func resolveUsageTemplate(info *ModelInfo, usage *common.ModelUsage) *common.ModelUsage {
 	if usage != nil {
 		if usage.GroupID == "" && info != nil && info.GroupID != "" {

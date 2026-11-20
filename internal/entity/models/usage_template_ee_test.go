@@ -85,8 +85,13 @@ func TestChatModelUsageTemplateFillsNilUsage(t *testing.T) {
 	if usage.UserID != "user-1" || usage.TenantID != "tenant-1" || usage.GroupID != "group-1" || usage.GroupName != "failover" {
 		t.Fatalf("fallback usage lost identity: %+v", usage)
 	}
-	if usage.InputTokens != 0 || usage.OutputTokens != 0 || usage.TotalTokens != 0 || usage.RequestID != "" || usage.ResponseTimeMS != 0 || !usage.StartAt.IsZero() {
+	if usage.InputTokens != 0 || usage.OutputTokens != 0 || usage.TotalTokens != 0 || usage.RequestID != "" || usage.ResponseTimeMS != 0 {
 		t.Fatalf("fallback usage carried stale call-scoped fields: %+v", usage)
+	}
+	// usageFor stamps the call start on the resolved record, so the fallback
+	// must carry a fresh StartAt, never the template's construction-time one.
+	if usage.StartAt.IsZero() || usage.StartAt.Equal(startAt) {
+		t.Fatalf("fallback usage must carry the call start stamped by usageFor, got %+v", usage.StartAt)
 	}
 	if template.InputTokens != 11 || template.OutputTokens != 7 || template.TotalTokens != 18 || template.RequestID != "req-1" || template.StartAt != startAt {
 		t.Fatalf("template was mutated by the call: %+v", template)
@@ -103,6 +108,11 @@ func TestChatModelExplicitUsageWinsAndNilTemplateKeepsNil(t *testing.T) {
 	}
 	if driver.chatUsage != explicit {
 		t.Fatal("explicit usage was replaced by the fallback")
+	}
+	// An explicit usage built without StartAt still gets the call start
+	// stamped by usageFor, in place.
+	if explicit.StartAt.IsZero() {
+		t.Fatal("explicit usage was not stamped with the call start")
 	}
 
 	plain := NewChatModelWithInfo(driver, strPtr("gpt-test"), &APIConfig{}, nil)
