@@ -27,22 +27,22 @@ import (
 )
 
 const (
-	// sharedTemplateDir is the embed directory owned by the community tree.
+	// sharedTemplateDir is the embed directory every build reads.
 	sharedTemplateDir = "template"
-	// editionTemplateDir holds built-in pipelines that only the enterprise
-	// edition ships. Assets must live outside sharedTemplateDir: the shared
-	// embed glob reaches every JSON under it, so a community build would
-	// discover a pipeline whose components it never registers.
+	// editionTemplateDir holds built-in pipelines reached only through
+	// editionTemplateFS. Assets must live outside sharedTemplateDir: the
+	// shared embed glob reaches every JSON under it, so a build that cannot
+	// register their components would still discover them.
 	editionTemplateDir = "template_ee"
 )
 
 //go:embed template_ee/*.json
-var editionTemplateFS embed.FS
+var editionAssetsFS embed.FS
 
-// editionTemplatesFS exposes sharedTemplateDir as the union of the shared
-// templates and the enterprise ones. Keeping the merge at the fs.FS layer lets
-// the shared registry own parsing, duplicate detection and ordering, so this
-// file cannot drift from NewRegistryFromFS.
+// editionTemplatesFS exposes sharedTemplateDir as the union of the
+// always-embedded templates and the ones under editionTemplateDir. Keeping
+// the merge at the fs.FS layer lets the registry own parsing, duplicate
+// detection and ordering through one NewRegistryFromFS.
 type editionTemplatesFS struct{}
 
 var _ fs.ReadDirFS = editionTemplatesFS{}
@@ -53,7 +53,7 @@ func (editionTemplatesFS) Open(name string) (fs.File, error) {
 		return file, nil
 	}
 	if editionName, ok := editionTemplatePath(name); ok {
-		if editionFile, editionErr := editionTemplateFS.Open(editionName); editionErr == nil {
+		if editionFile, editionErr := editionAssetsFS.Open(editionName); editionErr == nil {
 			return editionFile, nil
 		}
 	}
@@ -68,7 +68,7 @@ func (editionTemplatesFS) ReadDir(name string) ([]fs.DirEntry, error) {
 	if name != sharedTemplateDir {
 		return entries, nil
 	}
-	editionEntries, err := fs.ReadDir(editionTemplateFS, editionTemplateDir)
+	editionEntries, err := fs.ReadDir(editionAssetsFS, editionTemplateDir)
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +77,7 @@ func (editionTemplatesFS) ReadDir(name string) ([]fs.DirEntry, error) {
 	return entries, nil
 }
 
-// editionTemplatePath maps a shared-directory path to its enterprise asset.
+// editionTemplatePath maps a shared-directory path to its template_ee/ asset.
 func editionTemplatePath(name string) (string, bool) {
 	rest, ok := strings.CutPrefix(name, sharedTemplateDir+"/")
 	if !ok {
@@ -86,14 +86,7 @@ func editionTemplatePath(name string) (string, bool) {
 	return path.Join(editionTemplateDir, rest), true
 }
 
-// init owns DefaultRegistry's first build so the edition templates are part of
-// it. This must run before any other init in this package that would call
-// DefaultRegistry: a registry built from builtinTemplateFS alone silently drops
-// every template_ee/ asset. TestDefaultRegistryIncludesEditionTemplates fails
-// loudly if that ever happens. When the shared tree grows an explicit edition
-// seam, delete this file and load template_ee/ through that seam instead.
-func init() {
-	defaultRegistryOnce.Do(func() {
-		defaultRegistry, defaultRegistryErr = NewRegistryFromFS(editionTemplatesFS{}, sharedTemplateDir)
-	})
-}
+// editionTemplateFS unions the always-embedded templates with the
+// template_ee/ assets, so the registry discovers both through its single
+// NewRegistryFromFS path.
+func editionTemplateFS() fs.ReadDirFS { return editionTemplatesFS{} }
