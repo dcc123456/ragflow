@@ -50,7 +50,7 @@ func TestParseArgsDeepDocInferenceConcurrency(t *testing.T) {
 			defer func() { os.Args = old }()
 			os.Args = tc.args
 
-			got, err := parseArgs()
+			got, err := parseArgsFrom(os.Args)
 			if tc.wantErr {
 				if err == nil {
 					t.Fatalf("parseArgs() = nil error, want rejection for %v", tc.args)
@@ -87,7 +87,7 @@ func TestParseArgsDeepDocInferenceCPUCores(t *testing.T) {
 			defer func() { os.Args = old }()
 			os.Args = tc.args
 
-			got, err := parseArgs()
+			got, err := parseArgsFrom(os.Args)
 			if tc.wantErr {
 				if err == nil {
 					t.Fatalf("parseArgs() = nil error, want rejection for %v", tc.args)

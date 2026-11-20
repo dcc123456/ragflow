@@ -34,7 +34,7 @@ func parseArgsForTest(t *testing.T, argv ...string) (*bootstrap.ServerArgs, erro
 	orig := os.Args
 	os.Args = append([]string{"ragflow_server"}, argv...)
 	defer func() { os.Args = orig }()
-	return parseArgs()
+	return parseArgsFrom(os.Args)
 }
 
 func TestParseArgsMigrateSelectsMode(t *testing.T) {
