@@ -562,51 +562,28 @@ export const testSandboxConnection = (
     params,
   );
 
-// LLM Trace Statistics
-export const getLlmTraceSummary = (
-  params: AdminServiceEe.LlmTraceByOrgParams,
+// Token Usage Statistics
+export const getTokenStatsDetail = (
+  params: AdminServiceEe.TokenStatsDetailParams,
 ) =>
-  request.get<ResponseData<AdminServiceEe.LlmTraceSummary>>(
-    API.adminLlmTraceSummary,
+  request.get<ResponseData<AdminServiceEe.TokenStatsDetailItem[]>>(
+    API.adminTokenStats,
     { params },
   );
 
-export const getLlmTraceByOrg = (
-  params: AdminServiceEe.LlmTraceByOrgParams & AdminServiceEe.PageParams,
+export const getTokenStatsUsers = (
+  params: AdminServiceEe.TokenStatsUsersParams,
 ) =>
-  request.get<ResponseData<AdminServiceEe.LlmTraceByOrgItem[]>>(
-    API.adminLlmTraceByOrg,
-    { params },
-  );
-export const getLlmTraceRecent = (
-  params: AdminServiceEe.LlmTraceByOrgParams & AdminServiceEe.PageParams,
-) =>
-  request.get<ResponseData<AdminServiceEe.LlmTraceRecentItem[]>>(
-    API.adminLlmTraceRecent,
+  request.get<ResponseData<AdminServiceEe.TokenStatsUserItem[]>>(
+    API.adminTokenStatsUsers,
     { params },
   );
 
-export const getLlmTraceTopConsumers = (
-  params: AdminServiceEe.LlmTraceTopConsumersParams & AdminServiceEe.PageParams,
+export const getTokenStatsSummary = (
+  params: AdminServiceEe.TokenStatsRangeParams,
 ) =>
-  request.get<ResponseData<AdminServiceEe.LlmTraceTopConsumer[]>>(
-    API.adminLlmTraceTopConsumers,
-    { params },
-  );
-
-export const getLlmTraceTrends = (
-  params: AdminServiceEe.LlmTraceTrendsParams,
-) =>
-  request.get<ResponseData<AdminServiceEe.LlmTraceTrend[]>>(
-    API.adminLlmTraceTrends,
-    { params },
-  );
-
-export const getLlmTraceByModel = (
-  params: AdminServiceEe.LlmTraceByModelParams,
-) =>
-  request.get<ResponseData<AdminServiceEe.LlmTraceByModelItem[]>>(
-    API.adminLlmTraceByModel,
+  request.get<ResponseData<AdminServiceEe.TokenStatsSummary>>(
+    API.adminTokenStatsSummary,
     { params },
   );
 // License APIs

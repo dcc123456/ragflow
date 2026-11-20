@@ -541,94 +541,65 @@ declare namespace AdminServiceEe {
     details?: Record<string, unknown>;
   };
 
-  // LLM Trace Statistics types
-  export type LlmTraceDimension = 'user' | 'team' | 'dept' | 'bu';
+  // Token usage statistics types
+  export type TokenStatsGranularity = 'hour' | 'day' | 'month';
 
-  export type PageParams = {
-    page: number;
-    page_size: number;
-  };
-  export type LlmTraceByOrgParams = {
-    hours: string;
-    dimension: LlmTraceDimension;
-    keyword?: string;
+  export type TokenStatsRangeParams = {
+    from: string;
+    to: string;
   };
 
-  export type LlmTraceTopConsumersParams = {
-    hours: string;
-    dimension: LlmTraceDimension;
-    limit?: string;
-  };
-
-  export type LlmTraceTrendsParams = {
-    hours: string;
-    dimension: LlmTraceDimension;
-  };
-
-  export type LlmTraceByModelParams = {
-    hours: string;
-  };
-
-  export type LlmTraceSummary = {
-    avg_duration_ms: number;
-    input_tokens: number;
-    output_tokens: number;
-    total_requests: number;
-    total_tokens: number;
-    total_traces: number;
-    unique_depts: number;
-    unique_teams: number;
-    unique_users: number;
-  };
-
-  export type LlmTraceByOrgItem = {
-    name: string;
-    input_tokens: number;
-    output_tokens: number;
-    total_tokens: number;
-    request_count: number;
-    avg_duration_ms: number;
-    user_count?: number;
-  };
-
-  export type LlmTraceTopConsumer = {
-    rank: number;
-    name: string;
-    dimension: LlmTraceDimension;
-    input_tokens: number;
-    output_tokens: number;
-    total_tokens: number;
-    request_count: number;
-    avg_duration_ms: number;
-  };
-
-  export type LlmTraceTrend = {
-    time: string;
-    input_tokens: number;
-    output_tokens: number;
-    total_tokens: number;
-    request_count: number;
-    avg_duration_ms: number;
-  };
-
-  export interface LlmTraceRecentItem {
+  export type TokenStatsDetailParams = TokenStatsRangeParams & {
     user_name: string;
-    input_tokens: number;
-    output_tokens: number;
-    total_tokens: number;
-    duration_ms: number;
-    model: string;
-    timestamp: string;
-    dept_name: string;
-    team_name: string[];
-  }
-  export type LlmTraceByModelItem = {
+    granularity: TokenStatsGranularity;
+  };
+
+  export type TokenStatsUsersParams = TokenStatsRangeParams & {
+    top: number;
+  };
+
+  export type TokenStatsDetailItem = {
+    stat_date: string;
+    user_id: string;
+    email: string;
+    group_id: string;
+    group_name: string;
+    app_id: string;
+    app_name: string;
+    provider_name: string;
     model_name: string;
-    input_tokens: number;
-    output_tokens: number;
-    total_tokens: number;
+    instance_name?: string;
     request_count: number;
-    avg_duration_ms: number;
+    total_input_tokens: number;
+    total_output_tokens: number;
+    total_tokens: number;
+    avg_response_time_ms: number;
+    error_count: number;
+    success_rate: number;
+  };
+
+  export type TokenStatsUserItem = {
+    user_id: string;
+    email: string;
+    request_count: number;
+    total_input_tokens: number;
+    total_output_tokens: number;
+    total_tokens: number;
+    avg_response_time_ms: number;
+    error_count: number;
+    success_rate: number;
+  };
+
+  export type TokenStatsSummary = TokenStatsRangeParams & {
+    from_date: string;
+    to_date: string;
+    request_count: number;
+    total_input_tokens: number;
+    total_output_tokens: number;
+    total_tokens: number;
+    avg_response_time_ms: number;
+    error_count: number;
+    success_rate: number;
   };
   // License types
   export type LicenseType = 'trial' | 'standard' | 'perpetual' | 'saas';

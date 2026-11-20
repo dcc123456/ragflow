@@ -1,11 +1,8 @@
-// RankingTable component for displaying user/department/group rankings
-
+import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { flexRender } from '@tanstack/react-table';
-
+import { SelectWithSearch } from '@/components/originui/select-with-search';
 import { TableEmpty } from '@/components/table-skeleton';
-import { Button } from '@/components/ui/button';
 import {
   Table,
   TableBody,
@@ -14,101 +11,130 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { cn } from '@/lib/utils';
 
-import { memo } from 'react';
-import { useRankingTable } from './hooks';
-import type { FilterValues } from './types';
-import { getSortIcon } from './utils';
+import type { TokenStatsUserItem } from './types';
+import { formatCount } from './utils';
 
-interface RankingTableProps {
-  filters: FilterValues;
-  // onExport: (data: unknown[]) => void;
+const TopNOptions = [10, 20, 50];
+
+interface RankingRowProps {
+  rank: number;
+  item: TokenStatsUserItem;
+  selected: boolean;
+  onSelect: (email: string) => void;
 }
 
-const RankingTable = memo(({ filters }: RankingTableProps) => {
+const RankingRow = memo(
+  ({ rank, item, selected, onSelect }: RankingRowProps) => {
+    const handleClick = () => {
+      onSelect(item.email);
+    };
+
+    return (
+      <TableRow
+        className={cn(
+          'group cursor-pointer hover:bg-bg-card',
+          selected && 'bg-bg-card',
+        )}
+        onClick={handleClick}
+        aria-selected={selected}
+      >
+        <TableCell className="w-16 text-text-secondary">{rank}</TableCell>
+        <TableCell className="text-text-secondary group-hover:text-text-primary">
+          <div className="truncate" title={item.email}>
+            {item.email}
+          </div>
+        </TableCell>
+        <TableCell className="text-text-secondary group-hover:text-text-primary">
+          {formatCount(item.total_tokens)}
+        </TableCell>
+      </TableRow>
+    );
+  },
+);
+
+RankingRow.displayName = 'RankingRow';
+
+interface RankingTableProps {
+  items: TokenStatsUserItem[];
+  isLoading: boolean;
+  top: number;
+  onTopChange: (top: number) => void;
+  selectedEmail: string;
+  onSelect: (email: string) => void;
+}
+
+export function RankingTable({
+  items,
+  isLoading,
+  top,
+  onTopChange,
+  selectedEmail,
+  onSelect,
+}: RankingTableProps) {
   const { t } = useTranslation();
 
-  const { table, isLoading, pagination, setPagination } =
-    useRankingTable(filters);
+  const handleTopChange = (value: string) => {
+    onTopChange(Number(value));
+  };
 
   return (
-    <div className="mx-6">
-      {isLoading ? (
-        <div className="flex items-center justify-center h-32 text-text-secondary">
-          {t('common.loading', 'Loading...')}
-        </div>
-      ) : (
-        <Table>
-          <TableHeader>
-            {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id}>
-                    {header.isPlaceholder ? null : header.column.getCanSort() ? (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="-ml-3 h-8"
-                        onClick={header.column.getToggleSortingHandler()}
-                      >
-                        {flexRender(
-                          header.column.columnDef.header,
-                          header.getContext(),
-                        )}
-                        {getSortIcon(header.column.getIsSorted())}
-                      </Button>
-                    ) : (
-                      flexRender(
-                        header.column.columnDef.header,
-                        header.getContext(),
-                      )
-                    )}
-                  </TableHead>
-                ))}
-              </TableRow>
-            ))}
-          </TableHeader>
-          <TableBody>
-            {table.getRowModel().rows?.length ? (
-              table.getRowModel().rows.map((row, index) => (
-                <TableRow key={row.id} className={'group'}>
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell
-                      key={cell.id}
-                      className="text-text-secondary group-hover:text-text-primary"
-                    >
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext(),
-                      )}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
-            ) : (
-              <TableEmpty columnsLength={table.getAllColumns().length} />
-            )}
-          </TableBody>
-        </Table>
-      )}
+    <section>
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-base font-medium text-text-primary">
+          {t('admin.modelUsage.rankList')}
+        </h2>
 
-      {/* <div className="flex items-center justify-end border-t border-border-button pt-4 px-4 pb-4">
-        <RAGFlowPagination
-          total={pagination.total}
-          current={pagination.current}
-          pageSize={pagination.pageSize}
-          onChange={(page, pageSize) => {
-            setPagination({
-              page: page - 1,
-              pageSize,
-            });
-          }}
+        <SelectWithSearch
+          value={top.toString()}
+          options={TopNOptions.map((option) => ({
+            value: option.toString(),
+            label: t('admin.modelUsage.topN', { count: option }),
+          }))}
+          onChange={handleTopChange}
+          triggerClassName="w-[130px]"
         />
-      </div> */}
-    </div>
+      </div>
+
+      <Table>
+        <colgroup>
+          <col className="w-14" />
+          <col />
+          <col className="w-24" />
+        </colgroup>
+        <TableHeader>
+          <TableRow>
+            <TableHead>{t('admin.modelUsage.rank')}</TableHead>
+            <TableHead>{t('admin.modelUsage.email')}</TableHead>
+            <TableHead>{t('admin.modelUsage.tokens')}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {isLoading ? (
+            <TableRow>
+              <TableCell
+                colSpan={3}
+                className="h-24 text-center text-text-secondary"
+              >
+                {t('common.loading')}
+              </TableCell>
+            </TableRow>
+          ) : items.length ? (
+            items.map((item, index) => (
+              <RankingRow
+                key={item.user_id || item.email}
+                rank={index + 1}
+                item={item}
+                selected={item.email === selectedEmail}
+                onSelect={onSelect}
+              />
+            ))
+          ) : (
+            <TableEmpty columnsLength={3} />
+          )}
+        </TableBody>
+      </Table>
+    </section>
   );
-});
-
-RankingTable.displayName = 'RankingTable';
-
-export { RankingTable };
+}

@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import {
   Building2,
   LucideBox,
+  LucideChartColumn,
   LucideMonitor,
   LucideSettings,
   LucideSquareUserRound,
@@ -82,6 +83,11 @@ export function useEnterpriseAdminNav(): AdminNavExtension {
         path: PrivateRoutes.AdminModelProviders,
         name: t('admin.modelProviders'),
         icon: <LucideBox className="size-[1em]" />,
+      },
+      {
+        path: PrivateRoutes.AdminModelUsageStatistics,
+        name: t('admin.modelUsage.modelUsageStatistics'),
+        icon: <LucideChartColumn className="size-[1em]" />,
       },
     ],
     [isWhitelistEnabled, t],

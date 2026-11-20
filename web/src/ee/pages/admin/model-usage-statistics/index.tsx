@@ -1,69 +1,85 @@
-// Model Usage Statistics - Main Page Component
-// Combines all sub-components for the complete page
+import { useCallback, useMemo, useState } from 'react';
 
-import { useCallback, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import { endOfDay, startOfDay, subDays } from 'date-fns';
 
 import Spotlight from '@/components/spotlight';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import type { DateRange } from '@/components/originui/calendar';
 
-import { useHandleExport } from './hooks';
+import { toTokenStatsWindow, useTokenStatsUsers } from './hooks';
 import { OverView } from './overview';
 import { RankingTable } from './ranking-table';
-import { RequestLogs } from './request-logs';
-import { TableToolbar } from './table-toolbar';
-import type { FilterValues } from './types';
-export default function ModelUsageStatistics() {
-  const { t } = useTranslation();
-  // Unified filters state management for view, timeRange, and searchValue
-  const [filters, setFilters] = useState<FilterValues>({
-    view: 'users',
-    timeRange: '7days',
-    searchValue: '',
-  });
-  const { handleExport } = useHandleExport(filters, 'ranking');
+import { ModelUsageToolbar } from './table-toolbar';
+import type { TokenStatsGranularity } from './types';
+import { UsageDetail } from './usage-detail';
 
-  // Unified handler for filter changes
-  const handleFilterChange = useCallback((newFilters: FilterValues) => {
-    setFilters(newFilters);
+const DefaultTopN = 10;
+const DefaultGranularity: TokenStatsGranularity = 'day';
+
+function getDefaultRange(): DateRange {
+  const today = new Date();
+  return {
+    from: startOfDay(subDays(today, 6)),
+    to: endOfDay(today),
+  };
+}
+
+export default function ModelUsageStatistics() {
+  const [range, setRange] = useState<DateRange>(getDefaultRange);
+  const [top, setTop] = useState(DefaultTopN);
+  const [granularity, setGranularity] =
+    useState<TokenStatsGranularity>(DefaultGranularity);
+  const [selectedEmail, setSelectedEmail] = useState('');
+
+  const window = useMemo(() => toTokenStatsWindow(range), [range]);
+
+  const { data: users, isLoading } = useTokenStatsUsers(window, top);
+  const activeEmail = selectedEmail || users?.[0]?.email || '';
+
+  const handleRangeChange = useCallback((nextRange: DateRange) => {
+    setRange({
+      from: startOfDay(nextRange.from),
+      to: endOfDay(nextRange.to ?? nextRange.from),
+    });
   }, []);
 
   return (
-    <div className="relative h-full bg-transparent rounded-xl overflow-auto border-0.5 border-border-button">
+    <Card className="!shadow-none relative h-full bg-transparent rounded-xl overflow-hidden">
       <Spotlight />
 
       <ScrollArea className="size-full">
-        <div className="flex justify-between items-center">
-          {/* Toolbar with search, view selector, time range, and export */}
-          <div className="px-6 w-full py-5">
-            <TableToolbar
-              filters={filters}
-              title={t('admin.modelUsage.modelUsageStatistics')}
-              subtitle={t('admin.modelUsage.modelUsageSubtitle')}
-              onChange={handleFilterChange}
-              onExport={() => handleExport()}
-              showViewSelector
-            />
+        <CardHeader>
+          <ModelUsageToolbar range={range} onRangeChange={handleRangeChange} />
+        </CardHeader>
+
+        <CardContent>
+          <div className="grid grid-cols-1 gap-8 xl:grid-cols-[minmax(0,1fr)_400px]">
+            <div className="min-w-0 space-y-8">
+              <OverView window={window} />
+
+              <UsageDetail
+                window={window}
+                users={users ?? []}
+                email={activeEmail}
+                onEmailChange={setSelectedEmail}
+                granularity={granularity}
+                onGranularityChange={setGranularity}
+              />
+            </div>
+            <div className="min-w-0 border rounded-sm p-2">
+              <RankingTable
+                items={users ?? []}
+                isLoading={isLoading}
+                top={top}
+                onTopChange={setTop}
+                selectedEmail={activeEmail}
+                onSelect={setSelectedEmail}
+              />
+            </div>
           </div>
-        </div>
-
-        {/* Overview Statistics Cards */}
-        <OverView filters={filters} />
-
-        {/* Ranking Table */}
-        <div className="max-w-[calc(100vw-350px)] overflow-auto">
-          <RankingTable
-            filters={filters}
-            // onExport={(data) => handleExport(data, 'ranking')}
-          />
-        </div>
-        <div className="h-16 w-full" />
-
-        {/* Request Logs */}
-        <div className="max-w-[calc(100vw-350px)] overflow-auto">
-          <RequestLogs />
-        </div>
+        </CardContent>
       </ScrollArea>
-    </div>
+    </Card>
   );
 }
