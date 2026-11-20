@@ -643,7 +643,7 @@ jobs:
           RUNNER_WORKSPACE_PREFIX=${RUNNER_WORKSPACE_PREFIX:-${HOME}}
           COMPOSE_PROJECT_NAME="${GITHUB_RUN_ID}-${DOC_ENGINE}"
           echo "COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME}" >> ${GITHUB_ENV}
-          echo "RAGFLOW_CONTAINER=${COMPOSE_PROJECT_NAME}-ragflow-cpu-1" >> ${GITHUB_ENV}
+          echo "RAGFLOW_CONTAINER=${COMPOSE_PROJECT_NAME}-api-1" >> ${GITHUB_ENV}
           ARTIFACTS_DIR=${RUNNER_WORKSPACE_PREFIX}/artifacts/${GITHUB_REPOSITORY}/${GITHUB_RUN_ID}/${DOC_ENGINE}
           echo "ARTIFACTS_DIR=${ARTIFACTS_DIR}" >> ${GITHUB_ENV}
           rm -rf "${ARTIFACTS_DIR}" && mkdir -p "${ARTIFACTS_DIR}"
@@ -835,7 +835,7 @@ jobs:
           # Persist computed ports into .env so docker-compose uses the correct host bindings.
           # Remove previous CI overrides first; docker compose uses the last duplicate key.
                sed -i '/^ES_PORT=/d;/^OS_PORT=/d;/^INFINITY_THRIFT_PORT=/d;/^INFINITY_HTTP_PORT=/d;/^INFINITY_PSQL_PORT=/d;/^EXPOSE_MYSQL_PORT=/d;/^MINIO_PORT=/d;/^MINIO_CONSOLE_PORT=/d;/^REDIS_PORT=/d;/^KVROCKS_PORT=/d;/^EXPOSE_NATS_PORT=/d;/^EXPOSE_NATS_MONITORING_PORT=/d;/^NATS_MONITORING_PORT=/d;/^TEI_PORT=/d;/^KIBANA_PORT=/d;/^SVR_HTTP_PORT=/d;/^ADMIN_SVR_HTTP_PORT=/d;/^SVR_MCP_PORT=/d;/^SVR_WEB_HTTP_PORT=/d;/^SVR_WEB_HTTPS_PORT=/d;/^EXPOSE_CLICKHOUSE_TCP_PORT=/d;/^CLICKHOUSE_HTTP_PORT=/d;/^CLICKHOUSE_PROMETHEUS_PORT=/d;/^COMPOSE_PROFILES=/d;/^TEI_MODEL=/d;/^RAGFLOW_IMAGE=/d;/^DOC_ENGINE=/d' .env
-          # docker-compose-go.yml uses env_file: .env-go for the ragflow-cpu
+          # docker-compose-go.yml uses env_file: .env-go for the api
           # container, so the Go server process reads COMPOSE_PROFILES and
           # TEI_MODEL from .env (not .env). Without syncing these two,
           # the Go server's checkModelAvailable TEI bypass never triggers
@@ -1153,7 +1153,7 @@ jobs:
           RUNNER_WORKSPACE_PREFIX=${RUNNER_WORKSPACE_PREFIX:-${HOME}}
           COMPOSE_PROJECT_NAME="${GITHUB_RUN_ID}-${DOC_ENGINE}"
           echo "COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME}" >> ${GITHUB_ENV}
-          echo "RAGFLOW_CONTAINER=${COMPOSE_PROJECT_NAME}-ragflow-cpu-1" >> ${GITHUB_ENV}
+          echo "RAGFLOW_CONTAINER=${COMPOSE_PROJECT_NAME}-api-1" >> ${GITHUB_ENV}
           ARTIFACTS_DIR=${RUNNER_WORKSPACE_PREFIX}/artifacts/${GITHUB_REPOSITORY}/${GITHUB_RUN_ID}/${DOC_ENGINE}
           echo "ARTIFACTS_DIR=${ARTIFACTS_DIR}" >> ${GITHUB_ENV}
           rm -rf "${ARTIFACTS_DIR}" && mkdir -p "${ARTIFACTS_DIR}"
@@ -1345,7 +1345,7 @@ jobs:
           # Persist computed ports into .env so docker-compose uses the correct host bindings.
           # Remove previous CI overrides first; docker compose uses the last duplicate key.
                sed -i '/^ES_PORT=/d;/^OS_PORT=/d;/^INFINITY_THRIFT_PORT=/d;/^INFINITY_HTTP_PORT=/d;/^INFINITY_PSQL_PORT=/d;/^EXPOSE_MYSQL_PORT=/d;/^MINIO_PORT=/d;/^MINIO_CONSOLE_PORT=/d;/^REDIS_PORT=/d;/^KVROCKS_PORT=/d;/^EXPOSE_NATS_PORT=/d;/^EXPOSE_NATS_MONITORING_PORT=/d;/^NATS_MONITORING_PORT=/d;/^TEI_PORT=/d;/^KIBANA_PORT=/d;/^SVR_HTTP_PORT=/d;/^ADMIN_SVR_HTTP_PORT=/d;/^SVR_MCP_PORT=/d;/^SVR_WEB_HTTP_PORT=/d;/^SVR_WEB_HTTPS_PORT=/d;/^EXPOSE_CLICKHOUSE_TCP_PORT=/d;/^CLICKHOUSE_HTTP_PORT=/d;/^CLICKHOUSE_PROMETHEUS_PORT=/d;/^COMPOSE_PROFILES=/d;/^TEI_MODEL=/d;/^RAGFLOW_IMAGE=/d;/^DOC_ENGINE=/d' .env
-          # docker-compose-go.yml uses env_file: .env-go for the ragflow-cpu
+          # docker-compose-go.yml uses env_file: .env-go for the api
           # container, so the Go server process reads COMPOSE_PROFILES and
           # TEI_MODEL from .env (not .env). Without syncing these two,
           # the Go server's checkModelAvailable TEI bypass never triggers
@@ -1656,7 +1656,7 @@ jobs:
         # Produces librag_tokenizer_c_api.a (with re2 symbols renamed into the
         # ragtokre2_ namespace). Only the .a is needed for the integration test
         # link; we do NOT build the full ragflow:nightly image because this job
-        # starts only the dependency services, not the ragflow-cpu container.
+        # starts only the dependency services, not the api container.
         run: |
           set -euo pipefail
           # Fail fast if the native-lib user cache is not mounted: a missing
@@ -1705,7 +1705,7 @@ jobs:
           RUNNER_WORKSPACE_PREFIX=${RUNNER_WORKSPACE_PREFIX:-${HOME}}
           COMPOSE_PROJECT_NAME="${GITHUB_RUN_ID}-go-int-${DOC_ENGINE}"
           echo "COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME}" >> ${GITHUB_ENV}
-          echo "RAGFLOW_CONTAINER=${COMPOSE_PROJECT_NAME}-ragflow-cpu-1" >> ${GITHUB_ENV}
+          echo "RAGFLOW_CONTAINER=${COMPOSE_PROJECT_NAME}-api-1" >> ${GITHUB_ENV}
           ARTIFACTS_DIR=${RUNNER_WORKSPACE_PREFIX}/artifacts/${GITHUB_REPOSITORY}/${GITHUB_RUN_ID}/${DOC_ENGINE}
           echo "ARTIFACTS_DIR=${ARTIFACTS_DIR}" >> ${GITHUB_ENV}
           rm -rf "${ARTIFACTS_DIR}" && mkdir -p "${ARTIFACTS_DIR}"
@@ -1897,7 +1897,7 @@ jobs:
           # Persist computed ports into .env so docker-compose uses the correct host bindings.
           # Remove previous CI overrides first; docker compose uses the last duplicate key.
                sed -i '/^ES_PORT=/d;/^OS_PORT=/d;/^INFINITY_THRIFT_PORT=/d;/^INFINITY_HTTP_PORT=/d;/^INFINITY_PSQL_PORT=/d;/^EXPOSE_MYSQL_PORT=/d;/^MINIO_PORT=/d;/^MINIO_CONSOLE_PORT=/d;/^REDIS_PORT=/d;/^KVROCKS_PORT=/d;/^EXPOSE_NATS_PORT=/d;/^EXPOSE_NATS_MONITORING_PORT=/d;/^NATS_MONITORING_PORT=/d;/^TEI_PORT=/d;/^KIBANA_PORT=/d;/^SVR_HTTP_PORT=/d;/^ADMIN_SVR_HTTP_PORT=/d;/^SVR_MCP_PORT=/d;/^SVR_WEB_HTTP_PORT=/d;/^SVR_WEB_HTTPS_PORT=/d;/^EXPOSE_CLICKHOUSE_TCP_PORT=/d;/^CLICKHOUSE_HTTP_PORT=/d;/^CLICKHOUSE_PROMETHEUS_PORT=/d;/^COMPOSE_PROFILES=/d;/^TEI_MODEL=/d;/^RAGFLOW_IMAGE=/d;/^DOC_ENGINE=/d' .env
-          # docker-compose-go.yml uses env_file: .env-go for the ragflow-cpu
+          # docker-compose-go.yml uses env_file: .env-go for the api
           # container, so the Go server process reads COMPOSE_PROFILES and
           # TEI_MODEL from .env (not .env). Without syncing these two,
           # the Go server's checkModelAvailable TEI bypass never triggers
@@ -1931,7 +1931,7 @@ jobs:
                  echo "CLICKHOUSE_PROMETHEUS_PORT=${CLICKHOUSE_PROMETHEUS_PORT}"
                  # NOTE: the engine profile (${DOC_ENGINE} -> "infinity") MUST be
                  # first, otherwise the engine service never starts. We drop
-                 # `cpu` (the heavy ragflow-cpu server container) and `deepdoc`
+                 # `cpu` (the heavy api server container) and `deepdoc`
                  # because this job runs the Go tests on the runner host against
                  # the dependency services directly — no server container needed.
                  # `tei-cpu` the embedding
@@ -1956,7 +1956,7 @@ jobs:
 
       - name: Start ragflow CI service stack (infinity)
         # COMPOSE_PROFILES (set in .env by the prepare step) drops `cpu`, so the
-        # heavy ragflow-cpu image is NOT started — only the dependency services
+        # heavy api image is NOT started — only the dependency services
         # (mysql/minio/kvrocks/redis/nats/infinity/tei/clickhouse) come up.
         run: |
           set -euo pipefail
@@ -2062,7 +2062,7 @@ jobs:
         # Engine-specific suites (ES/OceanBase/SereneDB) self-skip unless their
         # opt-in env vars are set, so only the infinity + mysql/minio/redis/nats
         # exercised paths run here.
-        # The ./test/api HTTP e2e suite requires a live ragflow server (ragflow-cpu),
+        # The ./test/api HTTP e2e suite requires a live ragflow server (api),
         # which this job deliberately does NOT start (we drop the `cpu` profile to
         # avoid spinning up the heavy server image), so it is excluded here. Service-
         # level integration (storage/engine/ingestion/etc.) runs against the
@@ -2104,7 +2104,7 @@ jobs:
           # registers the in-process backend itself (native_analyzer.Register)
           # when MODEL_DIR is present, so it runs for real in this job instead of
           # skipping — the runner bakes MODEL_DIR=/opt/ragflow-deepdoc-models.
-          # The ./test/api HTTP e2e suite needs a live ragflow-cpu server, which
+          # The ./test/api HTTP e2e suite needs a live api server, which
           # this job does not start.
           # Like the per-engine go jobs (ragflow_tests_{infinity,elasticsearch}),
           # we also drop internal/storage: its MinIO-backed integration tests need
