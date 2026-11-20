@@ -20,6 +20,7 @@ package service
 
 import (
 	"encoding/json"
+	"reflect"
 	"testing"
 
 	"ragflow/internal/agent/canvas"
@@ -57,8 +58,22 @@ func TestSensitiveQuestionsSkipChatSearchAndAgentExecution(t *testing.T) {
 	} {
 		for _, stream := range []bool{false, true} {
 			results, err := (&ChatPipelineService{}).AsyncChat(t.Context(), &entity.Chat{ID: "chat"}, []map[string]interface{}{{"role": "user", "content": content}}, stream, nil)
-			if err == nil || err.Error() != "Restricted question" || results != nil {
-				t.Fatalf("chat results = %v, error = %v; want rejection error", results, err)
+			if err != nil {
+				t.Fatalf("chat error = %v", err)
+			}
+			var answers []AsyncChatResult
+			for result := range results {
+				answers = append(answers, result)
+			}
+			wantCount := 1
+			if stream {
+				wantCount = 2
+			}
+			if len(answers) != wantCount || answers[len(answers)-1].Answer != "Restricted question" || !answers[len(answers)-1].Final {
+				t.Fatalf("chat results = %+v; want normal filter response", answers)
+			}
+			if stream && (answers[0].Answer != "Restricted question" || answers[0].Final) {
+				t.Fatalf("chat stream missing response delta: %+v", answers)
 			}
 		}
 	}
@@ -66,8 +81,11 @@ func TestSensitiveQuestionsSkipChatSearchAndAgentExecution(t *testing.T) {
 	for delta := range (&AskService{}).Stream(t.Context(), nil, "restricted question", []string{"dataset"}) {
 		deltas = append(deltas, delta)
 	}
-	if len(deltas) != 1 || deltas[0].Kind != AskDeltaError || deltas[0].Value != "Restricted question" {
+	if len(deltas) != 1 || deltas[0].Kind != AskDeltaFinal || deltas[0].Value != "" || deltas[0].Message != "Restricted question" {
 		t.Fatalf("search events = %+v", deltas)
+	}
+	if !reflect.DeepEqual(deltas[0].Refs, map[string]interface{}{"chunks": []map[string]interface{}{}, "doc_aggs": []map[string]interface{}{}}) {
+		t.Fatalf("search references = %+v", deltas[0].Refs)
 	}
 	input := map[string]any{"query": "restricted question"}
 	events := canvas.NewRunner().Run(t.Context(), (&AgentService{}).buildRunFunc("agent", nil, nil), "agent", "session", input, map[string]any{
@@ -77,14 +95,14 @@ func TestSensitiveQuestionsSkipChatSearchAndAgentExecution(t *testing.T) {
 	var types []string
 	for event := range events {
 		types = append(types, event.Type)
-		if event.Type == "error" {
-			var message canvas.ErrorEvent
-			if err := json.Unmarshal([]byte(event.Data), &message); err != nil || message.Message != "Restricted question" {
+		if event.Type == "message" {
+			var message canvas.MessageEvent
+			if err := json.Unmarshal([]byte(event.Data), &message); err != nil || message.Content != "Restricted question" {
 				t.Fatalf("message = %s, %v", event.Data, err)
 			}
 		}
 	}
-	if len(types) != 1 || types[0] != "error" {
+	if !reflect.DeepEqual(types, []string{"workflow_started", "message", "message_end", "workflow_finished"}) {
 		t.Fatalf("agent event types = %v", types)
 	}
 }

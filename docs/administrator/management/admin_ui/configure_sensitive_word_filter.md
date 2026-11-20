@@ -18,9 +18,11 @@ joined without spaces, against trimmed, lowercased entries in the uploaded file.
 The dictionary entries themselves are not tokenized. With Infinity, the tokenizer
 passes the input through, so matching follows the input's case and spaces.
 
-Restricted questions return a validation error containing the configured rejection text.
-Chat and retrieval endpoints use their error responses; search answers and agent runs
-emit error events. Rejected requests do not invoke retrieval, model generation, or workflow nodes.
+Restricted searches and retrieval requests succeed with empty results and the configured
+rejection text in `message`. Search answers complete with an empty answer and references,
+with the rejection text in the final answer event's `message`. Chat and agent requests
+return the configured rejection text as a normal response, without an `**ERROR**` prefix or error event.
+Rejected requests do not invoke retrieval, model generation, or workflow nodes.
 
 Settings are refreshed on requests at most once every 60 seconds in each API process.
 The file is reloaded when its version changes or when filtering is enabled again.

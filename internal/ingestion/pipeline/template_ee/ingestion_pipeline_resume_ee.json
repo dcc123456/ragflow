@@ -1,0 +1,327 @@
+{
+    "id": 49,
+    "title": {
+        "en": "Resume",
+        "de": "Lebenslauf",
+        "zh": "简历"
+    },
+    "description": {
+        "en": "This template keeps each resume as one retrievable document while running four-lane structured extraction (basic info, work experience, education, project experience) to enrich document metadata, keywords, and semantic embeddings.",
+        "de": "Diese Vorlage behält jeden Lebenslauf als ein zusammenhängendes Dokument bei und extrahiert parallel Basisdaten, Berufserfahrung, Ausbildung und Projekte zur Anreicherung von Metadaten, Schlüsselwörtern und Embeddings.",
+        "zh": "此模板将每份简历保留为一个完整检索结果，并通过四路并发抽取（基本信息、工作经历、教育经历、项目经历）补充文档元数据、关键词与语义向量。"
+    },
+    "canvas_type": "Ingestion Pipeline",
+    "canvas_category": "dataflow_canvas",
+    "dsl": {
+        "components": {
+            "File": {
+                "downstream": [
+                    "Parser:ResumeParseFile"
+                ],
+                "obj": {
+                    "component_name": "File",
+                    "params": {}
+                },
+                "upstream": []
+            },
+            "Parser:ResumeParseFile": {
+                "downstream": [
+                    "OneChunker:ResumeOneChunk"
+                ],
+                "obj": {
+                    "component_name": "Parser",
+                    "params": {
+                        "enable_vision_enhancement": false,
+                        "vlm": {
+                            "llm_id": ""
+                        },
+                        "outputs": {
+                            "html": {
+                                "type": "string",
+                                "value": ""
+                            },
+                            "json": {
+                                "type": "Array<object>",
+                                "value": []
+                            },
+                            "markdown": {
+                                "type": "string",
+                                "value": ""
+                            },
+                            "text": {
+                                "type": "string",
+                                "value": ""
+                            }
+                        },
+                        "doc": {},
+                        "docx": {},
+                        "image": {
+                            "ocr_enabled": true
+                        },
+                        "pdf": {
+                            "parse_method": "DeepDOC"
+                        },
+                        "text&code": {}
+                    }
+                },
+                "upstream": [
+                    "File"
+                ]
+            },
+            "OneChunker:ResumeOneChunk": {
+                "downstream": [
+                    "Extractor:AutoExtractDefault"
+                ],
+                "obj": {
+                    "component_name": "OneChunker",
+                    "params": {
+                        "outputs": {
+                            "chunks": {
+                                "type": "Array<Object>",
+                                "value": []
+                            }
+                        }
+                    }
+                },
+                "upstream": [
+                    "Parser:ResumeParseFile"
+                ]
+            },
+            "Extractor:AutoExtractDefault": {
+                "upstream": [
+                    "OneChunker:ResumeOneChunk"
+                ],
+                "downstream": [
+                    "Tokenizer:ResumeTokenizer"
+                ],
+                "obj": {
+                    "component_name": "Extractor",
+                    "params": {
+                        "resume": {
+                            "enabled": true
+                        }
+                    }
+                }
+            },
+            "Tokenizer:ResumeTokenizer": {
+                "downstream": [],
+                "obj": {
+                    "component_name": "Tokenizer",
+                    "params": {
+                        "fields": "embedding_text",
+                        "filename_embd_weight": 0,
+                        "outputs": {},
+                        "search_method": [
+                            "embedding",
+                            "full_text"
+                        ]
+                    }
+                },
+                "upstream": [
+                    "Extractor:AutoExtractDefault"
+                ]
+            }
+        },
+        "globals": {
+            "sys.history": []
+        },
+        "graph": {
+            "edges": [
+                {
+                    "id": "xy-edge__Filestart-Parser:ResumeParseFileend",
+                    "source": "File",
+                    "sourceHandle": "start",
+                    "target": "Parser:ResumeParseFile",
+                    "targetHandle": "end"
+                },
+                {
+                    "id": "xy-edge__Parser:ResumeParseFilestart-OneChunker:ResumeOneChunkend",
+                    "source": "Parser:ResumeParseFile",
+                    "sourceHandle": "start",
+                    "target": "OneChunker:ResumeOneChunk",
+                    "targetHandle": "end"
+                },
+                {
+                    "id": "xy-edge__OneChunker:ResumeOneChunkstart-Extractor:AutoExtractDefaultend",
+                    "source": "OneChunker:ResumeOneChunk",
+                    "sourceHandle": "start",
+                    "target": "Extractor:AutoExtractDefault",
+                    "targetHandle": "end"
+                },
+                {
+                    "id": "xy-edge__Extractor:AutoExtractDefaultstart-Tokenizer:ResumeTokenizerend",
+                    "source": "Extractor:AutoExtractDefault",
+                    "sourceHandle": "start",
+                    "target": "Tokenizer:ResumeTokenizer",
+                    "targetHandle": "end"
+                }
+            ],
+            "nodes": [
+                {
+                    "data": {
+                        "label": "File",
+                        "name": "File"
+                    },
+                    "id": "File",
+                    "measured": {
+                        "height": 49,
+                        "width": 200
+                    },
+                    "position": {
+                        "x": 50,
+                        "y": 200
+                    },
+                    "sourcePosition": "left",
+                    "targetPosition": "right",
+                    "type": "beginNode"
+                },
+                {
+                    "data": {
+                        "form": {
+                            "enable_vision_enhancement": false,
+                            "vlm": {
+                                "llm_id": ""
+                            },
+                            "outputs": {
+                                "html": {
+                                    "type": "string",
+                                    "value": ""
+                                },
+                                "json": {
+                                    "type": "Array<object>",
+                                    "value": []
+                                },
+                                "markdown": {
+                                    "type": "string",
+                                    "value": ""
+                                },
+                                "text": {
+                                    "type": "string",
+                                    "value": ""
+                                }
+                            },
+                            "setups": [
+                                {
+                                    "fileFormat": "pdf",
+                                    "parse_method": "DeepDOC"
+                                },
+                                {
+                                    "fileFormat": "image",
+                                    "ocr_enabled": true
+                                },
+                                {
+                                    "fileFormat": "text&code"
+                                },
+                                {
+                                    "fileFormat": "doc"
+                                },
+                                {
+                                    "fileFormat": "docx"
+                                }
+                            ]
+                        },
+                        "label": "Parser",
+                        "name": "Parser"
+                    },
+                    "dragging": false,
+                    "id": "Parser:ResumeParseFile",
+                    "measured": {
+                        "height": 121,
+                        "width": 200
+                    },
+                    "position": {
+                        "x": 317,
+                        "y": 164
+                    },
+                    "selected": false,
+                    "sourcePosition": "right",
+                    "targetPosition": "left",
+                    "type": "parserNode"
+                },
+                {
+                    "data": {
+                        "form": {
+                            "outputs": {
+                                "chunks": {
+                                    "type": "Array<Object>",
+                                    "value": []
+                                }
+                            }
+                        },
+                        "label": "OneChunker",
+                        "name": "One Chunker"
+                    },
+                    "id": "OneChunker:ResumeOneChunk",
+                    "measured": {
+                        "height": 73,
+                        "width": 200
+                    },
+                    "position": {
+                        "x": 617,
+                        "y": 188
+                    },
+                    "selected": false,
+                    "sourcePosition": "right",
+                    "targetPosition": "left",
+                    "type": "chunkerNode"
+                },
+                {
+                    "id": "Extractor:AutoExtractDefault",
+                    "type": "contextNode",
+                    "measured": {
+                        "height": 59,
+                        "width": 200
+                    },
+                    "position": {
+                        "x": 917,
+                        "y": 195
+                    },
+                    "data": {
+                        "label": "Extractor",
+                        "name": "Extractor",
+                        "form": {
+                            "resume": {
+                                "enabled": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "data": {
+                        "form": {
+                            "fields": "embedding_text",
+                            "filename_embd_weight": 0,
+                            "outputs": {},
+                            "search_method": [
+                                "embedding",
+                                "full_text"
+                            ]
+                        },
+                        "label": "Tokenizer",
+                        "name": "Indexer"
+                    },
+                    "id": "Tokenizer:ResumeTokenizer",
+                    "measured": {
+                        "height": 113,
+                        "width": 200
+                    },
+                    "position": {
+                        "x": 1217,
+                        "y": 168
+                    },
+                    "sourcePosition": "right",
+                    "targetPosition": "left",
+                    "type": "tokenizerNode"
+                }
+            ]
+        },
+        "history": [],
+        "messages": [],
+        "path": [],
+        "retrieval": [],
+        "variables": []
+    },
+    "parser_ids": [
+        "resume"
+    ]
+}

@@ -188,6 +188,12 @@ export default {
     knowledgeDetails: {
       updated: 'Updated',
       versions: 'Versions',
+      metadata: {
+        // Shown by the document metadata editor on resume-parsed documents:
+        // the extractor rewrites these field names on every re-parse.
+        parserManagedFields:
+          'These fields are maintained by the Resume parser; re-parsing overwrites or clears hand-filled values: ',
+      },
     },
     common: {
       view: 'View',
@@ -412,6 +418,9 @@ export default {
         'CAD drawings are processed by the built-in parser and require no configuration. Configure vision enhancement in CAD Chunker.',
       cadVisionEnhancementTip:
         'Use a vision model to describe geometry, symbols, and spatial relationships in drawing regions; when off, only native CAD text is used.',
+      extractorResumeTitle: 'Resume extraction',
+      extractorResumeDescription:
+        'Runs four LLM lanes (basic info, work experience, education, projects) over the text and writes structured metadata, keywords, and the embedding summary. Names, employers, positions, schools, degrees, and tenure are checked against the source text before they are stored. Re-parsing overwrites the managed metadata fields; the other extraction groups are not needed for resumes.',
       fileFormatOptions: {
         cad: 'CAD Drawing',
       },

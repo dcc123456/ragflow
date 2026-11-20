@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"net/url"
 	"ragflow/internal/common"
+	"ragflow/internal/dao"
 	"ragflow/internal/engine/kvrocks"
 	"ragflow/internal/entity"
 	"ragflow/internal/server"
@@ -340,6 +341,11 @@ func issueUserAccessToken(ctx context.Context, user *entity.User, secretKey stri
 	tenantID, err := service.ResolveLoginTenantID(ctx, user)
 	if err != nil {
 		return "", err
+	}
+	if tenantID != "" {
+		if err := dao.NewUserTenantDAO().UpdateLastLoginTenantID(ctx, dao.DB, user.ID, tenantID); err != nil {
+			return "", fmt.Errorf("save last login tenant: %w", err)
+		}
 	}
 	return common.DumpAccessToken(*user.AccessToken, tenantID, secretKey)
 }

@@ -156,6 +156,10 @@ export default {
     knowledgeDetails: {
       updated: '更新于',
       versions: '版本历史',
+      metadata: {
+        parserManagedFields:
+          '以下字段由简历解析器维护，重新解析会覆盖或清除手工填写的值：',
+      },
     },
     common: {
       view: '查看',
@@ -223,6 +227,9 @@ export default {
         'CAD 图纸由内置解析器处理，无需配置。视觉增强请在 CAD Chunker 中设置。',
       cadVisionEnhancementTip:
         '使用视觉模型描述图纸区域中的几何、符号和空间关系；关闭时仅使用 CAD 原生文字。',
+      extractorResumeTitle: '简历结构化抽取',
+      extractorResumeDescription:
+        '对文本运行四路 LLM 抽取（基本信息 / 工作经历 / 教育经历 / 项目经历），产出结构化元数据、关键词与向量摘要。姓名、公司、职位、学校、学位与工龄会先与原文比对再入库。重新解析会覆盖受管元数据字段；简历无需开启其他抽取组。',
       fileFormatOptions: {
         cad: 'CAD 图纸',
       },

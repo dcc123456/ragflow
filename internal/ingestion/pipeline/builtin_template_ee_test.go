@@ -27,9 +27,9 @@ import (
 	"testing"
 )
 
-// TestDefaultRegistryIncludesEditionTemplates pins the init contract in
-// builtin_template_ee.go: DefaultRegistry must be built over the merged
-// template FS, not over builtinTemplateFS alone.
+// TestDefaultRegistryIncludesEditionTemplates pins the edition template
+// seam in builtin_template_ee.go: DefaultRegistry must be built over the
+// merged template FS, not over builtinTemplateFS alone.
 func TestDefaultRegistryIncludesEditionTemplates(t *testing.T) {
 	registry, err := DefaultRegistry()
 	if err != nil {
@@ -47,10 +47,10 @@ func TestDefaultRegistryIncludesEditionTemplates(t *testing.T) {
 }
 
 // TestEditionTemplatesStayOutOfSharedEmbed guards the reason template_ee/
-// exists: an enterprise template under template/ is embedded by the community
-// build too, where its components are not registered.
+// exists: a template under template/ is embedded by every build, including
+// ones that cannot register its components.
 func TestEditionTemplatesStayOutOfSharedEmbed(t *testing.T) {
-	entries, err := fs.ReadDir(editionTemplateFS, editionTemplateDir)
+	entries, err := fs.ReadDir(editionAssetsFS, editionTemplateDir)
 	if err != nil {
 		t.Fatalf("read %s: %v", editionTemplateDir, err)
 	}
@@ -72,7 +72,7 @@ func TestEditionTemplatesStayOutOfSharedEmbed(t *testing.T) {
 			continue
 		}
 		if strings.HasSuffix(strings.TrimSuffix(entry.Name(), ".json"), "_ee") {
-			t.Fatalf("edition template %q lives in the shared %s/ directory; the community build embeds it and cannot register its components", entry.Name(), sharedTemplateDir)
+			t.Fatalf("edition template %q lives in the shared %s/ directory; every build embeds it, including ones that cannot register its components", entry.Name(), sharedTemplateDir)
 		}
 	}
 }
@@ -82,7 +82,7 @@ func TestEditionTemplatesStayOutOfSharedEmbed(t *testing.T) {
 // template must parse into canonical components, and every Extractor node must
 // keep its canvas form equal to its DSL params.
 func TestEditionTemplatesStructuralInvariants(t *testing.T) {
-	entries, err := fs.ReadDir(editionTemplateFS, editionTemplateDir)
+	entries, err := fs.ReadDir(editionAssetsFS, editionTemplateDir)
 	if err != nil {
 		t.Fatalf("read %s: %v", editionTemplateDir, err)
 	}
@@ -94,7 +94,7 @@ func TestEditionTemplatesStructuralInvariants(t *testing.T) {
 		}
 		tested++
 		t.Run(name, func(t *testing.T) {
-			raw, err := fs.ReadFile(editionTemplateFS, path.Join(editionTemplateDir, name))
+			raw, err := fs.ReadFile(editionAssetsFS, path.Join(editionTemplateDir, name))
 			if err != nil {
 				t.Fatalf("read template: %v", err)
 			}
@@ -133,7 +133,7 @@ func TestEditionTemplatesStructuralInvariants(t *testing.T) {
 	}
 }
 
-// assertEditionExtractorFormsMatchParams is the enterprise half of
+// assertEditionExtractorFormsMatchParams mirrors
 // TestAgentTemplateExtractorsUseModularParams: the shared test globs
 // template/ only, so an edition template's canvas form would otherwise drift
 // from its DSL params unnoticed.
@@ -183,7 +183,7 @@ func assertEditionExtractorFormsMatchParams(t *testing.T, dslJSON []byte) {
 // template, using the same filename normalization as the registry.
 func editionTemplateRefs(t *testing.T) []string {
 	t.Helper()
-	entries, err := fs.ReadDir(editionTemplateFS, editionTemplateDir)
+	entries, err := fs.ReadDir(editionAssetsFS, editionTemplateDir)
 	if err != nil {
 		t.Fatalf("read %s: %v", editionTemplateDir, err)
 	}

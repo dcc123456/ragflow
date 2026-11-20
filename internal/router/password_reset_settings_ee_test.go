@@ -251,6 +251,9 @@ func TestPasswordResetSMTPSettingsFlow(t *testing.T) {
 	if err := testsupport.PrepareEnterprisePermissionFixture(db, "reset-tenant", "reset-user"); err != nil {
 		t.Fatalf("prepare reset user tenant: %v", err)
 	}
+	if err := testsupport.PrepareEnterprisePermissionFixture(db, "reset-user", "reset-user"); err != nil {
+		t.Fatalf("prepare reset user personal tenant: %v", err)
+	}
 	set("email_verification.enabled", "false")
 	set("mail.default_sender", "reset@example.com")
 	request(http.MethodPost, "/auth/password/forgot/captcha", map[string]string{"email": "unknown@example.com"}, common.CodeDataError)

@@ -192,7 +192,8 @@ func TestCASLoginFlow(t *testing.T) {
 	}
 	status := "1"
 	token := "old-token"
-	if err := db.Create(&entity.User{ID: "existing-user", Email: "employee@example.com", Nickname: "Existing name", AccessToken: &token, IsActive: "1", Status: &status}).Error; err != nil {
+	lastLoginTenant := "company"
+	if err := db.Create(&entity.User{ID: "existing-user", Email: "employee@example.com", Nickname: "Existing name", AccessToken: &token, IsActive: "1", Status: &status, LastLoginTenant: &lastLoginTenant}).Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Create(&entity.Tenant{ID: "company", Status: &status}).Error; err != nil {

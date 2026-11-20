@@ -1,5 +1,10 @@
 export default {
   translation: {
+    flow: {
+      extractorResumeTitle: '履歷結構化抽取',
+      extractorResumeDescription:
+        '對文字執行四路 LLM 抽取（基本資訊 / 工作經歷 / 教育經歷 / 專案經歷），產出結構化元資料、關鍵詞與向量摘要。姓名、公司、職位、學校、學位與年資會先與原文比對再入庫。重新解析會覆蓋受管元資料欄位；履歷無需開啟其他抽取組。',
+    },
     chunk: {
       versionHistory: '版本歷史',
       latestVersion: '最新',
@@ -156,6 +161,10 @@ export default {
     knowledgeDetails: {
       updated: '更新於',
       versions: '版本歷史',
+      metadata: {
+        parserManagedFields:
+          '以下欄位由履歷解析器維護，重新解析會覆蓋或清除手動填寫的值：',
+      },
     },
     login: {
       licenseExpired: '許可證已過期。請聯繫管理員續期。',

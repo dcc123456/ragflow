@@ -35,8 +35,8 @@ func (dao *UserTenantDAO) CountUserTenantByTenantIDs(ctx context.Context, db *go
 	return total, err
 }
 
-// FindActiveTenantIDForLogin prefers the user's personal tenant, then the
-// earliest joined tenant that is still active.
+// FindActiveTenantIDForLogin prefers the last active tenant, then the user's
+// personal tenant.
 func (dao *UserTenantDAO) FindActiveTenantIDForLogin(ctx context.Context, db *gorm.DB, userID string) (string, error) {
 	type tenantChoice struct {
 		TenantID string `gorm:"column:tenant_id"`
@@ -49,7 +49,8 @@ func (dao *UserTenantDAO) FindActiveTenantIDForLogin(ctx context.Context, db *go
 	}
 
 	var choice tenantChoice
-	err := query().Where("user_tenant.tenant_id = ?", userID).Take(&choice).Error
+	err := query().Joins("JOIN user AS login_user ON login_user.id = user_tenant.user_id").
+		Where("user_tenant.tenant_id = login_user.last_login_tenant").Take(&choice).Error
 	if err == nil {
 		return choice.TenantID, nil
 	}
@@ -57,10 +58,7 @@ func (dao *UserTenantDAO) FindActiveTenantIDForLogin(ctx context.Context, db *go
 		return "", err
 	}
 
-	err = query().Where("user_tenant.tenant_id <> ?", userID).
-		Order("user_tenant.create_time ASC").
-		Order("user_tenant.id ASC").
-		Take(&choice).Error
+	err = query().Where("user_tenant.tenant_id = ?", userID).Take(&choice).Error
 	if IsNotFoundErr(err) {
 		return "", nil
 	}
@@ -68,6 +66,12 @@ func (dao *UserTenantDAO) FindActiveTenantIDForLogin(ctx context.Context, db *go
 		return "", err
 	}
 	return choice.TenantID, nil
+}
+
+// UpdateLastLoginTenantID records the tenant selected for the user's session.
+func (dao *UserTenantDAO) UpdateLastLoginTenantID(ctx context.Context, db *gorm.DB, userID, tenantID string) error {
+	return db.WithContext(ctx).Table("user").Where("id = ?", userID).
+		Update("last_login_tenant", tenantID).Error
 }
 
 // GetMembersByTenantIDIncludingOwner returns joined, invited, requested, and
