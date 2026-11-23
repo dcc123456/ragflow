@@ -6,7 +6,6 @@ x-ragflow-environment: &ragflow-environment
   KVROCKS_PORT: 6379
   RAGFLOW_ADMIN_HOST: admin
   RAGFLOW_ADMIN_HTTP_PORT: 9381
-
 x-ragflow: &ragflow
   image: ${RAGFLOW_IMAGE}
   entrypoint: ["/ragflow/entrypoint.sh"]
@@ -111,6 +110,11 @@ services:
     command: ["--api"]
     environment:
       <<: *ragflow-environment
+      # The WS capability token that authenticates this process to the codex service.
+      # It is mapped from CODEX_WS_TOKEN (the codex service's own entrypoint reads the
+      # same variable) so a single value in .env is the source of truth. Empty means
+      # mode 8 is unusable (the codex container also refuses to start without it).
+      RAGFLOW_CODEX_BEARER_TOKEN: ${CODEX_WS_TOKEN:-}
     ports:
       - ${SVR_HTTP_PORT}:9380
       # The Go API also serves POST /api/v1/mcp on 9380.
@@ -118,6 +122,13 @@ services:
     depends_on:
       admin:
         condition: service_healthy
+      # The mode-8 engine dials the shared Codex app-server lazily; start it first so the
+      # first mode-8 turn does not race the container coming up. required:false because
+      # the codex service is behind its own profile — with the profile off, the API must
+      # still start and fall back to the regular pipeline for level-8 turns.
+      codex:
+        condition: service_started
+        required: false
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9380/api/v1/system/healthz"]
       interval: 10s
@@ -159,3 +170,67 @@ services:
   #     interval: 10s
   #     timeout: 10s
   #     retries: 120
+
+  # Shared Codex app-server backing the mode-8 engine. Opt-in via the `codex` profile
+  # (see the profiles line below): the API reaches it over the compose network at
+  # ws://codex:8790, and it calls back into this API's MCP bridge. See docker/codex/
+  # and the README "Codex app-server" section.
+  #
+  # Runs the published image (infiniflow/codex:<version>, set via CODEX_IMAGE). To build
+  # it locally instead, run `CODEX_SRC=<codex-rs> ./codex/build-local.sh` and then
+  # `docker build -t infiniflow/codex:${CODEX_VERSION} ./codex`.
+  codex:
+    # Opt-in profile: mode 8 needs this service, but it also needs the
+    # infiniflow/codex image and a CODEX_WS_TOKEN, so it must not be forced on
+    # every stack. Enable it with `COMPOSE_PROFILES=${COMPOSE_PROFILES},codex`
+    # in .env. Without the profile, level-8 turns fall back to the regular
+    # pipeline (see service.codexConfigured), and the CI integration stacks —
+    # which start this file with their own profile list — never pull it.
+    profiles: [codex]
+    image: ${CODEX_IMAGE}
+    environment:
+      # The entrypoint writes this into the token file the app-server reads (the CLI
+      # does not take the token from an env var). Must match the API's
+      # RAGFLOW_CODEX_BEARER_TOKEN, which is mapped from the same variable above.
+      # Only this variable is passed in — the container gets no other stack secrets.
+      - CODEX_WS_TOKEN=${CODEX_WS_TOKEN:-}
+      # Docker injects the daemon's proxy settings into every container. The MCP bridge is
+      # reached over host.docker.internal (the docker bridge gateway), which the proxy does
+      # not know: it answers 502. Keep the proxy for model calls, bypass it for the bridge.
+      - NO_PROXY=${CODEX_NO_PROXY:-localhost,127.0.0.1,::1,host.docker.internal,172.16.0.0/12}
+      - no_proxy=${CODEX_NO_PROXY:-localhost,127.0.0.1,::1,host.docker.internal,172.16.0.0/12}
+    # Publish to the host's loopback only, for local diagnosis (e.g. a WS client at
+    # ws://127.0.0.1:${CODEX_WS_PORT}). Inside the container the server binds 0.0.0.0 so
+    # the API container can reach it over the compose network.
+    ports:
+      - "127.0.0.1:${CODEX_WS_PORT:-8790}:8790"
+    volumes:
+      # Persist the Codex thread/rollout state so a container restart does not force the
+      # engine to rebuild every thread. A HOST directory, not a named volume: the rollouts
+      # under sessions/ are how tooling (tools/strategy_rsi, tools/mode8verify) verifies that
+      # a turn really ran on mode 8. Give the host account read access with a default ACL
+      # (`setfacl -R -d -m u:<user>:rX ./codex-home`) — the container writes as uid 10001.
+      - ${CODEX_HOME_DIR:-./codex-home}:/home/codex/.codex
+      # Deliberately NO corpus mount. The container is the isolation boundary: Codex sees
+      # only its own filesystem and reaches every dataset through this API's MCP bridge.
+    extra_hosts:
+      # The app-server calls back to the MCP bridge. When the API runs outside this compose
+      # network (a host process, the local-development layout), host.docker.internal is
+      # where that API listens; set RAGFLOW_CODEX_MCP_PUBLIC_BASE to it.
+      - "host.docker.internal:host-gateway"
+    networks:
+      - ragflow
+    restart: unless-stopped
+    healthcheck:
+      # The image has no curl/wget, so probe with the python3 it already carries for local
+      # execution. urlopen raises on a non-2xx response, so this fails until the listener is
+      # actually ready.
+      test:
+        - CMD
+        - python3
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8790/readyz', timeout=5)"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s

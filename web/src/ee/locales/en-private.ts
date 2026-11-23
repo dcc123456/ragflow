@@ -1222,5 +1222,19 @@ export default {
       loadFailed: 'Failed to load Visio file',
       renderFailed: 'Failed to render Visio page',
     },
+    // Reasoning-engine levels 6-8 (see @/ee/hooks/use-thinking-modes).
+    chat: {
+      thinkingLevelAgentic: 'react',
+      thinkingLevelAgenticDescription: 'Self-directed corpus exploration',
+      thinkingLevelPlanExplorerAuditor: 'planer-explorer-auditor',
+      thinkingLevelPlanExplorerAuditorDescription:
+        'Plans a question decomposition, then explores it under a delivery gate',
+      thinkingLevelIterative: 'IterSynth',
+      thinkingLevelIterativeDescription:
+        'Rewrites its research summary every round',
+      thinkingLevelCodex: 'agentic pro',
+      thinkingLevelCodexDescription:
+        'Delegates to a shared Codex agent that reads the knowledge base',
+    },
   },
 };

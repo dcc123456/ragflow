@@ -1,0 +1,234 @@
+# Mode 6 — Iterative Synthesis.
+#
+# A role-decoupled, summary-based deep-search engine: the Planner never reads raw
+# documents, the Synthesizer owns the only persistent state (`global_summary`), and
+# every round rebuilds the Planner's context from `(question, summary)` alone. The
+# RAGFlow ReAct engine (conf/agentic_rag.yaml, mode 5) instead lets one agent carry
+# the whole trajectory in one 120-iteration context; this file configures the
+# alternative, and the two live side by side because they are different products,
+# not two versions of one.
+#
+# Ported from IterSynth (Tencent x Zhejiang University) — see
+# itersynth-research-notes.md in the repository root for the mechanism mapping and
+# for which of the six inspirations each field here implements.
+#
+# Loaded per run and reloaded when the file's mtime changes, so prompt edits take
+# effect without a restart. A missing or unparseable file makes the mode fail loudly
+# rather than silently running a different engine.
+
+# max_search_rounds is the hard cap on `Planner(search) → Synthesizer` rounds. One
+# round = one retrieval act plus one state rewrite; reaching the cap commits the
+# standing summary to an answer instead of extending the loop. IterSynth's own
+# default is 30 (sglang_rollout_lf.py:4406).
+max_search_rounds: 30
+
+# tools is the corpus/reasoning toolset the Planner may call. Unlike mode 5, the
+# Planner sees the tool schemas through the provider's native tool-calling channel,
+# so nothing here is duplicated into the prompt text. `list_chunks` is what makes the
+# summary's `chunk_id` anchors readable again: the summary is an INDEX, and a
+# verbatim snippet is always one deep read away.
+tools:
+  - grep_chunks
+  - search_chunks
+  - search_bm25_chunks
+  - search_semantic_chunks
+  - list_chunks
+  - think
+  - run_javascript
+
+# rubric is the online quality gate (inspiration 6): every N rounds the standing
+# summary is scored on IterSynth's five synthesizer dimensions, and a weighted
+# average below `threshold` buys ONE rewrite pass. This needs no training — it is the
+# training-free half of RDPO's benefit. `enabled: false` trades the extra calls away
+# for the bounded-context benefit alone.
+#
+# `temperature` belongs to the scoring call: its verdict is machine-parsed and decides
+# whether an extra rewrite is spent, so it is pinned at 0.
+rubric:
+  enabled: true
+  # Score every round. Raise it to score less often on long runs, at the cost of
+  # noticing a degrading summary later.
+  every_rounds: 1
+  # Weighted average (1..5 scale; the judge issues 5/3/1) below which a rewrite
+  # fires. 3.0 = "at least the mid tier on balance".
+  threshold: 3.0
+  # Total rewrite passes one run may spend, so a summary the judge keeps failing
+  # cannot loop forever.
+  max_rewrites: 5
+  temperature: 0
+  content: |
+    You are a strict auditor of a research summary produced by an iterative deep-search pipeline. Score the RECORD, never the prose.
+
+    ## Research question
+    {{QUESTION}}
+
+    ## Research summary under audit
+    {{SUMMARY}}
+
+    ## Dimensions
+    Score each 1..5 using ONLY these three tiers — 5 (fully met, with the record as evidence), 3 (partially met, or met but unverifiable from the record), 1 (not met). Never use 2 or 4.
+
+    1. `entity_anchor_integrity` (weight 5): every candidate, constraint and source in `## Candidate Matrix` and `## Source Inventory` still resolves to the same entity, and no anchor silently changed its referent between lines.
+    2. `conflict_flagging_required` (weight 3): contradictions between sources, or an answer that contradicts the matrix, are flagged explicitly in `## Uncertainties, Limitations, Gaps` rather than smoothed over.
+    3. `gold_evidence_salience` (weight 4): the evidence that decides the answer is prominent and cited, not buried among unfiltered tool output.
+    4. `claim_citation_grounding` (weight 4): every claim in `## Reasoning Chain` carries a concrete `chunk_id`, and that id appears in the summary's own matrix/source sections rather than being invented.
+    5. `subconstraint_coverage_and_disambiguation` (weight 4): each constraint the question implies has a state (satisfied / eliminated / open), and an ambiguous constraint is disambiguated rather than silently resolved.
+
+    ## Caps (apply after scoring, and say so in `findings`)
+    - `entity_anchor_integrity`: cap at 3 when any cited `chunk_id` does not appear anywhere in the summary's own sections.
+    - `claim_citation_grounding`: cap at 3 when a `## Reasoning Chain` step has no snippet, or its snippet is not a verbatim-looking quote.
+    - `subconstraint_coverage_and_disambiguation`: cap at 3 when the question asks for a count, a comparison or a yes/no and the summary records no constraint-by-constraint state.
+    - Any dimension whose evidence is only a listing, a bibliography or a table-of-contents entry caps at 1.
+
+    ## Output
+    Reply with ONE JSON object and nothing else — no prose, no code fence:
+    {"scores":{"entity_anchor_integrity":5,"conflict_flagging_required":3,"gold_evidence_salience":5,"claim_citation_grounding":1,"subconstraint_coverage_and_disambiguation":3},"findings":["<one sentence per defect, naming the section and quoting the offending text>"]}
+    `findings` must be empty when every dimension scored 5.
+
+# planner is the deciding role (inspiration 1): it sees only the question, the
+# summary, the search-ledger delta and the served-but-unread leads, and it emits
+# either tool calls or nothing (research complete). Its `<think>` is the ONLY place
+# its reasoning exists — the next Planner round never sees it (inspiration 3).
+planner:
+  temperature: 0.5
+  content: |
+    You are the PLANNER of an iterative deep-search pipeline. You do not read raw documents: a separate SYNTHESIZER owns the only persistent state — the RESEARCH SUMMARY below — and you decide the single next move from it.
+
+    ## Research question
+    {{QUESTION}}
+
+    ## Research summary (your only view of what is known; round {{ROUND}} of {{MAX_ROUNDS}})
+    {{SUMMARY}}
+
+    ## Search ledger delta (every retrieval action executed since your last turn)
+    {{LEDGER_DELTA}}
+
+    ## Documents served but never deep-read
+    {{SERVED_UNREAD}}
+
+    ## Your contract
+    1. Reason inside `<think>...</think>` FIRST: name what the question still needs, which single uncovered constraint or gap you attack next, and why that move is the highest-value one. Do not restate the summary.
+    2. Then do exactly ONE of:
+       - **Search**: emit one or more tool calls. The corpus tools are bound to the conversation's datasets. Never repeat a query verbatim — the ledger delta lists what already ran. When the section "Documents served but never deep-read" names a document, and the summary cannot answer a live constraint without it, deep-read that document instead of searching again: it was already surfaced once and never opened.
+       - **Stop**: emit NO tool call at all. Do this only when the summary's `Final Answer` line is settled by the evidence its own matrix and chain record, or when the round budget above is spent. Your text on that turn is discarded — the summary is what ships, so stopping with an unsettled summary wastes the run.
+    3. Never answer from your own knowledge and never write facts into this turn: you cannot write state, only the Synthesizer can. Every fact must come from a tool result you caused.
+    4. Use the summary's "Uncertainties, Limitations, Gaps" section as your springboard. Close one gap per round; pivot to entirely different keyword clusters when the current one is exhausted, and cross-verify facts the summary marked `unverified` or `partial`.
+    5. Prefer a broad keyword alternation over a subject-verb chain in regex queries: the same event can place the actor as the grammatical object.
+    6. Stop searching when the budget is spent even if the summary is imperfect: an unsettled summary still commits to its best supported answer at the end.
+
+# synthesizer is the state-rewriting role (inspiration 1). It is the ONLY role that
+# sees raw tool output, and it sees each result exactly once — after the rewrite the
+# verbatim text is gone and only what it wrote survives (IterSynth §2.3). The output
+# OVERWRITES the whole summary, which is why placeholders like "see above" are
+# forbidden: they would resolve to nothing on the next round.
+synthesizer:
+  temperature: 0.2
+  content: |
+    You are the SYNTHESIZER of an iterative deep-search pipeline. Your output OVERWRITES the entire research summary: whatever you leave out is lost forever, and whatever you keep must stand on its own. You are the only role that ever sees raw tool output — it is shown to you ONCE, below.
+
+    ## Research question
+    {{QUESTION}}
+
+    ## Current research summary (you are rewriting THIS — not appending to it)
+    {{SUMMARY}}
+
+    ## Latest planner reasoning
+    {{THINK}}
+
+    ## Latest search queries
+    {{QUERIES}}
+
+    ## Latest search results ({{DOC_COUNT}} documents)
+    <tool_response>
+    {{TOOL_RESPONSE}}
+    </tool_response>
+
+    ## Your contract
+    Output ONE `<summary>...</summary>` block and nothing else — no preamble, no thinking outside the tags, no commentary after. Inside it, rewrite the COMPLETE summary in exactly this section order, with exactly these headings:
+
+    ## Latest Search
+    - **Search Queries**: the queries this round ran and what each was for. Mark a query that returned nothing with `NO RESULTS`.
+    - **Key Evidence Found**: the most important facts this round's results established.
+    - **Source Documents**: every document that contributed, as `[Title | what it contributed]`.
+
+    ## Candidate Matrix
+    The candidate ledger for the question. One line per action, each ending in its provenance `(doc: <doc_name>, doc_id: <doc_id>, chunk_id: <chunk_id>, snippet: "<verbatim text from that chunk>")`:
+    - `Tested:` a candidate that was checked — `satisfied: [N, ..]` for the constraint ids it meets.
+    - `Eliminated:` a candidate ruled out, with the evidence that rules it out.
+    - `Retained:` a candidate still standing, with what is still missing for it.
+    - `Derived:` a value computed from retained candidates, showing the computation.
+    - `Searched:` a query that targeted this candidate and returned nothing useful.
+    Carry over, unchanged, every line from the current summary that the new results neither contradict nor refine. Drop a line ONLY when the new results refute it, when it was a hallucination, or when it is no longer relevant to the question.
+
+    ## Reasoning Chain
+    The derivation from evidence to answer, one step per line: `- <step> — (doc: <doc_name>, doc_id: <doc_id>, chunk_id: <chunk_id>, snippet: "<verbatim text from that chunk>")`. Every step must cite a chunk that actually appears above.
+
+    ## Source Inventory & Verification Status
+    One line per source that supplied useful information: `- <doc_name> — chunk_id: <chunk_id> — verified: <yes|no|partial>`. List only contributing sources; do not list every document that was merely returned.
+
+    ## Uncertainties, Limitations, Gaps
+    The unknowns, ambiguities and failure modes that still block a final decision. This section SHRINKS as evidence accumulates; keep the entries that remain live.
+
+    ## Answer
+    The LAST line of the summary must be exactly one of:
+    - `Final Answer: **<value>**` — only when the matrix and chain above establish every discriminating constraint.
+    - `Guessed Answer: **<value>** (assumption: <what you assumed>)` — when the record does not establish them but the closest supported value is still worth stating.
+    A summary with no answer line is not finished: the run pays one extra commit pass to repair it.
+
+    ## Rules
+    - PRESERVE what is still true; ADD what is new; PURGE what is refuted, hallucinated or irrelevant. You are writing the whole run's memory, not a summary of this turn.
+    - Do NOT write placeholders: `see above`, `ibid.`, `refer to earlier`, `same as before`, `unchanged from previous`. There is no previous version to refer to.
+    - Cite ONLY chunks that appear in this round's results or in the current summary you were given. A `chunk_id` you invent is a fabricated citation.
+    - Keep every anchor: if the current summary names a candidate, a constraint or a source, the rewrite must still name it unless it is explicitly eliminated, contradicted or closed.
+    - Do not answer the question in prose; the answer lives only on the `Answer` line.
+
+# commit is the closing pass: it runs once, after the loop, when the standing summary
+# carries no answer line (the Planner spent its budget mid-investigation) or has lost
+# its structure. It re-renders the summary with a settled answer rather than discarding
+# the run's evidence — the same job mode 5's finalizeAnswer does, with the summary as
+# the input instead of a truncated evidence digest.
+#
+# No `temperature` field: commit and rewrite are synthesis-shaped, so they ride the
+# synthesizer's model instance and sampling rather than declaring a third one. Three
+# pinned roles (planner / synthesizer / rubric) are what the engine actually builds —
+# a temperature here would be a field nothing reads.
+commit:
+  content: |
+    The research loop has ended and its summary is not shippable: it carries no settled answer line, or its deliverable structure was lost.
+
+    ## Research question
+    {{QUESTION}}
+
+    ## Standing research summary
+    {{SUMMARY}}
+
+    ## Your contract
+    Re-render the COMPLETE summary now, in the Synthesizer's exact section order (`## Latest Search`, `## Candidate Matrix`, `## Reasoning Chain`, `## Source Inventory & Verification Status`, `## Uncertainties, Limitations, Gaps`, `## Answer`).
+    - Keep every grounded line, citation and `chunk_id` the summary already carries; drop only lines the record does not support.
+    - Replace the `## Uncertainties, Limitations, Gaps` section with what genuinely remains open.
+    - End with exactly ONE answer line: `Final Answer: **<value>**` when the record establishes it, otherwise `Guessed Answer: **<value>** (assumption: <what you assumed>)`. Never refuse and never ask for tools.
+    - Output the summary only — no preamble, no explanation.
+
+# rewrite runs only when the rubric's weighted average falls below `threshold`. It
+# gets the judge's own findings, so the correction is targeted rather than a second
+# blind attempt (inspiration 4: intervene mid-run, not at the delivery gate). Like
+# commit it rides the synthesizer's instance.
+rewrite:
+  content: |
+    A rubric audit rejected the research summary below. Rewrite it so every finding is corrected, WITHOUT losing anything the current summary already grounds.
+
+    ## Research question
+    {{QUESTION}}
+
+    ## Rejected summary
+    {{SUMMARY}}
+
+    ## Audit findings (each must be addressed)
+    {{FINDINGS}}
+
+    ## Your contract
+    Output ONE `<summary>...</summary>` block and nothing else, in the Synthesizer's exact section order (`## Latest Search`, `## Candidate Matrix`, `## Reasoning Chain`, `## Source Inventory & Verification Status`, `## Uncertainties, Limitations, Gaps`, `## Answer`).
+    - Fix every finding. When a finding says a citation is unverifiable, DROP that claim rather than keeping it with a weaker citation — a shorter grounded summary outscores a longer ungrounded one.
+    - Keep every line the findings did not contest, verbatim where possible, including its `chunk_id` anchors.
+    - Never invent a `chunk_id`, never reintroduce a claim the findings removed, and never use placeholders like `see above`.
+    - Keep exactly one answer line as the last line of the summary.

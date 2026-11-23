@@ -1,0 +1,58 @@
+{
+  "chat_id": "a476f195dd244637b5d7f09bdc438e4a",
+  "concurrency": 3,
+  "judge_chat_id": "7289513c907011f18a8527a64e461315",
+  "ragflow_api_key": "ragflow-xGRCgHIMf6AsBy286eX8idKWQFY5qSrzpzFRKjIu8mk",
+  "backend": {
+    "scheme": "http",
+    "host": "127.0.0.1",
+    "port": 9380
+  },
+  "ragflow_chat": {
+    "fresh_session_per_question": true,
+    "stream": false,
+    "agent_mode": "smart-reasoning",
+    "reasoning": 8
+  },
+  "leaderboard": {
+    "llm": "MiniMax-M3.1-Flash",
+    "retriever": "RAGFlow agentic retrieval (hybrid BM25 + BAAI/bge-m3 vector, ReAct loop over the fixed 94k-page BrowseComp-Plus corpus)",
+    "link": "https://github.com/infiniflow/ragflow",
+    "evaluation_date": "2026-10-21",
+    "search_tools": [
+      "search_chunks",
+      "grep_chunks",
+      "search_bm25_chunks"
+    ],
+    "calibration_bin_size": 100
+  },
+  "dataset": {
+    "name": "browsecomp-plus",
+    "description": "BrowseComp-plus: 830 hard-to-locate factual questions. The corpus (94k web pages, one .md per document) lives in dataset.corpus_path; expected_doc_ids in questions.jsonl refer to these file names.",
+    "questions_path": "/home/zhichyu/github.com/infiniflow/ragflow2/train/browsecomp_top150.jsonl",
+    "corpus_path": "/home/zhichyu/Downloads/data/browsecomp-plus/corpus"
+  },
+  "output": {
+    "output_dir": "outputs/rsi_baseline_20261021",
+    "answers_jsonl": "answers.jsonl"
+  },
+  "question_ids": {
+    "include": [],
+    "random": 0,
+    "exclude": []
+  },
+  "judge_llm_ids": [
+    "42426c27a1830f7528f9e2627b366d24",
+    "0848a6bf2ae7ede6de56c6d9de8b5f3b"
+  ],
+  "question_notes": {
+    "161": "RE-RUN 2026-09-28 (c2_smoke44_reval_20260928, full mechanism stack git 3d6a5601c) -> passed （原 failed_retrieval_strategy）: strict judge 判对（leaderboard per_query_judgements, correct=true）",
+    "487": "RE-RUN 2026-09-28 (c2_smoke44_reval_20260928, full mechanism stack git 3d6a5601c) -> passed （原 failed_retrieval_strategy）: strict judge 判对（leaderboard per_query_judgements, correct=true）",
+    "835": "RE-RUN 2026-09-28 (c2_smoke44_reval_20260928, full mechanism stack git 3d6a5601c) -> passed （原 failed_retrieval_strategy）: strict judge 判对（leaderboard per_query_judgements, correct=true）",
+    "1019": "RE-RUN 2026-09-28 (c2_smoke44_reval_20260928, full mechanism stack git 3d6a5601c) -> passed （原 failed_retrieval_strategy）: strict judge 判对（leaderboard per_query_judgements, correct=true）",
+    "1185": "RE-RUN 2026-09-28 (c2_smoke44_reval_20260928, full mechanism stack git 3d6a5601c) -> passed （原 failed_retrieval_strategy）: strict judge 判对（leaderboard per_query_judgements, correct=true）",
+    "1211": "RE-RUN 2026-09-28 (c2_smoke44_reval_20260928, full mechanism stack git 3d6a5601c) -> passed （原 failed_retrieval_strategy）: strict judge 判对（leaderboard per_query_judgements, correct=true）"
+  },
+  "name": "rsi-baseline",
+  "description": "No-strategy baseline for the RSI train set (train/browsecomp_top150.jsonl), mode 8."
+}

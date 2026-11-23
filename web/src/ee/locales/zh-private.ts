@@ -845,5 +845,17 @@ export default {
       loadFailed: '加载 Visio 文件失败',
       renderFailed: '渲染 Visio 页面失败',
     },
+    // Reasoning-engine levels 6-8 (see @/ee/hooks/use-thinking-modes).
+    chat: {
+      thinkingLevelAgentic: 'react',
+      thinkingLevelAgenticDescription: '自主探索语料库',
+      thinkingLevelPlanExplorerAuditor: 'planer-explorer-auditor',
+      thinkingLevelPlanExplorerAuditorDescription:
+        '先规划问题分解，再在交付门禁下探索',
+      thinkingLevelIterative: 'IterSynth',
+      thinkingLevelIterativeDescription: '每轮重写研究摘要',
+      thinkingLevelCodex: 'agentic pro',
+      thinkingLevelCodexDescription: '交由共享 Codex 智能体阅读知识库',
+    },
   },
 };
