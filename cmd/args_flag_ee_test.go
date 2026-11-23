@@ -123,7 +123,7 @@ func TestParseArgsBoolFlagForms(t *testing.T) {
 		if err != nil {
 			t.Fatalf("parseArgsFrom(%q) error = %v", form, err)
 		}
-		if !args.EnablePProf {
+		if args.EnablePProf == nil || !*args.EnablePProf {
 			t.Errorf("%q enablePProf = false, want true", form)
 		}
 	}
@@ -132,7 +132,7 @@ func TestParseArgsBoolFlagForms(t *testing.T) {
 		if err != nil {
 			t.Fatalf("parseArgsFrom(%q) error = %v", form, err)
 		}
-		if args.EnablePProf {
+		if args.EnablePProf == nil || *args.EnablePProf {
 			t.Errorf("%q enablePProf = true, want false", form)
 		}
 	}
@@ -428,7 +428,7 @@ func TestParseArgsHelpVersion(t *testing.T) {
 		if err != nil {
 			t.Fatalf("parseArgsFrom(%q) error = %v", form, err)
 		}
-		if !args.HelpFlag {
+		if args.HelpFlag == nil || !*args.HelpFlag {
 			t.Errorf("%q helpFlag = false, want true", form)
 		}
 		if args.Mode == nil || *args.Mode != "api" {
@@ -440,7 +440,7 @@ func TestParseArgsHelpVersion(t *testing.T) {
 		if err != nil {
 			t.Fatalf("parseArgsFrom(%q) error = %v", form, err)
 		}
-		if !args.VersionFlag {
+		if args.VersionFlag == nil || !*args.VersionFlag {
 			t.Errorf("%q versionFlag = false, want true", form)
 		}
 	}
@@ -448,7 +448,7 @@ func TestParseArgsHelpVersion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("--help=false error = %v", err)
 	}
-	if args.HelpFlag {
+	if args.HelpFlag == nil || *args.HelpFlag {
 		t.Error("--help=false helpFlag = true, want false")
 	}
 }
@@ -542,7 +542,7 @@ func TestParseArgsBoolDoesNotConsumePositional(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error = %v", err)
 	}
-	if !args.EnablePProf || !args.InitSuperUser {
+	if args.EnablePProf == nil || !*args.EnablePProf || !args.InitSuperUser {
 		t.Errorf("enablePProf = %v, initSuperUser = %v, want both true", args.EnablePProf, args.InitSuperUser)
 	}
 }
