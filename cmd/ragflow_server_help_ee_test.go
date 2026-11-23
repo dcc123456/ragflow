@@ -55,12 +55,12 @@ func captureHelpStderr(t *testing.T, fn func()) string {
 
 func TestPrintHelpDefaultStartup(t *testing.T) {
 	help := captureHelpStderr(t, func() { printHelp(&bootstrap.ServerArgs{}) })
-	for _, want := range []string{"one process by default", "--admin", "--api", "--ingestor", "--syncer", "--chatter", "--migrate", "--config", "--log-level", "--profile", "--help", "--version"} {
+	for _, want := range []string{"one process by default", "--admin", "--api", "--ingestor", "--syncer", "--chatter", "--migrate", "--config", "--log-level", "default: warn", "--port", "--profile", "--help", "--version"} {
 		if !strings.Contains(help, want) {
 			t.Errorf("help does not document %q:\n%s", want, help)
 		}
 	}
-	for _, flag := range []string{"--ingestor-tier", "--init-superuser", "--port", "--deepdoc-inference-concurrency", "--deepdoc-inference-cpu-cores"} {
+	for _, flag := range []string{"--ingestor-tier", "--init-superuser", "--deepdoc-inference-concurrency", "--deepdoc-inference-cpu-cores"} {
 		if strings.Contains(help, flag) {
 			t.Errorf("help documents unsupported flag %q:\n%s", flag, help)
 		}
