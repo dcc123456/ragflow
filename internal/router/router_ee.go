@@ -78,6 +78,7 @@ func RegisterEENoAuthRouter(engine *gin.Engine, apiNoAuth *gin.RouterGroup, r *R
 func RegisterEEAuthRouter(authorized *gin.RouterGroup, r *Router) {
 	authorized.GET("/api/v1/heartbeat", userHeartbeat)
 	authorized.DELETE("/api/v1/users/me", r.userHandler.DeleteAccount)
+	authorized.GET("/api/v1/connectors/sync-logs/:task_id/events", handler.ListSyncEvents)
 
 	// Ingestion monitoring data endpoints (read-only, data/display decoupled).
 	ingestionMonitorHandler := handler.NewIngestMonitorHandler()

@@ -15,6 +15,7 @@
  */
 
 import { ResponseType } from '@/interfaces/database/base';
+import type { IngestionMessageParams } from '@/interfaces/database/ingestion';
 import api from '@/utils/api';
 import registerServer from '@/utils/register-server';
 import request from '@/utils/request';
@@ -48,6 +49,9 @@ export const dataSourceUpdate = (id: string, data: Record<string, any>) => {
 
 export const getDataSourceLogs = (id: string, params?: any) =>
   request.get(api.dataSourceLogs(id), { params });
+export const listSyncLogEvents = (id: string, params: IngestionMessageParams) =>
+  request.get(api.dataSourceLogEvents(id), { params, noToast: true });
+
 export const featchDataSourceDetail = (id: string) =>
   request.get(api.dataSourceDetail(id));
 

@@ -1,3 +1,4 @@
+import { DataSourceLogExtraColumns } from '@/ee/pages/user-setting/data-source/log-columns';
 import FileStatusBadge from '@/components/file-status-badge';
 import { RAGFlowAvatar } from '@/components/ragflow-avatar';
 import { RunningStatusMap } from '@/constants/knowledge';
@@ -86,5 +87,5 @@ export const getDataSourceLogsTableColumns = ({
     },
   );
 
-  return columns;
+  return [...columns, ...DataSourceLogExtraColumns];
 };

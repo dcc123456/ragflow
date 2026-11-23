@@ -1,11 +1,11 @@
 import {
-  IngestionMessagesResponse,
   IngestionMessageParams,
+  IngestionMessagesResponse,
 } from '@/interfaces/database/ingestion';
 import { listIngestionMessages } from '@/services/knowledge-service';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import type { InfiniteData } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 
 const PollIntervalMs = 5000;
 
@@ -13,40 +13,37 @@ const PollIntervalMs = 5000;
 // every render and, being a polling-effect dependency, would reset the
 // interval before it ever fires.
 const DefaultParams: IngestionMessageParams = { limit: 200 };
+type LogMessagesResponse = Omit<IngestionMessagesResponse, 'run_count'>;
 
 export const IngestionMessageKeys = {
   messages: (datasetId: string | undefined, logId: string | undefined) =>
     ['ingestionMessages', datasetId, logId] as const,
 };
 
-export const useIngestionMessages = (
-  datasetId: string | undefined,
-  logId: string | undefined,
+export const useLogMessages = <TPage extends LogMessagesResponse>(
+  queryKey: readonly unknown[],
+  loadEvents: (params: IngestionMessageParams) => Promise<TPage>,
   enabled: boolean,
   params: IngestionMessageParams = DefaultParams,
 ) => {
   const queryClient = useQueryClient();
-  const [finishing, setFinishing] = useState(false);
   const finishingRef = useRef(false);
 
   const query = useInfiniteQuery<
-    IngestionMessagesResponse,
+    TPage,
     Error,
-    InfiniteData<IngestionMessagesResponse, IngestionMessageParams | undefined>,
+    InfiniteData<TPage, IngestionMessageParams | undefined>,
     readonly unknown[],
     IngestionMessageParams | undefined
   >({
-    queryKey: IngestionMessageKeys.messages(datasetId, logId),
-    enabled: enabled && !!datasetId && !!logId,
+    queryKey,
+    enabled,
     initialPageParam: undefined,
-    queryFn: async ({ pageParam }) => {
-      const { data: res = {} } = await listIngestionMessages(
-        datasetId || '',
-        logId || '',
-        { ...params, ...pageParam },
-      );
-      return res.data as IngestionMessagesResponse;
-    },
+    queryFn: ({ pageParam }) =>
+      loadEvents({
+        ...params,
+        ...pageParam,
+      }),
     getNextPageParam: (lastPage) =>
       lastPage.has_more_after && lastPage.newest_id
         ? { after_id: lastPage.newest_id }
@@ -75,10 +72,12 @@ export const useIngestionMessages = (
 
   const newestId = items.length > 0 ? items[items.length - 1].id : undefined;
   const newestIdRef = useRef(newestId);
-  newestIdRef.current = newestId;
+  useEffect(() => {
+    newestIdRef.current = newestId;
+  }, [newestId]);
 
   useEffect(() => {
-    if (!enabled || !datasetId || !logId || terminal || finishing) {
+    if (!enabled || terminal) {
       return;
     }
     const interval = setInterval(async () => {
@@ -87,25 +86,14 @@ export const useIngestionMessages = (
       }
       try {
         const afterId = newestIdRef.current;
-        const { data: res = {} } = await listIngestionMessages(
-          datasetId,
-          logId,
-          {
-            ...params,
-            ...(afterId ? { after_id: afterId } : {}),
-          },
-        );
-        const nextResponse = res.data as IngestionMessagesResponse | undefined;
-        if (!nextResponse) {
-          return;
-        }
-        if (nextResponse.items?.length > 0) {
+        const nextResponse = await loadEvents({
+          ...params,
+          ...(afterId ? { after_id: afterId } : {}),
+        });
+        if (nextResponse.items.length > 0) {
           queryClient.setQueryData<
-            InfiniteData<
-              IngestionMessagesResponse,
-              IngestionMessageParams | undefined
-            >
-          >(IngestionMessageKeys.messages(datasetId, logId), (oldData) => {
+            InfiniteData<TPage, IngestionMessageParams | undefined>
+          >(queryKey, (oldData) => {
             if (!oldData) return oldData;
             return {
               ...oldData,
@@ -118,11 +106,8 @@ export const useIngestionMessages = (
           });
         } else if (nextResponse.terminal) {
           queryClient.setQueryData<
-            InfiniteData<
-              IngestionMessagesResponse,
-              IngestionMessageParams | undefined
-            >
-          >(IngestionMessageKeys.messages(datasetId, logId), (oldData) => {
+            InfiniteData<TPage, IngestionMessageParams | undefined>
+          >(queryKey, (oldData) => {
             if (!oldData || oldData.pages.length === 0) return oldData;
             const lastIndex = oldData.pages.length - 1;
             const lastPage = oldData.pages[lastIndex];
@@ -139,10 +124,9 @@ export const useIngestionMessages = (
     return () => clearInterval(interval);
   }, [
     enabled,
-    datasetId,
-    logId,
+    loadEvents,
+    queryKey,
     terminal,
-    finishing,
     hasNextPage,
     isFetchingNextPage,
     params,
@@ -151,34 +135,24 @@ export const useIngestionMessages = (
 
   useEffect(() => {
     finishingRef.current = false;
-    setFinishing(false);
-  }, [datasetId, logId]);
+  }, [queryKey]);
 
   useEffect(() => {
-    if (!terminal || finishingRef.current || !enabled || !datasetId || !logId) {
+    if (!terminal || finishingRef.current || !enabled) {
       return;
     }
-    finishingRef.current = true;
-    setFinishing(true);
     const timer = setTimeout(async () => {
+      finishingRef.current = true;
       try {
         const afterId = newestIdRef.current;
-        const { data: res = {} } = await listIngestionMessages(
-          datasetId,
-          logId,
-          {
-            ...params,
-            ...(afterId ? { after_id: afterId } : {}),
-          },
-        );
-        const nextResponse = res.data as IngestionMessagesResponse | undefined;
-        if (nextResponse?.items?.length) {
+        const nextResponse = await loadEvents({
+          ...params,
+          ...(afterId ? { after_id: afterId } : {}),
+        });
+        if (nextResponse.items.length > 0) {
           queryClient.setQueryData<
-            InfiniteData<
-              IngestionMessagesResponse,
-              IngestionMessageParams | undefined
-            >
-          >(IngestionMessageKeys.messages(datasetId, logId), (oldData) => {
+            InfiniteData<TPage, IngestionMessageParams | undefined>
+          >(queryKey, (oldData) => {
             if (!oldData) return oldData;
             return {
               ...oldData,
@@ -190,12 +164,12 @@ export const useIngestionMessages = (
             };
           });
         }
-      } finally {
-        setFinishing(false);
+      } catch {
+        // Keep the events already shown if the finishing poll fails.
       }
     }, PollIntervalMs);
     return () => clearTimeout(timer);
-  }, [datasetId, enabled, logId, params, queryClient, terminal]);
+  }, [enabled, loadEvents, params, queryClient, queryKey, terminal]);
 
   return {
     ...query,
@@ -207,4 +181,34 @@ export const useIngestionMessages = (
         }
       : undefined,
   };
+};
+
+export const useIngestionMessages = (
+  datasetId: string | undefined,
+  logId: string | undefined,
+  enabled: boolean,
+  params?: IngestionMessageParams,
+) => {
+  const queryKey = useMemo(
+    () => IngestionMessageKeys.messages(datasetId, logId),
+    [datasetId, logId],
+  );
+  const loadEvents = useCallback(
+    async (page: IngestionMessageParams) => {
+      const { data } = await listIngestionMessages(
+        datasetId || '',
+        logId || '',
+        page,
+      );
+      return data.data as IngestionMessagesResponse;
+    },
+    [datasetId, logId],
+  );
+
+  return useLogMessages(
+    queryKey,
+    loadEvents,
+    enabled && !!datasetId && !!logId,
+    params,
+  );
 };

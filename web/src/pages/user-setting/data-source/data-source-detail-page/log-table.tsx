@@ -76,6 +76,7 @@ export const DataSourceLogsTable = ({
     data: data || [],
     columns,
     manualPagination: true,
+    getRowId: (log) => log.id,
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),

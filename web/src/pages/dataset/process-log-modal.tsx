@@ -6,12 +6,15 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { RunningStatusMap } from '@/constants/knowledge';
+import {
+  RunningStatus,
+  RunningStatusMap,
+  RunningStatusOld,
+} from '@/constants/knowledge';
 import { useTranslate } from '@/hooks/common-hooks';
 import React, { useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import reactStringReplace from 'react-string-replace';
-import { RunningStatus } from './dataset/constant';
 import { IngestionEventItem } from '@/interfaces/database/ingestion';
 import { formatTime } from '@/utils/date';
 export interface ILogInfo {
@@ -22,11 +25,13 @@ export interface ILogInfo {
   chunkNumber?: number;
 
   taskId?: string;
-  fileName: string;
+  fileName?: string;
+  dataset?: string;
   fileSize?: string;
   source?: string;
   task?: string;
-  status?: RunningStatus;
+  status?: RunningStatus | RunningStatusOld;
+  startDate?: string;
   startTime?: string;
   endTime?: string;
   duration?: string;
@@ -43,6 +48,7 @@ interface ProcessLogModalProps {
   logInfo: ILogInfo;
   title: string;
   translateKey?: string;
+  detailsLabel?: string;
 }
 
 const MissingStorageFilePattern =
@@ -104,6 +110,7 @@ const ProcessLogModal: React.FC<ProcessLogModalProps> = ({
   logInfo: initData,
   title,
   translateKey,
+  detailsLabel,
 }) => {
   const { t } = useTranslate(translateKey || 'knowledgeDetails');
   const { t: tc } = useTranslation();
@@ -221,7 +228,7 @@ const ProcessLogModal: React.FC<ProcessLogModalProps> = ({
               return (
                 <div className="w-full  mt-2" key={key}>
                   <InfoItem
-                    label={t(key)}
+                    label={detailsLabel ?? t(key)}
                     value={
                       <div className="w-full  whitespace-pre-line text-wrap bg-bg-card rounded-lg h-fit max-h-[350px] overflow-y-auto scrollbar-auto p-2.5">
                         {replaceText(logInfo.details)}
@@ -238,12 +245,14 @@ const ProcessLogModal: React.FC<ProcessLogModalProps> = ({
                   <span className="text-text-secondary text-sm">
                     {t('status')}
                   </span>
-                  <div className="mt-1">
-                    <FileStatusBadge
-                      status={logInfo.status as RunningStatus}
-                      name={RunningStatusMap[logInfo.status as RunningStatus]}
-                    />
-                  </div>
+                  {logInfo.status && (
+                    <div className="mt-1">
+                      <FileStatusBadge
+                        status={logInfo.status}
+                        name={RunningStatusMap[logInfo.status]}
+                      />
+                    </div>
+                  )}
                 </div>
               );
             }

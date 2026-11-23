@@ -191,6 +191,8 @@ export default {
       },
     },
     knowledgeDetails: {
+      syncLog: 'Sync log',
+      summary: 'Summary',
       updated: 'Updated',
       versions: 'Versions',
       metadata: {

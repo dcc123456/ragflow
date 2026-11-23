@@ -30,6 +30,8 @@ export default {
   registerGetCaptcha: '/api/v1/auth/register/captcha',
   registerSendVerifyCode: '/api/v1/auth/register/otp',
   registerVerifyEmail: '/api/v1/auth/register/otp/verify',
+  dataSourceLogEvents: (id: string) =>
+    `${restAPIv1}/connectors/sync-logs/${id}/events`,
   dataSourceListFiles: (id: string) =>
     `${restAPIv1}/connectors/${id}/list-files`,
   dataSourceSyncFiles: (id: string) =>
