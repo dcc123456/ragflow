@@ -11,7 +11,7 @@ Use this file as the local operating guide for the current codebase. Prefer the 
 - Keep refactors centered on the owning abstraction, not on adjacent compatibility layers.
 
 ## Current stack
-- Backend: Go implements the API, admin, ingestor, syncer, DeepDoc, and migration entry points in `cmd/ragflow_server.go` (`--api`, `--admin`, `--ingestor`, `--syncer`, `--deepdoc`, `--migrate`); the CLI runs from `cmd/ragflow-cli.go`. Use `docker/entrypoint-ee.sh` as this repository's Docker entrypoint in images, Compose configurations, and CI workflows. It starts the Go services according to its command-line flags, and the frontend development server uses fixed Go backend proxy routes. The Python API, admin, and workers are still present pending removal.
+- Backend: Go implements the API, admin, ingestor, syncer, DeepDoc, and migration entry points in `cmd/ragflow_server.go` (`--api`, `--admin`, `--ingestor`, `--syncer`, `--deepdoc`, `--migrate`); the CLI runs from `cmd/ragflow-cli.go`. The Docker entrypoint starts the Go services according to its command-line flags, and the frontend development server uses fixed Go backend proxy routes. The Python API, admin, and workers are still present pending removal.
 - Frontend: React + TypeScript + Vite in `web/`. When working under `web/`, read and follow `web/AGENTS.md` for frontend conventions.
 - The Go module contains the server, ingestion, parsing, agent runtime, CLI, and supporting services.
 - Runtime services commonly include MySQL/PostgreSQL, Kvrocks, NATS JetStream, MinIO, ClickHouse, and Elasticsearch/Infinity/OpenSearch depending on configuration.

@@ -9,14 +9,14 @@ x-ragflow-environment: &ragflow-environment
 
 x-ragflow: &ragflow
   image: ${RAGFLOW_IMAGE}
-  entrypoint: ["/ragflow/entrypoint-ee.sh"]
+  entrypoint: ["/ragflow/entrypoint.sh"]
   profiles: [cpu]
   env_file: .env
   environment: *ragflow-environment
   volumes:
     - ./ragflow-logs:/ragflow/logs
     - ./service_conf.yaml.template:/ragflow/conf/service_conf.yaml.template:ro
-    - ./entrypoint-ee.sh:/ragflow/entrypoint-ee.sh:ro
+    - ./entrypoint.sh:/ragflow/entrypoint.sh:ro
     # - ${RAGFLOW_SSH_KNOWN_HOSTS:-${HOME}/.ssh/known_hosts}:${SSH_KNOWN_HOSTS:-/etc/ragflow/ssh_known_hosts}:ro
   networks:
     - ragflow

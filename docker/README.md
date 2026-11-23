@@ -1,13 +1,12 @@
 # Go Docker deployment
 
-This guide documents the Go implementation of RAGFlow. Use `docker/.env`, `docker/docker-compose.yml`, `Dockerfile`, and `docker/entrypoint-ee.sh` for a Go deployment.
+This guide documents the Go implementation of RAGFlow. Use `docker/.env`, `docker/docker-compose.yml`, `Dockerfile`, and `docker/entrypoint.sh` for a Go deployment.
 
-This repository uses `entrypoint-ee.sh` for both Docker images and Compose
-services. It renders configuration and forwards server options unchanged to
-`bin/ragflow_server`. Compose selects each service with flags such as `--migrate`,
-`--admin`, `--api`, `--ingestor`, `--syncer`, and `--chatter`, and runs nginx in a
-separate web container. Without a service selection flag, the entrypoint starts
-nginx and the server in standalone mode.
+The OSS image runs all services in one `bin/ragflow_server` process. It migrates
+the database, starts Admin and initializes the superuser, starts API, then runs
+Ingestor, Syncer and Chatter in parallel. The entrypoint renders configuration,
+starts nginx, and forwards server options unchanged. No service selection flags
+are needed. Stop the container to stop all services.
 
 DeepDoc inference runs in-process; the OSS server does not launch a standalone
 DeepDoc service. For inbound channel webhooks, publish the configured listener

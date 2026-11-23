@@ -201,7 +201,7 @@ Local deployment supports both Docker deployment and launching from source. Dock
    docker compose -f docker-compose.yml up -d
    ```
 
-   This repository uses `docker/entrypoint-ee.sh` as the image and Compose entrypoint. With the default MySQL configuration, Compose runs database migrations before starting Admin, Syncer, Ingestor, API, and other services.
+   With the default MySQL configuration, the image entrypoint runs database migrations before starting Admin, Syncer, Ingestor, API, and other services.
 
    > In the RAGFlow open-source 1.0 release, DeepDoc uses CPU inference for layout analysis, OCR, and table recognition.
 
