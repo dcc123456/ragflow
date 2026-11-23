@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 
 import AdminUserManagement from './users';
@@ -64,19 +64,26 @@ describe('AdminUserManagement', () => {
     expect(screen.queryByText('admin.role')).not.toBeInTheDocument();
   });
 
-  it('opens Settings when the signed-in admin changes their own password', async () => {
+  it('opens the password dialog directly for the signed-in admin', async () => {
     jest.mocked(listUsers).mockResolvedValue({
       data: {
         code: 0,
         data: [
           { email: 'admin@example.com', is_active: '1', is_superuser: true },
+          {
+            email: 'other-admin@example.com',
+            is_active: '1',
+            is_superuser: true,
+          },
+          { email: 'user@example.com', is_active: '1', is_superuser: false },
         ],
         total: 1,
       },
     } as never);
 
+    const queryClient = new QueryClient();
     render(
-      <QueryClientProvider client={new QueryClient()}>
+      <QueryClientProvider client={queryClient}>
         <CurrentUserInfoContext.Provider
           value={[
             {
@@ -100,9 +107,45 @@ describe('AdminUserManagement', () => {
       </QueryClientProvider>,
     );
 
+    const ownRow = (await screen.findByText('admin@example.com')).closest(
+      'tr',
+    )!;
+    const otherAdminRow = screen
+      .getByText('other-admin@example.com')
+      .closest('tr')!;
+    const userRow = screen.getByText('user@example.com').closest('tr')!;
+    expect(
+      within(otherAdminRow).queryByRole('button', {
+        name: 'admin.changePassword',
+      }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(userRow).getByRole('button', { name: 'admin.changePassword' }),
+    ).toBeInTheDocument();
     fireEvent.click(
-      await screen.findByRole('button', { name: 'admin.changePassword' }),
+      within(userRow).getByRole('button', { name: 'admin.changePassword' }),
     );
-    expect(await screen.findByText('Admin Settings')).toBeInTheDocument();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText(/setting.currentPassword/),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'admin.cancel' }));
+    fireEvent.click(
+      within(ownRow).getByRole('button', { name: 'admin.changePassword' }),
+    );
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(
+      screen.getByLabelText(/setting.currentPassword/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Admin Settings')).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/setting.currentPassword/), {
+      target: { value: 'typed password' },
+    });
+    await act(async () => {
+      await queryClient.invalidateQueries();
+    });
+    expect(screen.getByLabelText(/setting.currentPassword/)).toHaveValue(
+      'typed password',
+    );
   });
 });

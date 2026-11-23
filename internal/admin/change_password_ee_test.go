@@ -71,6 +71,48 @@ func TestChangeOwnAdminPassword(t *testing.T) {
 	group.PUT("/users/:username/password", h.ChangePassword)
 
 	for _, tc := range []struct {
+		name      string
+		superuser *bool
+		want      common.ErrorCode
+	}{
+		{"other-superuser", new(true), common.CodeForbidden},
+		{"regular-user", new(false), common.CodeSuccess},
+		{"unset-superuser", nil, common.CodeSuccess},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			target := entity.User{ID: tc.name, Email: tc.name + "@example.com", IsSuperuser: tc.superuser, IsActive: "1", Password: &hash, AccessToken: new("target-token")}
+			if err := db.Create(&target).Error; err != nil {
+				t.Fatal(err)
+			}
+			body, err := json.Marshal(map[string]string{"new_password": encrypt("new password")})
+			if err != nil {
+				t.Fatal(err)
+			}
+			req := httptest.NewRequest(http.MethodPut, "/api/v1/admin/users/"+target.Email+"/password", bytes.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			res := httptest.NewRecorder()
+			engine.ServeHTTP(res, req)
+			var result struct {
+				Code common.ErrorCode `json:"code"`
+			}
+			if err := json.Unmarshal(res.Body.Bytes(), &result); err != nil || result.Code != tc.want {
+				t.Fatalf("response = %s, want code %d (parse error: %v)", res.Body, tc.want, err)
+			}
+			var saved entity.User
+			if err := db.Take(&saved, "id = ?", target.ID).Error; err != nil {
+				t.Fatal(err)
+			}
+			if tc.want == common.CodeSuccess {
+				if !h.userService.VerifyPassword(*saved.Password, encode("new password")) {
+					t.Fatal("password reset did not persist")
+				}
+			} else if *saved.Password != hash || *saved.AccessToken != *target.AccessToken {
+				t.Fatal("forbidden reset modified account credentials")
+			}
+		})
+	}
+
+	for _, tc := range []struct {
 		name, path string
 		body       map[string]string
 		want       common.ErrorCode

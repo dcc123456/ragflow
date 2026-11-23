@@ -23,9 +23,17 @@ import { useNavigate } from 'react-router';
 import { z } from 'zod';
 import { changeOwnPassword } from '@/ee/services/admin-service';
 
-export function ChangePasswordDialog() {
+export function ChangePasswordDialog({
+  open: controlledOpen,
+  onOpenChange,
+}: {
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}) {
   const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = onOpenChange ?? setInternalOpen;
   const [, setCurrentUserInfo] = useContext(CurrentUserInfoContext);
   const navigate = useNavigate();
   const schema = z
@@ -110,19 +118,21 @@ export function ChangePasswordDialog() {
 
   return (
     <>
-      <div className="flex items-start gap-4">
-        <span className="w-[190px] text-sm font-medium">
-          {t('setting.password')}
-        </span>
-        <div className="flex-1 flex items-center gap-4">
-          <div className="text-sm text-text-primary border border-border-button flex-1 rounded-md py-1.5 px-2">
-            <span className="inline-block translate-y-0.5">********</span>
+      {controlledOpen === undefined && (
+        <div className="flex items-start gap-4">
+          <span className="w-[190px] text-sm font-medium">
+            {t('setting.password')}
+          </span>
+          <div className="flex-1 flex items-center gap-4">
+            <div className="text-sm text-text-primary border border-border-button flex-1 rounded-md py-1.5 px-2">
+              <span className="inline-block translate-y-0.5">********</span>
+            </div>
+            <Button variant="outline" type="button" onClick={handleEdit}>
+              <PenLine size={12} /> {t('setting.edit')}
+            </Button>
           </div>
-          <Button variant="outline" type="button" onClick={handleEdit}>
-            <PenLine size={12} /> {t('setting.edit')}
-          </Button>
         </div>
-      </div>
+      )}
       <Modal
         title={t('setting.editPassword')}
         open={open}

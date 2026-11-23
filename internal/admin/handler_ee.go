@@ -39,16 +39,24 @@ import (
 )
 
 var errAdminSelfPasswordChange = errors.New("change your own password in Admin Settings")
+var errAdminSuperuserPasswordChange = errors.New("cannot reset another superuser's password")
 
 func checkAdminPasswordChangeTarget(actorID, targetID string) error {
 	if actorID == targetID {
 		return errAdminSelfPasswordChange
 	}
+	var target entity.User
+	if err := dao.DB.Select("is_superuser").Take(&target, "id = ?", targetID).Error; err != nil {
+		return err
+	}
+	if target.IsSuperuser != nil && *target.IsSuperuser {
+		return errAdminSuperuserPasswordChange
+	}
 	return nil
 }
 
 func passwordChangeErrorCode(err error) common.ErrorCode {
-	if errors.Is(err, errAdminSelfPasswordChange) {
+	if errors.Is(err, errAdminSelfPasswordChange) || errors.Is(err, errAdminSuperuserPasswordChange) {
 		return common.CodeForbidden
 	}
 	return common.CodeServerError

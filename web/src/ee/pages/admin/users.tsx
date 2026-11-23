@@ -29,7 +29,7 @@ import {
   LucideUserPlus,
 } from 'lucide-react';
 
-import { PrivateRoutes } from '@/ee/private-routes';
+import { ChangePasswordDialog } from './settings/change-password-dialog';
 import { isBillingEnabled } from '@/ee/services/billingStatus';
 import { rsaPsw } from '@/utils';
 
@@ -136,6 +136,7 @@ function AdminUserManagement() {
 
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+  const [ownPasswordModalOpen, setOwnPasswordModalOpen] = useState(false);
   const [createUserModalOpen, setCreateUserModalOpen] = useState(false);
   const [userToMakeAction, setUserToMakeAction] =
     useState<AdminServiceEe.ListUsersItem | null>(null);
@@ -458,7 +459,7 @@ function AdminUserManagement() {
 
           function handleChangePassword() {
             if (isMe) {
-              navigate(PrivateRoutes.AdminSettings);
+              setOwnPasswordModalOpen(true);
             } else {
               setUserToMakeAction(row.original);
               setPasswordModalOpen(true);
@@ -480,15 +481,17 @@ function AdminUserManagement() {
                 <LucideClipboardList />
               </Button>
 
-              <Button
-                variant="transparent"
-                size="icon"
-                className="border-0"
-                aria-label={t('admin.changePassword')}
-                onClick={handleChangePassword}
-              >
-                <LucideUserLock />
-              </Button>
+              {(isMe || !row.original.is_superuser) && (
+                <Button
+                  variant="transparent"
+                  size="icon"
+                  className="border-0"
+                  aria-label={t('admin.changePassword')}
+                  onClick={handleChangePassword}
+                >
+                  <LucideUserLock />
+                </Button>
+              )}
               {!isMe && !row.original.is_superuser && (
                 <Button
                   variant="danger"
@@ -796,6 +799,10 @@ function AdminUserManagement() {
         </DialogContent>
       </Dialog>
 
+      <ChangePasswordDialog
+        open={ownPasswordModalOpen}
+        onOpenChange={setOwnPasswordModalOpen}
+      />
       {/* Change Password Modal */}
       <Dialog open={passwordModalOpen} onOpenChange={setPasswordModalOpen}>
         <DialogContent
