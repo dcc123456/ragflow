@@ -961,7 +961,11 @@ jobs:
             else
               echo "::warning::Failed to copy ragflow logs to ${LOG_DEST}; continuing"
             fi
-            echo "ragflow log" && sudo tail -n 200 docker/ragflow-logs/ragflow_server.log || true
+            for log_file in docker/ragflow-logs/*; do
+              [ -f "${log_file}" ] || continue
+              echo "ragflow log: ${log_file##*/}"
+              sudo tail -n 200 "${log_file}" || true
+            done
           else
             echo "No docker/ragflow-logs directory found; skipping log collection"
           fi
@@ -1469,7 +1473,11 @@ jobs:
             else
               echo "::warning::Failed to copy ragflow logs to ${LOG_DEST}; continuing"
             fi
-            echo "ragflow log" && sudo tail -n 200 docker/ragflow-logs/ragflow_server.log || true
+            for log_file in docker/ragflow-logs/*; do
+              [ -f "${log_file}" ] || continue
+              echo "ragflow log: ${log_file##*/}"
+              sudo tail -n 200 "${log_file}" || true
+            done
           else
             echo "No docker/ragflow-logs directory found; skipping log collection"
           fi
