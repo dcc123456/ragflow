@@ -53,7 +53,7 @@ export function ChunkVersionEntry({ chunkId, docId }: ChunkVersionEntryProps) {
           <TooltipContent>{t('chunk.versionHistoryTip')}</TooltipContent>
         </Tooltip>
       </TooltipProvider>
-      <SheetContent className="flex w-[720px] max-w-[92vw] flex-col">
+      <SheetContent className="flex w-[840px] max-w-[92vw] flex-col">
         <SheetHeader>
           <SheetTitle>{t('chunk.versionHistory')}</SheetTitle>
         </SheetHeader>

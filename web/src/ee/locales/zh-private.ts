@@ -10,6 +10,11 @@ export default {
       versionEmpty: '该版本没有保存内容。',
       versionChunkDeleted: '该 chunk 在该版本中被删除。',
       restoredFrom: '从 v{{version}} 恢复',
+      // 由数据集版本还原回放触发的恢复，触发原因写在同一行里。
+      restoredFromDataset: '从 v{{version}} 恢复（数据集版本还原回放）',
+      // 这一版所属的数据集版本，便于在数据集时间线上定位。
+      restoredFromDatasetVersion:
+        '从 v{{version}} 恢复（数据集版本：{{dataset}}）',
       restoreVersion: '恢复',
       restoreVersionTitle: '恢复到 v{{version}}？',
       restoreVersionDescription:
@@ -28,7 +33,22 @@ export default {
       tags: '标签',
       versionHistoryTip: '选择一个版本可以查看它保存的内容。',
       versionChanges: '变更',
-      versionContent: '内容',
+      // 这一栏展示的是该版本保存的完整状态（正文、关键词、问题、标签、启用状态），
+      // 叫「内容」会让人以为只有正文。
+      versionContent: '详情',
+      // 这一版从哪来：还原写明回放的版本；回放不带操作人，只看操作人无法分辨。
+      detailOrigin: '版本来源',
+      originChunk: '手动修改',
+      // 版本行也可能记录解析块的新增或删除，只说「手动操作」分不出是哪一种。三条
+      // 人工来源用同一个句式，下面「by…」那几条说的才是人没有动手的一侧。
+      originAdd: '手动新增',
+      originRemove: '手动删除',
+      // 重新解析会丢弃它不再产生的解析块，那是解析流程删的，不是人删的。
+      originRemoveParse: '文档重新解析时移除',
+      // 数据集版本还原回放到了一个没有该解析块的状态，因此这一版记录的是移除。
+      originRestore: '移除（数据集版本：{{dataset}}）',
+      originRestorePlain: '移除',
+      originParse: '文档解析生成',
       compareFrom: '从',
       compareTip: '选择两个版本查看变化。',
       noDiff: '两个版本没有差异。',
@@ -41,6 +61,16 @@ export default {
       diffFieldVisibility: '启用状态',
       // 该版本没有记录图片时，在对比的对应一侧显示。
       noImage: '无图片',
+      // 卡片上的详情弹层：这一行是什么、何时产生、何时最后变更。两个时间取自
+      // 版本历史，因为版本记录是解析块时间点的唯一来源。
+      detail: '详情',
+      detailTitle: '解析块详情',
+      detailId: '解析块 ID',
+      detailCreatedAt: '创建时间',
+      detailUpdatedAt: '更新时间',
+      // 预览头也用它说明当前显示的是哪个版本：左侧列表只显示时间和用户。
+      detailVersion: '版本',
+      detailStatus: '状态',
     },
     datasetVersion: {
       current: '当前',
@@ -72,14 +102,14 @@ export default {
       restoreConfirmDeleteOnly: '将移除该版本之后上传的 {{deleted}} 个文档',
       restoreConfirmConfig: '同时应用 {{count}} 项配置变更',
       restoreIncompleteTitle: '{{count}} 个文档未能完整恢复',
-      restoreIncompleteBody:
-        '这些文档记录已放回，但内容没有：需要重新解析 {{names}}',
-      restoreIncompleteBodyWithReasons:
-        '这些文档记录已放回，但内容没有：需要重新解析 {{names}}（{{reasons}}）',
+      // 这句话引出下面的列表：每行一个文档，行尾是服务器给该文档的原因。
+      restoreIncompleteBody: '这些文档记录已放回，但内容没有，需要重新解析：',
+      restoreIncompleteMore: '另有 {{count}} 个未列出',
+      // 原因跟在它所属的文档后面，因此指代单个文档。
       restoreMissingNoChunkHistory: '没有可回溯到该版本的解析历史',
-      restoreMissingRemovalGone: '文档删除记录已被清理',
-      restoreMissingReplayFailed: '解析块回放失败',
-      restoreMissingHistoryUnreadable: '解析历史读取失败',
+      restoreMissingRemovalGone: '该文档的删除记录已被清理',
+      restoreMissingReplayFailed: '该文档的解析块回放失败',
+      restoreMissingHistoryUnreadable: '该文档的解析历史读取失败',
       restored: '已恢复到该版本',
       delete: '删除',
       deleteTitle: '确定删除版本 {{version}}？',

@@ -182,9 +182,12 @@ func HasEmptyParseMarker(ctx context.Context, database *gorm.DB, documentID stri
 // starts one past its latest row, so the timeline reads "it exists again" instead
 // of ending at the tombstone.
 //
+// createdBy names the user who added the chunk; an empty actor falls back to the
+// "system" marker for a caller that only had the engine row (a repair, a test).
+//
 // It is best effort: the engine row is already written, and a missing baseline
 // only narrows what a replay can bring back.
-func AppendAddBaseline(ctx context.Context, database *gorm.DB, datasetID, documentID, chunkID string, datasetVersion int64, meta SnapshotMeta, row map[string]interface{}) {
+func AppendAddBaseline(ctx context.Context, database *gorm.DB, datasetID, documentID, chunkID string, datasetVersion int64, meta SnapshotMeta, row map[string]interface{}, createdBy string) {
 	if database == nil || datasetID == "" || documentID == "" || chunkID == "" {
 		return
 	}
@@ -203,13 +206,17 @@ func AppendAddBaseline(ctx context.Context, database *gorm.DB, datasetID, docume
 			zap.String("chunk_id", chunkID), zap.Error(err))
 		return
 	}
+	actor := strings.TrimSpace(createdBy)
+	if actor == "" {
+		actor = entity.ChunkVersionSystemActor
+	}
 	record := &entity.ChunkVersion{
 		ChunkID:        chunkID,
 		Version:        version,
 		DocID:          documentID,
 		DatasetID:      datasetID,
 		DatasetVersion: datasetVersion,
-		CreatedBy:      "system",
+		CreatedBy:      actor,
 		Kind:           entity.ChunkVersionKindAdd,
 		Snapshot:       FullSnapshot(row, meta),
 	}

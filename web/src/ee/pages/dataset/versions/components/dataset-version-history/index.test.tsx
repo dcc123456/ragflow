@@ -1088,7 +1088,7 @@ describe('dataset version history list', () => {
       version: 3,
       kind: 'restore',
       restored_from: 2,
-      documents: [],
+      documents: [{ id: 'doc-10', name: '三国人物.txt' }],
       changes: [],
     };
 
@@ -1102,11 +1102,25 @@ describe('dataset version history list', () => {
     await waitFor(() => expect(mockToast).toHaveBeenCalledTimes(1));
     const [notice] = mockToast.mock.calls[0];
     expect(notice.title).toBe('datasetVersion.restoreIncompleteTitle');
-    // The server said why, so the reader gets the reasons beside the ids rather
-    // than a bare list.
-    expect(notice.description).toBe(
-      'datasetVersion.restoreIncompleteBodyWithReasons',
-    );
+    // The description is a list: one document per line, each followed by the
+    // reason the server gave for that document, so a reason never stands beside
+    // a set of ids the reader cannot match it to.
+    const { container } = render(<>{notice.description}</>);
+    expect(
+      within(container).getByText('datasetVersion.restoreIncompleteBody'),
+    ).toBeInTheDocument();
+    expect(
+      within(container).getByText(
+        'doc-9 - datasetVersion.restoreMissingReplayFailed',
+      ),
+    ).toBeInTheDocument();
+    // A document the restored version still names is shown by name; the id is
+    // only the fallback for one the version cannot name either.
+    expect(
+      within(container).getByText(
+        '三国人物.txt - datasetVersion.restoreMissingNoChunkHistory',
+      ),
+    ).toBeInTheDocument();
   });
 
   it('stays quiet when the restore filled every document', async () => {

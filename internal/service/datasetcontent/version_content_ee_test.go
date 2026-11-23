@@ -307,7 +307,9 @@ func setupReplayTestDB(t *testing.T) *gorm.DB {
 		t.Fatalf("failed to access sqlite db: %v", err)
 	}
 	t.Cleanup(func() { _ = sqlDB.Close() })
-	if err := db.AutoMigrate(&entity.ChunkVersion{}); err != nil {
+	// The document table rides along because a replay reads a document's chunk
+	// count to tell an upload that was never parsed from a history that is gone.
+	if err := db.AutoMigrate(&entity.ChunkVersion{}, &entity.Document{}); err != nil {
 		t.Fatalf("failed to migrate chunk version table: %v", err)
 	}
 	oldDB := dao.DB
@@ -409,12 +411,13 @@ func TestReplayRecordedChunksClearsAVersionThatHeldNoChunk(t *testing.T) {
 	}
 }
 
-// TestReplayRecordedChunksReportsADocumentWithoutHistory keeps the rule that a
-// document with no history reaching the anchor is not rebuilt: there is nothing to
-// rebuild it from, so it is reported instead - both when it stayed and when it
-// came back from its removal. Rebuilding a returned document from an empty history
-// would clear the engine, write nothing, and still be counted as restored content.
-func TestReplayRecordedChunksReportsADocumentWithoutHistory(t *testing.T) {
+// TestReplayRecordedChunksSkipsADocumentThatWasNeverParsed pins the empty state an
+// upload leaves: no chunk history and no chunks. Uploading creates no chunk, so a
+// document in that shape was never parsed, and the version it is being restored to
+// held no content for it either. Nothing is replayed, no history row is written,
+// and the document is not reported as content that could not come back - the
+// reader is not asked for a re-parse the version never had.
+func TestReplayRecordedChunksSkipsADocumentThatWasNeverParsed(t *testing.T) {
 	setupReplayTestDB(t)
 
 	replayed := make([]string, 0)
@@ -427,7 +430,62 @@ func TestReplayRecordedChunksReportsADocumentWithoutHistory(t *testing.T) {
 		t.Context(), "kb-1", []string{"doc-1"}, nil, 2000, 3000, replay)
 
 	if len(replayed) != 0 {
-		t.Fatalf("a document without history was replayed: %v", replayed)
+		t.Fatalf("a document that was never parsed was replayed: %v", replayed)
+	}
+	if restored != 0 {
+		t.Fatalf("restored chunks = %d, want 0", restored)
+	}
+	if len(missing.ids) != 0 {
+		t.Fatalf("missing = %v, want none: the version held no chunk for it", missing.ids)
+	}
+
+	// A document that came back from its removal and holds no chunk is the same
+	// empty state: there is nothing to put back, so it is not missing either.
+	restored, missing = replayRecordedChunks(
+		t.Context(), "kb-1", []string{"doc-2"}, map[string]struct{}{"doc-2": {}}, 2000, 3000, replay)
+
+	if len(replayed) != 0 {
+		t.Fatalf("a returned document that was never parsed was replayed: %v", replayed)
+	}
+	if restored != 0 {
+		t.Fatalf("restored chunks = %d, want 0", restored)
+	}
+	if len(missing.ids) != 0 {
+		t.Fatalf("missing = %v, want none", missing.ids)
+	}
+}
+
+// TestReplayRecordedChunksReportsADocumentWhoseHistoryIsMissing keeps the other
+// side of the rule: a document that holds chunks now but has no history at all is
+// not an upload that was never parsed. Its history predates the feature or was
+// purged, and clearing the engine would drop text nothing can rebuild, so the
+// document is reported instead of emptied.
+func TestReplayRecordedChunksReportsADocumentWhoseHistoryIsMissing(t *testing.T) {
+	db := setupReplayTestDB(t)
+	if err := db.Create(&entity.Document{
+		ID:           "doc-1",
+		KbID:         "kb-1",
+		ParserID:     "naive",
+		ParserConfig: entity.JSONMap{},
+		Type:         "pdf",
+		Suffix:       "pdf",
+		CreatedBy:    "system",
+		ChunkNum:     3,
+	}).Error; err != nil {
+		t.Fatalf("seed document: %v", err)
+	}
+
+	replayed := make([]string, 0)
+	replay := func(_ context.Context, _, documentID string, _, _ int64) (int, error) {
+		replayed = append(replayed, documentID)
+		return 1, nil
+	}
+
+	restored, missing := replayRecordedChunks(
+		t.Context(), "kb-1", []string{"doc-1"}, nil, 2000, 3000, replay)
+
+	if len(replayed) != 0 {
+		t.Fatalf("a document whose history is missing was replayed: %v", replayed)
 	}
 	if restored != 0 {
 		t.Fatalf("restored chunks = %d, want 0", restored)
@@ -437,24 +495,6 @@ func TestReplayRecordedChunksReportsADocumentWithoutHistory(t *testing.T) {
 	}
 	if missing.reasons["doc-1"] != missingReasonNoChunkHistory {
 		t.Fatalf("reason = %q, want %q", missing.reasons["doc-1"], missingReasonNoChunkHistory)
-	}
-
-	// The document that came back from its removal is the same case: no history
-	// means no content, and saying "restored" would hide it.
-	restored, missing = replayRecordedChunks(
-		t.Context(), "kb-1", []string{"doc-2"}, map[string]struct{}{"doc-2": {}}, 2000, 3000, replay)
-
-	if len(replayed) != 0 {
-		t.Fatalf("a returned document without history was replayed: %v", replayed)
-	}
-	if restored != 0 {
-		t.Fatalf("restored chunks = %d, want 0", restored)
-	}
-	if len(missing.ids) != 1 || missing.ids[0] != "doc-2" {
-		t.Fatalf("missing = %v, want [doc-2]", missing.ids)
-	}
-	if missing.reasons["doc-2"] != missingReasonNoChunkHistory {
-		t.Fatalf("reason = %q, want %q", missing.reasons["doc-2"], missingReasonNoChunkHistory)
 	}
 }
 
@@ -475,6 +515,48 @@ func TestMissingSetKeepsOneEntryPerDocumentAndTheFirstReason(t *testing.T) {
 	}
 	if missing.reasons["doc-1"] != missingReasonRemovalGone {
 		t.Fatalf("reason = %q, want the first one recorded", missing.reasons["doc-1"])
+	}
+	if missing.reasons["doc-2"] != missingReasonNoChunkHistory {
+		t.Fatalf("reason = %q, want %q", missing.reasons["doc-2"], missingReasonNoChunkHistory)
+	}
+}
+
+// TestReplayRecordedChunksSettlesEachDocumentFromOneRead keeps the probe a set:
+// two documents in one restore, one parsed and one not, are answered from the same
+// read and each lands on its own verdict - the parsed one reported, the unparsed
+// one skipped.
+func TestReplayRecordedChunksSettlesEachDocumentFromOneRead(t *testing.T) {
+	db := setupReplayTestDB(t)
+	if err := db.Create(&entity.Document{
+		ID:           "doc-2",
+		KbID:         "kb-1",
+		ParserID:     "naive",
+		ParserConfig: entity.JSONMap{},
+		Type:         "pdf",
+		Suffix:       "pdf",
+		CreatedBy:    "system",
+		ChunkNum:     4,
+	}).Error; err != nil {
+		t.Fatalf("seed document: %v", err)
+	}
+
+	replayed := make([]string, 0)
+	replay := func(_ context.Context, _, documentID string, _, _ int64) (int, error) {
+		replayed = append(replayed, documentID)
+		return 1, nil
+	}
+
+	restored, missing := replayRecordedChunks(
+		t.Context(), "kb-1", []string{"doc-1", "doc-2"}, nil, 2000, 3000, replay)
+
+	if len(replayed) != 0 {
+		t.Fatalf("a document without history was replayed: %v", replayed)
+	}
+	if restored != 0 {
+		t.Fatalf("restored chunks = %d, want 0", restored)
+	}
+	if len(missing.ids) != 1 || missing.ids[0] != "doc-2" {
+		t.Fatalf("missing = %v, want [doc-2]", missing.ids)
 	}
 	if missing.reasons["doc-2"] != missingReasonNoChunkHistory {
 		t.Fatalf("reason = %q, want %q", missing.reasons["doc-2"], missingReasonNoChunkHistory)

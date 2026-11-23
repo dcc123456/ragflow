@@ -18,6 +18,14 @@ export default {
       // A removal marker holds no state: both panes say what it records.
       versionChunkDeleted: 'The chunk is deleted in this version.',
       restoredFrom: 'Restored from v{{version}}',
+      // A restore the dataset versioning replayed says so in the same line: what
+      // triggered it is part of where the version came from.
+      restoredFromDataset:
+        'Restored from v{{version}} (dataset version restore)',
+      // The dataset version the row belongs to, so the reader can place it on the
+      // dataset timeline; the row already says the change came from a replay.
+      restoredFromDatasetVersion:
+        'Restored from v{{version}} (dataset version: {{dataset}})',
       restoreVersion: 'Restore',
       restoreVersionTitle: 'Restore v{{version}}?',
       restoreVersionDescription:
@@ -36,7 +44,29 @@ export default {
       tags: 'Tags',
       versionHistoryTip: 'Pick a version to preview what it stored.',
       versionChanges: 'Changes',
-      versionContent: 'Content',
+      // The pane beside Changes shows the whole state a version stored - body,
+      // keywords, questions, tags, visibility - so it is "Details", not "Content",
+      // which would only promise the body.
+      versionContent: 'Details',
+      // Where a version came from: the side that made the change, or - for a
+      // restore - the state it replayed. A replay names nobody, so the actor alone
+      // cannot tell the reader whether a change was theirs.
+      detailOrigin: 'Origin',
+      originChunk: 'Manual change',
+      // A row can also record that the chunk appeared or disappeared, so naming
+      // the side alone would not say which of the three happened here. All three
+      // read the same way, and the "by ..." lines below name the sides a person
+      // did not act on.
+      originAdd: 'Manual addition',
+      originRemove: 'Manual removal',
+      // A re-parse drops the chunks it no longer produces: that removal belongs
+      // to the pipeline, not to the page.
+      originRemoveParse: 'Removed by a re-parse',
+      // A replay left the chunk absent: the row records a removal, and the
+      // dataset version it belongs to says where the removal came from.
+      originRestore: 'Removal (dataset version: {{dataset}})',
+      originRestorePlain: 'Removal',
+      originParse: 'Written by document parsing',
       compareFrom: 'From',
       compareTip: 'Pick two versions to see what changed.',
       noDiff: 'These versions have no differences.',
@@ -49,6 +79,18 @@ export default {
       diffFieldVisibility: 'Visibility',
       // A version that recorded no picture, shown in its half of the comparison.
       noImage: 'No image',
+      // The card's detail popover: what the row is, when it appeared and when it
+      // last changed. The times are read from the version history, because a
+      // version row is the only record of a chunk's instants.
+      detail: 'Details',
+      detailTitle: 'Chunk details',
+      detailId: 'Chunk ID',
+      detailCreatedAt: 'Created',
+      detailUpdatedAt: 'Updated',
+      // Also the line the preview header uses: the version a row holds, since
+      // the list beside it carries only an instant and a user.
+      detailVersion: 'Version',
+      detailStatus: 'Status',
     },
     datasetVersion: {
       current: 'Current',
@@ -94,14 +136,16 @@ export default {
         'This removes {{deleted}} documents that were uploaded after this version',
       restoreConfirmConfig: 'It also applies {{count}} configuration changes',
       restoreIncompleteTitle: '{{count}} documents could not be fully restored',
+      // The body heads the list the notice shows under it: one document per line,
+      // each with the reason the server gave for that document.
       restoreIncompleteBody:
-        'While the document rows are back, their content is not - parse them again: {{names}}',
-      restoreIncompleteBodyWithReasons:
-        'While the document rows are back, their content is not - parse them again: {{names}} ({{reasons}})',
+        'While the document rows are back, their content is not - parse them again:',
+      restoreIncompleteMore: 'and {{count}} more not listed here',
+      // Each reason follows the document it belongs to, so it names one document.
       restoreMissingNoChunkHistory: 'no chunk history reaches this version',
-      restoreMissingRemovalGone: 'the record of their removal was cleaned up',
-      restoreMissingReplayFailed: 'replaying their chunks failed',
-      restoreMissingHistoryUnreadable: 'their chunk history could not be read',
+      restoreMissingRemovalGone: 'the record of its removal was cleaned up',
+      restoreMissingReplayFailed: 'replaying its chunks failed',
+      restoreMissingHistoryUnreadable: 'its chunk history could not be read',
       restored: 'Restored to this version',
       delete: 'Delete',
       deleteTitle: 'Are you sure to delete version {{version}}?',
