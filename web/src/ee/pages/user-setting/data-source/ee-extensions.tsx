@@ -5,7 +5,6 @@ import {
   feishuWikiDefaultValues,
 } from '@/ee/pages/user-setting/data-source/feishu-wiki-constant';
 import type { TFunction } from 'i18next';
-import { BookOpen } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 /**
@@ -229,7 +228,7 @@ export const generateEeDataSourceInfo = (
   [feishuWikiKey]: {
     name: 'Feishu / Lark',
     description: t('setting.feishu_wikiDescription'),
-    icon: <BookOpen className="text-text-primary" size={22} />,
+    icon: <SvgIcon name={'chat-channel/feishu'} width={38} />,
   },
   [dingtalkAITableKey]: dingtalkCard(t),
   [dingtalkWikiKey]: dingtalkCard(t),
