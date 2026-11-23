@@ -2631,7 +2631,7 @@ resource "kubernetes_deployment_v1" "ragflow" {
             initial_delay_seconds = 0
             period_seconds        = 30
             timeout_seconds       = 5
-            failure_threshold     = 20 # 20 * 30s = 600s (10 min) for entrypoint.sh restarting ragflow
+            failure_threshold     = 20 # 20 * 30s = 600s (10 min) for entrypoint-ee.sh restarting ragflow
           }
 
           # =============================================================================

@@ -111,4 +111,4 @@ COPY --from=builder /ragflow/VERSION /ragflow/VERSION
 # Set environment variables
 ENV HF_ENDPOINT=https://hf-mirror.com
 
-ENTRYPOINT ["./entrypoint.sh"]
+ENTRYPOINT ["./entrypoint-ee.sh"]
