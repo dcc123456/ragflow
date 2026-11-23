@@ -44,7 +44,7 @@ services:
 
   admin:
     <<: *ragflow
-    command: ["--admin", "--init-superuser"]
+    command: ["--admin"]
     environment:
       <<: *ragflow-environment
     ports:
