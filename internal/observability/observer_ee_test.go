@@ -89,6 +89,84 @@ func TestMetricsConcurrentRequests(t *testing.T) {
 	}
 }
 
+func TestAPIMetrics(t *testing.T) {
+	o := newObserver("api-host")
+	for _, path := range []string{"GET /api/v1/datasets", "POST /api/v1/datasets"} {
+		func() {
+			var err error
+			defer o.beginAPI(path)(&err)
+		}()
+		func() {
+			err := errors.New("request failed")
+			defer o.beginAPI(path)(&err)
+		}()
+		func() {
+			failure := errors.New("request panicked")
+			defer func() {
+				if got := recover(); got != failure {
+					t.Errorf("panic = %v, want %v", got, failure)
+				}
+			}()
+			var err error
+			defer o.beginAPI(path)(&err)
+			panic(failure)
+		}()
+	}
+	var wg sync.WaitGroup
+	for range 64 {
+		wg.Go(func() {
+			var err error
+			defer o.beginAPI("GET /api/v1/datasets")(&err)
+		})
+	}
+	wg.Wait()
+	families, err := o.registry.Gather()
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := 0
+	for _, family := range families {
+		if !strings.HasPrefix(family.GetName(), "apis_") {
+			continue
+		}
+		seen++
+		if len(family.Metric) != 2 {
+			t.Fatalf("%s has %d series, want 2", family.GetName(), len(family.Metric))
+		}
+		for _, metric := range family.Metric {
+			if len(metric.Label) != 2 || metric.Label[0].GetName() != "api_path" || metric.Label[1].GetName() != "hostname" || metric.Label[1].GetValue() != "api-host" {
+				t.Fatalf("unexpected labels: %v", metric.Label)
+			}
+			var count uint64 = 3
+			switch metric.Label[0].GetValue() {
+			case "GET /api/v1/datasets":
+				count += 64
+			case "POST /api/v1/datasets":
+			default:
+				t.Fatalf("unexpected API path: %v", metric.Label)
+			}
+			switch family.GetName() {
+			case "apis_requests_total":
+				if got := metric.GetCounter().GetValue(); got != float64(count) {
+					t.Errorf("requests = %v, want %d", got, count)
+				}
+			case "apis_failures_total":
+				if got := metric.GetCounter().GetValue(); got != 2 {
+					t.Errorf("failures = %v, want 2", got)
+				}
+			case "apis_latency_seconds":
+				histogram := metric.GetHistogram()
+				if histogram.GetSampleCount() != count || histogram.GetSampleSum() < 0 || len(histogram.Bucket) != 14 || histogram.Bucket[13].GetUpperBound() != 10 {
+					t.Errorf("unexpected histogram: %v", histogram)
+				}
+			}
+		}
+	}
+	if seen != 3 {
+		t.Errorf("API metric families = %d, want 3", seen)
+	}
+}
+
 func TestMetricsExpositionAndGauges(t *testing.T) {
 	previous := defaultObserver
 	defaultObserver = newObserver("exposition-host")
@@ -98,6 +176,7 @@ func TestMetricsExpositionAndGauges(t *testing.T) {
 	SetQueueMetrics("tasks", 4, 2, 22)
 	var err error
 	BeginRetrieval("retrieval")(&err)
+	BeginAPI("POST /api/v1/retrieval")(&err)
 	recorder := httptest.NewRecorder()
 	MetricsHandler().ServeHTTP(recorder, httptest.NewRequest("GET", "/metrics", nil))
 	if recorder.Code != 200 || !strings.HasPrefix(recorder.Header().Get("Content-Type"), "text/plain") {
@@ -110,6 +189,9 @@ func TestMetricsExpositionAndGauges(t *testing.T) {
 		"# TYPE queue_tasks_completed_total gauge",
 		"queue_tasks_completed_total{queue=\"tasks\"} 22\n",
 		"retrieval_requests_total{hostname=\"exposition-host\"} 1\n",
+		"apis_requests_total{api_path=\"POST /api/v1/retrieval\",hostname=\"exposition-host\"} 1\n",
+		"apis_failures_total{api_path=\"POST /api/v1/retrieval\",hostname=\"exposition-host\"} 0\n",
+		"apis_latency_seconds_count{api_path=\"POST /api/v1/retrieval\",hostname=\"exposition-host\"} 1\n",
 	} {
 		if !strings.Contains(recorder.Body.String(), sample) {
 			t.Errorf("missing metric %q", sample)

@@ -30,7 +30,7 @@ import (
 )
 
 func SetupEERouter(engine *gin.Engine) {
-	engine.Use(apiRetrievalMetrics())
+	engine.Use(apiMetrics(), apiRetrievalMetrics())
 	serverName := server.GetServerName()
 	engine.Use(otelgin.Middleware(serverName))
 	engine.Use(handler.RegistrationWhitelist())

@@ -14,6 +14,24 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+func apiMetrics() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		path := c.FullPath()
+		if path == "" || path == "/metrics" {
+			c.Next()
+			return
+		}
+		var err error
+		defer observability.BeginAPI(c.Request.Method + " " + path)(&err)
+		defer func() {
+			if c.Writer.Status() >= http.StatusInternalServerError {
+				err = errors.New("API HTTP request failed")
+			}
+		}()
+		c.Next()
+	}
+}
+
 func apiRetrievalMetrics() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if c.Request.Method != http.MethodPost {
