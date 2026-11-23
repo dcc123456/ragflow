@@ -633,27 +633,30 @@ function AdminUserManagement() {
                       </RadioGroup>
                     </section>
 
-                    <section>
-                      <div className="font-bold mb-3">{t('admin.plan')}</div>
+                    {/* Billing plans only exist on SaaS deployments. */}
+                    {isBillingEnabled() && (
+                      <section>
+                        <div className="font-bold mb-3">{t('admin.plan')}</div>
 
-                      <RadioGroup
-                        value={filters.plan}
-                        onValueChange={handlePlanChange}
-                      >
-                        {PLAN_FILTER_OPTIONS.map(({ label, value }) => (
-                          <Label
-                            key={value}
-                            className="flex items-center space-x-2"
-                          >
-                            <RadioGroupItem
-                              className="bg-bg-input border-border-button"
-                              value={value}
-                            />
-                            <span>{t(label)}</span>
-                          </Label>
-                        ))}
-                      </RadioGroup>
-                    </section>
+                        <RadioGroup
+                          value={filters.plan}
+                          onValueChange={handlePlanChange}
+                        >
+                          {PLAN_FILTER_OPTIONS.map(({ label, value }) => (
+                            <Label
+                              key={value}
+                              className="flex items-center space-x-2"
+                            >
+                              <RadioGroupItem
+                                className="bg-bg-input border-border-button"
+                                value={value}
+                              />
+                              <span>{t(label)}</span>
+                            </Label>
+                          ))}
+                        </RadioGroup>
+                      </section>
+                    )}
                   </div>
 
                   <div className="pt-4 flex justify-end">
