@@ -3,7 +3,7 @@
 Prometheus monitors MinIO/Silo and ClickHouse directly, plus MySQL, Kvrocks, NATS
 and Elasticsearch/OpenSearch through separate exporter containers using their
 published images. The containers join the `ragflow` bridge network and
-communicate by service name. Prometheus publishes its UI at `127.0.0.1:9090`.
+communicate by service name. Prometheus publishes its UI on host port `9090`.
 Exporter ports stay inside the Compose network.
 
 ## Start monitoring

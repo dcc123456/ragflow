@@ -575,7 +575,7 @@ services:
     networks:
       - ragflow
     ports:
-      - "127.0.0.1:9090:9090"
+      - "9090:9090"
     entrypoint: ["/bin/sh", "/etc/prometheus/entrypoint.sh"]
     environment:
       DB_TYPE: ${DB_TYPE:-mysql}
