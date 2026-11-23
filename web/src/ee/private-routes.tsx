@@ -145,7 +145,10 @@ export const privateRoutes: PrivateRoute[] = [
         children: [
           {
             // The navigation layout is the only pathless child of the
-            // authorized layout.
+            // authorized layout. The enterprise layout mirrors the upstream
+            // one and adds the language/theme controls to the sidebar footer.
+            override: () =>
+              import('@/ee/pages/admin/layouts/navigation-layout'),
             children: [
               {
                 // Service status and user management are maintained in the
