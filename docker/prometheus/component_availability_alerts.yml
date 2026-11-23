@@ -14,6 +14,9 @@ groups:
           and on (job, instance) elasticsearch_cluster_health_status{job="elasticsearch"}
           and on (job, instance) elasticsearch_jvm_memory_max_bytes{job="elasticsearch",area="heap"}
         )
+        # The api server /metrics endpoint is itself the backend for
+        # apis_-prefixed request stats, so a successful scrape means healthy.
+        or (up{job="ragflow_api_server_request_stats"} == 1)
       ) or on (job, service) (0 * ragflow_monitoring_target_enabled)
 
   # 0: disabled, 1: configuration missing/invalid, 2: unhealthy, 3: healthy.

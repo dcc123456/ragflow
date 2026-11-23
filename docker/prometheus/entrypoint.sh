@@ -90,6 +90,7 @@ else
 fi
 native_target minio-job minio "$minio_enabled" "$minio_address" "$minio_credentials_ready"
 native_target clickhouse clickhouse "${MONITORING_CLICKHOUSE_ENABLED:-true}" "${CLICKHOUSE_METRICS_ADDRESS:-clickhouse:9363}" 1
+native_target ragflow_api_server_request_stats ragflow_api_server "${MONITORING_RAGFLOW_API_SERVER_ENABLED:-true}" "${RAGFLOW_API_SERVER_METRICS_ADDRESS:-api:9380}" 1
 
 mysql_exporter=''
 if [ "${DB_TYPE:-mysql}" = mysql ]; then mysql_exporter=mysql-exporter; fi

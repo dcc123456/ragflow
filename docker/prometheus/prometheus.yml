@@ -46,3 +46,14 @@ scrape_configs:
   - job_name: elasticsearch
     file_sd_configs:
       - files: ["targets/elasticsearch.json"]
+
+  # Ragflow API server request stats: keep only the apis_-prefixed metrics
+  # (apis_requests_total, apis_failures_total, apis_latency_seconds) that the
+  # Go API server exposes on /metrics, labeled by api_path.
+  - job_name: ragflow_api_server_request_stats
+    file_sd_configs:
+      - files: ["targets/ragflow_api_server_request_stats.json"]
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: "apis_.*"
+        action: keep

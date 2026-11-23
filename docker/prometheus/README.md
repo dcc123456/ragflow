@@ -45,6 +45,13 @@ Targets follow the deployment settings in `docker/.env`:
 | `nats` | `nats-exporter:7777/metrics` | Always |
 | `elasticsearch` | `elasticsearch-exporter:9114/metrics` | `DOC_ENGINE=elasticsearch` |
 | `elasticsearch` | `opensearch-exporter:9114/metrics` | `DOC_ENGINE=opensearch` |
+| `ragflow_api_server_request_stats` | `api:9380/metrics` | `MONITORING_RAGFLOW_API_SERVER_ENABLED=true` (default) |
+
+The `ragflow_api_server_request_stats` job collects only the `apis_`-prefixed
+request stats (`apis_requests_total`, `apis_failures_total`,
+`apis_latency_seconds`, labeled by `api_path`) that the Ragflow API server
+exposes on `/metrics`. Override `RAGFLOW_API_SERVER_METRICS_ADDRESS` with
+`host:port` for external API server deployments.
 
 Use lowercase `DB_TYPE` and `DOC_ENGINE` values that match the application. Set
 `MONITORING_MINIO_ENABLED=false` or `MONITORING_CLICKHOUSE_ENABLED=false` when
