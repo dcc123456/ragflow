@@ -303,6 +303,11 @@ func (m *ModelProviderService) ShowModelGroup(ctx context.Context, groupID strin
 		if err != nil {
 			return nil, err
 		}
+		if !strings.EqualFold(tenantModel.Status, "active") {
+			showModelGroupResponse.Unavailable = true
+			response = append(response, showModelGroupResponse)
+			continue
+		}
 		showModelGroupResponse.Model = tenantModel.ModelName
 		showModelGroupResponse.ModelType = entity.ModelType(tenantModel.ModelType).HumanReadable()
 		showModelGroupResponse.Instance = tenantModel.InstanceID
