@@ -3,6 +3,7 @@
 package clickhouse
 
 import (
+	"cmp"
 	"context"
 	"os"
 	"strings"
@@ -34,7 +35,7 @@ func newIntegrationDriver(t *testing.T) *Driver {
 	ctx := context.Background()
 	conn, err := clickhouse.Open(&clickhouse.Options{
 		Addr: []string{addr},
-		Auth: clickhouse.Auth{Database: "default", Username: user, Password: pass},
+		Auth: clickhouse.Auth{Database: cmp.Or(os.Getenv("CLICKHOUSE_TEST_DATABASE"), "default"), Username: user, Password: pass},
 	})
 	if err != nil {
 		t.Fatalf("open clickhouse: %v", err)

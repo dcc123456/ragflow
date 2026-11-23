@@ -58,3 +58,16 @@ func TestWPSFileTypesRejectUnrelatedAndInvalidNames(t *testing.T) {
 		t.Errorf("overlong WPS filename accepted: %q", got)
 	}
 }
+
+func TestVSDXFileTypes(t *testing.T) {
+	for _, name := range []string{"arch.vsdx", "dir/拓扑图.VSDX"} {
+		t.Run(name, func(t *testing.T) {
+			if got := GetFileType(name); got != FileTypeVSDX {
+				t.Errorf("GetFileType(%q) = %q, want %q", name, got, FileTypeVSDX)
+			}
+			if got := FilenameType(name); got != FileTypeVSDX {
+				t.Errorf("FilenameType(%q) = %q, want %q", name, got, FileTypeVSDX)
+			}
+		})
+	}
+}

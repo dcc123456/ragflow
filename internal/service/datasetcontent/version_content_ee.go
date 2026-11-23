@@ -724,9 +724,62 @@ type chunkReplayer func(ctx context.Context, datasetID, documentID string, atVer
 // history, all of it written after the anchor, is neither: the version described
 // it with no chunks (uploaded, not yet parsed), so the replay runs and clears the
 // engine, which is exactly what that version says.
+// documentChunkProbeBatch bounds one IN (...) list: SQLite caps a statement at
+// 999 bound parameters, and a version can record more documents than that.
+const documentChunkProbeBatch = 500
+
+// documentsWithChunks reports which of the named documents hold chunks right now.
+// It separates the two empty states a restore can find: "no history" plus "no
+// chunks" is a document that was never parsed, while "no history" plus "chunks"
+// is a history this build cannot reach.
+func documentsWithChunks(ctx context.Context, documentIDs []string) (map[string]struct{}, error) {
+	chunked := make(map[string]struct{}, len(documentIDs))
+	if dao.DB == nil || len(documentIDs) == 0 {
+		return chunked, nil
+	}
+	for start := 0; start < len(documentIDs); start += documentChunkProbeBatch {
+		end := start + documentChunkProbeBatch
+		if end > len(documentIDs) {
+			end = len(documentIDs)
+		}
+		var rows []struct {
+			ID       string
+			ChunkNum int64
+		}
+		if err := dao.DB.WithContext(ctx).
+			Model(&entity.Document{}).
+			Select("id", "chunk_num").
+			Where("id IN ?", documentIDs[start:end]).
+			Find(&rows).Error; err != nil {
+			return nil, fmt.Errorf("read the chunk counts of %d documents: %w", end-start, err)
+		}
+		for _, row := range rows {
+			if row.ChunkNum > 0 {
+				chunked[row.ID] = struct{}{}
+			}
+		}
+	}
+	return chunked, nil
+}
+
 func replayRecordedChunks(ctx context.Context, datasetID string, recordedIDs []string, readded map[string]struct{}, atVersion int64, restoreVersion int64, replay chunkReplayer) (int, *missingSet) {
 	restored := 0
 	missing := newMissingSet()
+	// The documents' chunk counts are read once, on the first row that has no
+	// history at all: that is the only row the answer decides, and a restore that
+	// never meets one pays nothing for it.
+	var (
+		chunkedDocs    map[string]struct{}
+		chunkProbeErr  error
+		chunkProbeDone bool
+	)
+	probeChunks := func() (map[string]struct{}, error) {
+		if !chunkProbeDone {
+			chunkProbeDone = true
+			chunkedDocs, chunkProbeErr = documentsWithChunks(ctx, recordedIDs)
+		}
+		return chunkedDocs, chunkProbeErr
+	}
 	for _, docID := range recordedIDs {
 		states, stateErr := chunkversion.StatesAt(ctx, dao.DB, docID, atVersion)
 		if stateErr != nil {
@@ -742,9 +795,7 @@ func replayRecordedChunks(ctx context.Context, datasetID string, recordedIDs []s
 			// which empty state this is: a document with history but none of it
 			// before the anchor had no chunks then (it was uploaded and not yet
 			// parsed), so the replay below clears what the engine holds and reports
-			// zero - which is what the version says. A document with no history at
-			// all is the other case, where clearing would empty content nothing can
-			// put back.
+			// zero - which is what the version says.
 			known, historyErr := chunkversion.HasAnyHistory(ctx, dao.DB, docID)
 			if historyErr != nil {
 				common.Warn("Content restore: failed to read whether the document has chunk history",
@@ -755,6 +806,28 @@ func replayRecordedChunks(ctx context.Context, datasetID string, recordedIDs []s
 				continue
 			}
 			if !known {
+				// No history at all: the parser never produced a chunk for this
+				// document, because uploading creates none and the parser is what
+				// writes the baseline. The version held no chunks for it either, so
+				// the state to put back is empty - there is nothing to clear, and
+				// nothing to record for a document that never had a chunk. Counting
+				// it as content that could not come back would ask for a re-parse
+				// the version never had.
+				chunked, chunkErr := probeChunks()
+				if chunkErr != nil {
+					common.Warn("Content restore: failed to read whether the document has chunks",
+						zap.String("dataset_id", datasetID),
+						zap.String("document_id", docID),
+						zap.Error(chunkErr))
+					missing.add(docID, missingReasonHistoryUnreadable)
+					continue
+				}
+				if _, hasChunks := chunked[docID]; !hasChunks {
+					continue
+				}
+				// Chunks now but no history is the other case: the history predates
+				// the feature or was purged, and clearing the engine would drop text
+				// nothing can rebuild. That document is reported instead of emptied.
 				_, cameBack := readded[docID]
 				common.Warn("Content restore: no chunk history reaches the version's anchor",
 					zap.String("dataset_id", datasetID),

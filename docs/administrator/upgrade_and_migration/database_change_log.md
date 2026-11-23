@@ -31,7 +31,7 @@ Startup order in `InitDB` for `ragflow_server --migrate` ([database.go](https://
 1. `RunMigrations` — manual, idempotent steps plus the two versioned tenant model steps. This includes `migrateColumnWidths`, which widens `pipeline_operation_log.pipeline_title`, `tenant.name`, and the `tenant_*id` model-reference columns only when the existing column is narrower. Runs *before* `AutoMigrate` because it has to observe the legacy schema.
 2. `migrateIngestionLogRunIdentity` — ingestion log columns and indexes.
 3. `migrateUserTenantDuplicates` — deduplicates memberships before `AutoMigrate` creates their unique index.
-4. `AutoMigrate` — converges every ORM model, including the compilation queue tables.
+4. `AutoMigrate` — converges every ORM model, including the compilation queue tables. Enterprise builds also create `completion_log` through `completionLogModelsEE`; server-mode startup creates it through `autoMigrateRuntimeModels`.
 5. `migrateConversationHistory` — runs *after* `AutoMigrate`, which creates the child tables it backfills.
 6. `migrateIngestionParserConfigs` — converts ingestion settings on datasets and documents, then invokes the existing `migrateKnowledgebaseParserConfig` cleanup. Both run after the conversation split so the shared marker cannot skip that split.
 7. `migrateTenantModelMaxTokens` — backfills model context windows before advancing the marker to its target.
@@ -50,6 +50,7 @@ After the migration or runtime schema path, `InitDB` ensures `user.last_login_te
 
 | Database version  | Scope                                                                                                        | Gate                               |
 |-------------------|--------------------------------------------------------------------------------------------------------------|------------------------------------|
+| Version-less (enterprise only) | Create `completion_log` for submitted messages and assistant responses, independently of conversation history | `completionLogModelsEE`; idempotent table creation |
 | `v0.26.0`         | Rebuild the tenant model tables from `tenant_llm` and normalize stored model ids                             | `modelMigrationBaseVersion`        |
 | `v1.0.0-rc1`      | Seed factory-declared models, merge `model_type` into an integer bitmask, populate the `tenant_*_id` columns | `modelMigrationTargetVersion`      |
 | `v1.0.0-rc1`      | Split conversation message and reference payloads into child tables                                          | `conversationHistoryTargetVersion` |
@@ -463,3 +464,15 @@ The existing `pipeline_title` index is preserved.
 |---------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `knowledgebase`, `dialog` | `parser_config` entries stored under the legacy key `TokenChunker:SixApplesFall` are rewritten to `GeneralChunker:SixApplesFall`. Values already stored under the new key win; `TokenChunker`-only fields (`delimiter_mode`, `outputs`) are dropped, and a legacy `delimiter` becomes `delimiters`. `delimiter` is discarded when `delimiters` already exists. |
 | `connector` | When `RAGFLOW_CONNECTOR_KEY` is set, a plaintext `config["credentials"]` value is encrypted to an `enc:v1:` string (AES-256-GCM). Rows that are already encrypted and rows whose `config` is not valid JSON are left unchanged. Without the key, the step changes nothing. |
+
+## Completion content logs
+
+Enterprise builds register `completion_log` through `completionLogModelsEE` in
+both full and runtime schema migration, without
+changing existing history or audit records. Accepted chat and agent turns write
+one row containing `user_message`, `assistant_response`, caller and resource IDs,
+and a terminal status. This includes streaming calls and calls with conversation
+history disabled. Rows have no conversation foreign key, so deleting a session
+preserves its logs. Existing conversations are not backfilled. These rows contain
+plaintext message content and have no automatic retention policy. Community builds
+include only no-op hooks and never create or write this table.

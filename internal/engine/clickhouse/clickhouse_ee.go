@@ -39,13 +39,14 @@ var (
 )
 
 type Driver struct {
-	conn      driver.Conn
-	config    *clickhouse.Options
-	channel   chan interface{}
-	ctx       context.Context
-	cancel    context.CancelFunc
-	wg        sync.WaitGroup
-	batchSize int
+	conn        driver.Conn
+	config      *clickhouse.Options
+	channel     chan interface{}
+	ctx         context.Context
+	cancel      context.CancelFunc
+	wg          sync.WaitGroup
+	batchSize   int
+	syncEventID int64
 }
 
 // GetDriver gets global stats client instance
@@ -167,28 +168,30 @@ func (d *Driver) consumer() {
 }
 
 func (d *Driver) drainAndFlush() {
-	usageBatch, logBatch, ingestBatch := d.drainChannel()
+	usageBatch, logBatch, ingestBatch, syncBatch := d.drainChannel()
 
-	if len(usageBatch)+len(logBatch)+len(ingestBatch) == 0 {
+	if len(usageBatch)+len(logBatch)+len(ingestBatch)+len(syncBatch) == 0 {
 		return
 	}
 
 	d.flushModelUsage(usageBatch)
 	d.flushOperationLog(logBatch)
 	d.flushIngestionEvents(ingestBatch)
+	d.flushSyncEvents(syncBatch)
 }
 
-func (d *Driver) drainChannel() ([]*common.ModelUsage, []*common.OperationLog, []*common.IngestionLog) {
+func (d *Driver) drainChannel() ([]*common.ModelUsage, []*common.OperationLog, []*common.IngestionLog, []*SyncEvent) {
 	var usageBatch []*common.ModelUsage
 	var logBatch []*common.OperationLog
 	var ingestBatch []*common.IngestionLog
+	var syncBatch []*SyncEvent
 
 	for {
 		select {
 		case message, ok := <-d.channel:
 			if !ok {
 				// channel is closed
-				return usageBatch, logBatch, ingestBatch
+				return usageBatch, logBatch, ingestBatch, syncBatch
 			}
 			switch record := message.(type) {
 			case *common.ModelUsage:
@@ -197,21 +200,23 @@ func (d *Driver) drainChannel() ([]*common.ModelUsage, []*common.OperationLog, [
 				logBatch = append(logBatch, record)
 			case *common.IngestionLog:
 				ingestBatch = append(ingestBatch, record)
+			case *SyncEvent:
+				syncBatch = append(syncBatch, record)
 			default:
 				common.Error("Invalid record type", errors.New("invalid type"))
 			}
 
-			if len(usageBatch)+len(logBatch)+len(ingestBatch) >= d.batchSize {
+			if len(usageBatch)+len(logBatch)+len(ingestBatch)+len(syncBatch) >= d.batchSize {
 				common.Info(fmt.Sprintf("Reach batch size limit, flush batch, batchSize: %d", d.batchSize))
-				return usageBatch, logBatch, ingestBatch
+				return usageBatch, logBatch, ingestBatch, syncBatch
 			}
 
 		default:
 			// Drain channel, flush batch
-			if len(usageBatch)+len(logBatch)+len(ingestBatch) > 0 {
-				common.Info("Drain channel, flush batch", zap.Int("batchSize", len(usageBatch)+len(logBatch)+len(ingestBatch)))
+			if len(usageBatch)+len(logBatch)+len(ingestBatch)+len(syncBatch) > 0 {
+				common.Info("Drain channel, flush batch", zap.Int("batchSize", len(usageBatch)+len(logBatch)+len(ingestBatch)+len(syncBatch)))
 			}
-			return usageBatch, logBatch, ingestBatch
+			return usageBatch, logBatch, ingestBatch, syncBatch
 		}
 	}
 }
@@ -397,6 +402,9 @@ func (d *Driver) InitDB() error {
 			common.Error("Execute statement failed", err)
 			if strings.Contains(stmt, "CREATE TABLE IF NOT EXISTS operation_audit_log") {
 				return fmt.Errorf("initialize audit table: %w", err)
+			}
+			if stmt == createSyncEventsSQL {
+				return fmt.Errorf("initialize sync events table: %w", err)
 			}
 		}
 	}
@@ -939,5 +947,6 @@ GROUP BY
     ORDER BY (tenant_id, event_at, task_id)
     SETTINGS index_granularity = 8192
     `,
+		createSyncEventsSQL,
 	}
 }

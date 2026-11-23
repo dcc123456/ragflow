@@ -149,6 +149,43 @@ func (dao *DatasetVersionDAO) GetByDatasetAndVersion(ctx context.Context, db *go
 	return &row, nil
 }
 
+// DatasetVersionFact is what a chunk history reader needs from the dataset version
+// a row was written under: what produced it, and the user it is attributed to.
+type DatasetVersionFact struct {
+	// Kind is the version's own kind. It says whether a re-parse or a restore
+	// dropped a chunk, which the chunk row cannot: both removals name no actor.
+	Kind string
+	// CreatedBy is the user the version is attributed to - the only record of
+	// whose request produced a chunk row the system wrote.
+	CreatedBy string
+}
+
+// FactsByVersion reads the kind and the attributed user of each named version. It
+// selects three columns and hydrates nothing: resolving a version would pull a
+// configuration snapshot and a document set that a history reader never looks at.
+func (dao *DatasetVersionDAO) FactsByVersion(ctx context.Context, db *gorm.DB, datasetID string, versions []int64) (map[int64]DatasetVersionFact, error) {
+	if db == nil || datasetID == "" || len(versions) == 0 {
+		return nil, nil
+	}
+	var rows []struct {
+		Version   int64
+		Kind      string
+		CreatedBy string
+	}
+	if err := db.WithContext(ctx).
+		Model(&entity.DatasetVersion{}).
+		Select("version", "kind", "created_by").
+		Where("dataset_id = ? AND version IN ?", datasetID, versions).
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	facts := make(map[int64]DatasetVersionFact, len(rows))
+	for _, row := range rows {
+		facts[row.Version] = DatasetVersionFact{Kind: row.Kind, CreatedBy: row.CreatedBy}
+	}
+	return facts, nil
+}
+
 // GetPrevious loads the newest version older than the given one, with the
 // configuration that applied to it.
 //

@@ -69,3 +69,46 @@ func TestResolveCADDocumentParserUsesBuiltinForUndeclaredFamily(t *testing.T) {
 		})
 	}
 }
+
+func TestResolveVisioDocumentParserPreservesDeclaredCanvas(t *testing.T) {
+	pipelineID := "custom-visio-canvas"
+	config := entity.JSONMap{"Parser:Custom": map[string]any{"visio": map[string]any{}}}
+	kb := &entity.Knowledgebase{PipelineID: &pipelineID, ParserConfig: config}
+	for _, filename := range []string{"arch.vsdx", "ARCH.VSDX"} {
+		t.Run(filename, func(t *testing.T) {
+			selection, got := resolveDocumentParser(t.Context(), kb, filename, utility.FilenameType(filename), config)
+			if !selection.IsPipeline() || selection.PipelineID != pipelineID {
+				t.Fatalf("Visio-declaring canvas replaced: pipeline_id=%q parser_id=%q", selection.PipelineID, selection.ParserID)
+			}
+			if !reflect.DeepEqual(got, config) {
+				t.Fatalf("declared canvas config changed: %v", got)
+			}
+		})
+	}
+}
+
+func TestResolveVisioDocumentParserUsesBuiltinForUndeclaredFamily(t *testing.T) {
+	db := setupServiceTestDB(t)
+	pushServiceDB(t, db)
+	seedDocumentParserTenant(t, "tenant-1", "user-1")
+	config := generalParserConfig()
+	kb := &entity.Knowledgebase{TenantID: "tenant-1", ParserID: "general", ParserConfig: config}
+	for _, filename := range []string{"arch.vsdx", "ARCH.VSDX"} {
+		t.Run(filename, func(t *testing.T) {
+			selection, got := resolveDocumentParser(t.Context(), kb, filename, utility.FilenameType(filename), config)
+			if !selection.IsBuiltIn() || selection.ParserID != "visio" {
+				t.Fatalf("Visio drawing did not select builtin pipeline: %#v", selection)
+			}
+			params, ok := got["Parser:PaperTrail"].(map[string]any)
+			if !ok {
+				t.Fatalf("Visio parser config missing: %v", got)
+			}
+			if _, ok := params["visio"]; !ok {
+				t.Fatalf("Visio setup missing: %v", params)
+			}
+			if _, ok := got["PageChunker:VisioPages"]; !ok {
+				t.Fatalf("Visio page chunker config missing: %v", got)
+			}
+		})
+	}
+}

@@ -38,7 +38,8 @@ import { versionActorLabel } from '@/ee/utils/version-actor';
 import { cn } from '@/lib/utils';
 import { formatDate } from '@/utils/date';
 import type { TFunction } from 'i18next';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   CHANGE_ACTION_LABELS,
@@ -438,34 +439,43 @@ const RESTORE_MISSING_REASON_LABELS: Record<string, string> = {
   history_unreadable: 'datasetVersion.restoreMissingHistoryUnreadable',
 };
 
-// restoreIncompleteDescription says which documents a restore left empty and, when
-// the server said why, the distinct reasons behind them.
-//
-// The names are ids: a document this restore could not put back may have no row
-// left to read a name from, and the response carries ids for the same reason. The
-// list is bounded the way the panel bounds a document set - a count says the rest.
+// The response names every document it could not fill, so the notice lists a few
+// and counts the rest instead of growing without bound.
+const RESTORE_MISSING_SHOWN = 5;
+
+// restoreIncompleteDescription says which documents a restore left empty and why,
+// one document per line. The response carries ids only, so the caller resolves the
+// names the restored version recorded; the id shows for a document it cannot name.
 const restoreIncompleteDescription = (
   t: TFunction,
   result: IDatasetRestoreResult,
-) => {
+  nameOf: (id: string) => string,
+): ReactNode => {
   const missing = result.missing_documents ?? [];
-  const shown = missing.slice(0, 5).join(', ');
-  const names = missing.length > 5 ? `${shown} +${missing.length - 5}` : shown;
-  const reasons = Array.from(
-    new Set(
-      missing
-        .map((id) => result.missing_document_reasons?.[id])
-        .map((reason) => (reason ? RESTORE_MISSING_REASON_LABELS[reason] : ''))
-        .filter((key) => key !== ''),
-    ),
-  ).map((key) => t(key));
-  if (reasons.length === 0) {
-    return t('datasetVersion.restoreIncompleteBody', { names });
-  }
-  return t('datasetVersion.restoreIncompleteBodyWithReasons', {
-    names,
-    reasons: reasons.join(', '),
-  });
+  const shown = missing.slice(0, RESTORE_MISSING_SHOWN);
+  const more = missing.length - shown.length;
+  return (
+    <div className="space-y-1">
+      <p>{t('datasetVersion.restoreIncompleteBody')}</p>
+      <ul className="space-y-0.5 pl-3">
+        {shown.map((id) => {
+          const reasonKey =
+            RESTORE_MISSING_REASON_LABELS[
+              result.missing_document_reasons?.[id] ?? ''
+            ];
+          return (
+            <li key={id} className="break-all">
+              {nameOf(id)}
+              {reasonKey ? ` - ${t(reasonKey)}` : ''}
+            </li>
+          );
+        })}
+      </ul>
+      {more > 0 && (
+        <p>{t('datasetVersion.restoreIncompleteMore', { count: more })}</p>
+      )}
+    </div>
+  );
 };
 
 /**
@@ -679,6 +689,18 @@ function DatasetVersionHistory({
     loading: detailLoading,
     missingVersion,
   } = useFetchDatasetVersion(datasetId, selectedVersion);
+  // The version being restored names the documents it held, so a document the
+  // restore could not fill can still be reported by name; the id is the fallback
+  // for one this version does not name either.
+  const documentNames = useMemo(() => {
+    const names = new Map<string, string>();
+    (detail?.documents ?? []).forEach((document) => {
+      if (document.name) {
+        names.set(document.id, document.name);
+      }
+    });
+    return names;
+  }, [detail]);
   // The list scrolls over the rows loaded so far, so reaching its end is what
   // asks for the next page - the reader is already making that gesture, and a
   // button would only make them repeat it. A full page means there is probably
@@ -801,7 +823,11 @@ function DatasetVersionHistory({
           title: t('datasetVersion.restoreIncompleteTitle', {
             count: missing.length,
           }),
-          description: restoreIncompleteDescription(t, result.data),
+          description: restoreIncompleteDescription(
+            t,
+            result.data,
+            (id) => documentNames.get(id) ?? id,
+          ),
         });
       }
       setSelectedVersion(result.data.version);
@@ -813,6 +839,7 @@ function DatasetVersionHistory({
     actionVersion,
     currentVersion,
     datasetId,
+    documentNames,
     refetchVersions,
     restoreDatasetVersion,
     t,

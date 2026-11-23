@@ -14,7 +14,13 @@
  *  limitations under the License.
  */
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import ChunkVersionHistory from '.';
 
 // Only the interpolating keys are exercised here, so the stub resolves
@@ -26,9 +32,17 @@ jest.mock('react-i18next', () => {
   return {
     ...actual,
     useTranslation: () => ({
-      t: (key: string, options?: { user?: string; version?: number }) => {
+      t: (
+        key: string,
+        options?: { user?: string; version?: number; dataset?: number },
+      ) => {
         if (options?.user !== undefined) {
           return `${key}: ${options.user}`;
+        }
+        // A restore line names two versions at once: the chunk version it
+        // replayed and the dataset version it put back.
+        if (options?.dataset !== undefined) {
+          return `${key}: v${options.version}/${options.dataset}`;
         }
         if (options?.version !== undefined) {
           return `${key}: v${options.version}`;
@@ -53,6 +67,11 @@ const mockRestoreChunkVersion = jest.fn();
 // What the delete action answered with: { code, message }, where a non-zero
 // code is the server's refusal.
 const mockDeleteChunkVersion = jest.fn();
+
+// The panel opens on Content, so a test that asserts the comparison has to switch
+// to it the way a reader does.
+const openChanges = () =>
+  fireEvent.click(screen.getByRole('button', { name: 'chunk.versionChanges' }));
 
 const versionRow = (version: number, latest = false) => ({
   version,
@@ -249,6 +268,7 @@ describe('chunk version history picture comparison', () => {
     };
 
     render(<ChunkVersionHistory chunkId="c-1" docId="doc-1" />);
+    openChanges();
 
     const pictures = screen.getAllByTestId('version-image');
     expect(pictures).toHaveLength(2);
@@ -274,6 +294,7 @@ describe('chunk version history picture comparison', () => {
     };
 
     render(<ChunkVersionHistory chunkId="c-1" docId="doc-1" />);
+    openChanges();
 
     expect(screen.getAllByTestId('version-image')).toHaveLength(1);
     expect(screen.getByText('chunk.noImage')).toBeInTheDocument();
@@ -295,6 +316,7 @@ describe('chunk version history visibility comparison', () => {
     };
 
     render(<ChunkVersionHistory chunkId="c-1" docId="doc-1" />);
+    openChanges();
 
     expect(screen.getByText('chunk.diffFieldVisibility')).toBeInTheDocument();
     expect(screen.getByText('chunk.enabled')).toBeInTheDocument();
@@ -310,7 +332,7 @@ describe('chunk version history content preview', () => {
     versionsState.current = [versionRow(3, true), versionRow(2), versionRow(1)];
   });
 
-  it('shows the restored-from v0 label in the detail header', () => {
+  it('writes the restored-from label into the origin line', () => {
     mockDetailState.current = {
       version: 2,
       kind: 'restore',
@@ -325,7 +347,286 @@ describe('chunk version history content preview', () => {
       screen.getByRole('button', { name: 'chunk.versionContent' }),
     );
 
+    // A restore answers "where from" with the state it replayed, all in the one
+    // origin line.
+    expect(screen.getByText('chunk.detailOrigin')).toBeInTheDocument();
     expect(screen.getByText('chunk.restoredFrom: v0')).toBeInTheDocument();
+  });
+
+  it('names the version the preview shows, since the list no longer does', () => {
+    mockDetailState.current = {
+      version: 2,
+      kind: 'edit',
+      latest: true,
+      restored_from: 0,
+      created_by: 'user-2',
+      created_by_name: 'Alice',
+      create_time: Date.parse('2026-11-10T10:00:00Z'),
+      chunk: { content_with_weight: 'text' },
+    };
+
+    render(<ChunkVersionHistory chunkId="c-1" docId="doc-1" />);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'chunk.versionContent' }),
+    );
+
+    // The number and the head marker are read here now that the list carries
+    // only a time and a user. The instant and the actor stay on that row: the
+    // header does not repeat them. The number is bare: "v" is the list's label
+    // for a row, not part of the value the header reports.
+    expect(screen.getByText('2')).toBeInTheDocument();
+    expect(screen.getByText('chunk.currentVersion')).toBeInTheDocument();
+    expect(screen.queryByText('chunk.detailTime')).not.toBeInTheDocument();
+    expect(screen.queryByText('chunk.detailActor')).not.toBeInTheDocument();
+    // This version records no origin, so the line is absent.
+    expect(screen.queryByText('chunk.detailOrigin')).not.toBeInTheDocument();
+  });
+
+  it('folds what triggered the restore into the origin line', () => {
+    // A replay writes its rows with no actor, so the origin line has to carry
+    // both facts a reader needs: the state replayed and the dataset version the
+    // row belongs to.
+    mockDetailState.current = {
+      version: 2,
+      kind: 'restore',
+      latest: true,
+      restored_from: 1,
+      created_by: 'system',
+      create_time: Date.parse('2026-11-10T10:00:00Z'),
+      origin: 'dataset_restore',
+      dataset_version: 14,
+      chunk: { content_with_weight: 'text' },
+    };
+
+    render(<ChunkVersionHistory chunkId="c-1" docId="doc-1" />);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'chunk.versionContent' }),
+    );
+
+    expect(screen.getByText('chunk.detailOrigin')).toBeInTheDocument();
+    // The chunk version first, then the dataset version the row sits in.
+    expect(
+      screen.getByText('chunk.restoredFromDatasetVersion: v1/14'),
+    ).toBeInTheDocument();
+    // One line, not two: the plain pair is not repeated beside it.
+    expect(
+      screen.queryByText('chunk.restoredFrom: v1'),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('chunk.restoredFromDataset: v1'),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('chunk.originRestore')).not.toBeInTheDocument();
+  });
+
+  it('drops the dataset version when the restore row cannot name it', () => {
+    // A restore whose own version row is gone still knows the chunk version it
+    // replayed, so the line falls back to the pair without the dataset number
+    // rather than naming a version it cannot verify.
+    mockDetailState.current = {
+      version: 2,
+      kind: 'restore',
+      latest: true,
+      restored_from: 1,
+      created_by: 'system',
+      create_time: Date.parse('2026-11-10T10:00:00Z'),
+      origin: 'dataset_restore',
+      chunk: { content_with_weight: 'text' },
+    };
+
+    render(<ChunkVersionHistory chunkId="c-1" docId="doc-1" />);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'chunk.versionContent' }),
+    );
+
+    expect(
+      screen.getByText('chunk.restoredFromDataset: v1'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('chunk.restoredFromDatasetVersion: v1/undefined'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('says a manual edit on this chunk made the change', () => {
+    mockDetailState.current = {
+      version: 2,
+      kind: 'edit',
+      latest: true,
+      restored_from: 0,
+      created_by: 'user-2',
+      create_time: Date.parse('2026-11-10T10:00:00Z'),
+      origin: 'chunk',
+      chunk: { content_with_weight: 'text' },
+    };
+
+    render(<ChunkVersionHistory chunkId="c-1" docId="doc-1" />);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'chunk.versionContent' }),
+    );
+
+    expect(screen.getByText('chunk.originChunk')).toBeInTheDocument();
+    // An edit was not triggered by a replay, so nothing says a dataset restore.
+    expect(screen.queryByText('chunk.originRestore')).not.toBeInTheDocument();
+  });
+
+  it('leaves the origin out on a row a replay cannot write', () => {
+    // A replay only writes restore and delete rows, so an edit row cannot come
+    // from one; should it appear, it must not borrow the "removed" wording.
+    mockDetailState.current = {
+      version: 2,
+      kind: 'edit',
+      latest: true,
+      restored_from: 0,
+      created_by: 'system',
+      create_time: Date.parse('2026-11-10T10:00:00Z'),
+      origin: 'dataset_restore',
+      chunk: { content_with_weight: 'text' },
+    };
+
+    render(<ChunkVersionHistory chunkId="c-1" docId="doc-1" />);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'chunk.versionContent' }),
+    );
+
+    expect(screen.queryByText('chunk.originRestore')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('chunk.originDatasetRestore'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('leaves the origin out when the history cannot say', () => {
+    mockDetailState.current = {
+      version: 2,
+      kind: 'delete',
+      latest: true,
+      restored_from: 0,
+      created_by: 'system',
+      create_time: Date.parse('2026-11-10T10:00:00Z'),
+      chunk: {},
+    };
+
+    render(<ChunkVersionHistory chunkId="c-1" docId="doc-1" />);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'chunk.versionContent' }),
+    );
+
+    // A removal whose dataset version row is gone names no side; the panel says
+    // nothing rather than guessing one.
+    expect(screen.queryByText('chunk.detailOrigin')).not.toBeInTheDocument();
+  });
+
+  it('says the chunk was added here, not merely changed', () => {
+    mockDetailState.current = {
+      version: 2,
+      kind: 'add',
+      latest: true,
+      restored_from: 0,
+      created_by: 'user-2',
+      create_time: Date.parse('2026-11-10T10:00:00Z'),
+      origin: 'chunk',
+      chunk: { content_with_weight: 'text' },
+    };
+
+    render(<ChunkVersionHistory chunkId="c-1" docId="doc-1" />);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'chunk.versionContent' }),
+    );
+
+    // "A user acted on this chunk" would also describe an edit or a removal, so
+    // the origin line says which of the three this row records.
+    expect(screen.getByText('chunk.originAdd')).toBeInTheDocument();
+    expect(screen.queryByText('chunk.originChunk')).not.toBeInTheDocument();
+  });
+
+  it('says the chunk was removed on the page', () => {
+    mockDetailState.current = {
+      version: 2,
+      kind: 'delete',
+      latest: true,
+      restored_from: 0,
+      created_by: 'user-2',
+      create_time: Date.parse('2026-11-10T10:00:00Z'),
+      origin: 'chunk',
+      chunk: {},
+    };
+
+    render(<ChunkVersionHistory chunkId="c-1" docId="doc-1" />);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'chunk.versionContent' }),
+    );
+
+    expect(screen.getByText('chunk.originRemove')).toBeInTheDocument();
+    expect(screen.queryByText('chunk.originChunk')).not.toBeInTheDocument();
+  });
+
+  it('blames a re-parse for the chunk it dropped, not the page', () => {
+    mockDetailState.current = {
+      version: 2,
+      kind: 'delete',
+      latest: true,
+      restored_from: 0,
+      created_by: 'system',
+      create_time: Date.parse('2026-11-10T10:00:00Z'),
+      origin: 'parse',
+      chunk: {},
+    };
+
+    render(<ChunkVersionHistory chunkId="c-1" docId="doc-1" />);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'chunk.versionContent' }),
+    );
+
+    // The pipeline dropped the chunk because it no longer produces it; the page
+    // did not, and the two removals need different answers.
+    expect(screen.getByText('chunk.originRemoveParse')).toBeInTheDocument();
+    expect(screen.queryByText('chunk.originRemove')).not.toBeInTheDocument();
+  });
+
+  it('names the dataset version a replay removed the chunk under', () => {
+    // A dataset restore that replayed a state without this chunk records the
+    // removal against that dataset version; the row says which one.
+    mockDetailState.current = {
+      version: 2,
+      kind: 'delete',
+      latest: true,
+      restored_from: 0,
+      created_by: 'system',
+      create_time: Date.parse('2026-11-10T10:00:00Z'),
+      origin: 'dataset_restore',
+      dataset_version: 14,
+      chunk: {},
+    };
+
+    render(<ChunkVersionHistory chunkId="c-1" docId="doc-1" />);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'chunk.versionContent' }),
+    );
+
+    expect(
+      screen.getByText(/^chunk\.originRestore: v.*\/14$/),
+    ).toBeInTheDocument();
+  });
+
+  it('still calls it a removal when the dataset version is unknown', () => {
+    mockDetailState.current = {
+      version: 2,
+      kind: 'delete',
+      latest: true,
+      restored_from: 0,
+      created_by: 'system',
+      create_time: Date.parse('2026-11-10T10:00:00Z'),
+      origin: 'dataset_restore',
+      chunk: {},
+    };
+
+    render(<ChunkVersionHistory chunkId="c-1" docId="doc-1" />);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'chunk.versionContent' }),
+    );
+
+    expect(screen.getByText('chunk.originRestorePlain')).toBeInTheDocument();
+    expect(
+      screen.queryByText(/^chunk\.originRestore:/),
+    ).not.toBeInTheDocument();
   });
 
   it('shows the text of a version without the picture it was cut from', () => {
@@ -438,7 +739,7 @@ describe('chunk version history list', () => {
     expect(row.textContent).not.toContain('1970');
   });
 
-  it('labels a restore of the v0 baseline, not just restores above zero', () => {
+  it('keeps the number and the state of a row off its face', () => {
     versionsState.current = [
       { ...versionRow(3, true), kind: 'restore', restored_from: 1 },
       { ...versionRow(2), kind: 'restore', restored_from: 0 },
@@ -446,11 +747,16 @@ describe('chunk version history list', () => {
 
     render(<ChunkVersionHistory chunkId="chunk-1" docId="doc-1" />);
 
-    expect(screen.getByText('chunk.restoredFrom: v1')).toBeInTheDocument();
-    expect(screen.getByText('chunk.restoredFrom: v0')).toBeInTheDocument();
+    const row = screen.getByRole('button', { name: /^v3\b/ });
+    // The list is the way into a version, not a table of one: the number, the
+    // head marker and the restore source are read in the preview beside it.
+    expect(row.textContent).toMatch(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/);
+    expect(row.textContent).not.toContain('v3');
+    expect(row.textContent).not.toContain('chunk.currentVersion');
+    expect(row.textContent).not.toContain('chunk.restoredFrom');
   });
 
-  it('names the actor of every version, falling back to the id', () => {
+  it('names the author of every version, with the label for a system row', () => {
     versionsState.current = [
       {
         version: 3,
@@ -472,11 +778,23 @@ describe('chunk version history list', () => {
         kind: 'restore',
       },
       {
-        // The parser's baseline carries no user, only the "system" marker.
+        // A replay writes its rows with no actor, so the server credits whoever
+        // triggered the dataset restore the rows were anchored at.
+        version: 1,
+        created_by: 'system',
+        triggered_by: 'user-9',
+        triggered_by_name: 'Bob',
+        restored_from: 0,
+        create_time: Date.parse('2026-11-08T10:00:00Z'),
+        latest: false,
+        kind: 'restore',
+      },
+      {
+        // The parser's baseline carries no user and no trigger to credit.
         version: 0,
         created_by: 'system',
         restored_from: 0,
-        create_time: Date.parse('2026-11-08T10:00:00Z'),
+        create_time: Date.parse('2026-11-07T10:00:00Z'),
         latest: false,
         kind: 'parse',
       },
@@ -484,18 +802,24 @@ describe('chunk version history list', () => {
 
     render(<ChunkVersionHistory chunkId="chunk-1" docId="doc-1" />);
 
-    // Every row answers "who": the nickname the server resolved, the id when it
-    // could not be resolved, and the localised label for a system written row.
-    expect(screen.getByText('chunk.changedBy: Alice')).toBeInTheDocument();
-    expect(
-      screen.getByText('chunk.changedBy: deleted-user-id'),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText('chunk.changedBy: chunk.systemActor'),
-    ).toBeInTheDocument();
+    // Every row answers "who" with the person whose request produced it: the
+    // nickname the server resolved, the id for a user it could not resolve, the
+    // user who triggered the restore for a row a replay wrote, and the localised
+    // label only when nothing can be credited at all. The rows are read through
+    // their own element, since the preview beside them names the same person.
+    const rowOf = (version: number) =>
+      screen.getByRole('button', { name: new RegExp(`^v${version}\\b`) });
+
+    expect(within(rowOf(3)).getByText('Alice')).toBeInTheDocument();
+    expect(within(rowOf(2)).getByText('deleted-user-id')).toBeInTheDocument();
+    expect(within(rowOf(1)).getByText('Bob')).toBeInTheDocument();
+    expect(within(rowOf(0)).getByText('chunk.systemActor')).toBeInTheDocument();
+    // The id stays reachable on a row that shows a nickname.
+    expect(within(rowOf(3)).getByTitle('user-3')).toBeInTheDocument();
+    expect(within(rowOf(1)).getByTitle('user-9')).toBeInTheDocument();
   });
 
-  it('leaves the actor line out when a version names nobody', () => {
+  it('leaves the user line out when a version names nobody', () => {
     versionsState.current = [
       {
         version: 0,
@@ -509,7 +833,11 @@ describe('chunk version history list', () => {
 
     render(<ChunkVersionHistory chunkId="chunk-1" docId="doc-1" />);
 
-    expect(screen.queryByText(/chunk.changedBy/)).not.toBeInTheDocument();
+    const row = screen.getByRole('button', { name: /^v0\b/ });
+    // The instant is all the row can say: no user marker is invented for it.
+    expect(row.textContent).toMatch(/\d{4}-\d{2}-\d{2}/);
+    expect(row.textContent).not.toContain('chunk.systemActor');
+    expect(row).toHaveAttribute('aria-label', expect.stringContaining('v0'));
   });
 });
 
@@ -544,11 +872,19 @@ describe('chunk version history comparison', () => {
     ];
   });
 
-  it('opens on the changes of the selected version', () => {
+  it('opens on the content of the selected version', () => {
     render(<ChunkVersionHistory chunkId="chunk-1" docId="doc-1" />);
 
-    // The panel lands on Changes, with the newest version on the right and the
-    // state it replaced as the base.
+    // The panel lands on Content - reading the selected version is what the
+    // list is for - and the comparison it offers is already the one that
+    // selection implies: the newest version on the right, the state it replaced
+    // as the base.
+    expect(diffArgs.current).toEqual(['chunk-1', 'doc-1', 2, 3]);
+    // No comparison controls are shown until the reader asks for one.
+    expect(screen.queryAllByRole('combobox')).toHaveLength(0);
+
+    openChanges();
+
     expect(diffArgs.current).toEqual(['chunk-1', 'doc-1', 2, 3]);
     // Only the base is a dropdown: the version being explained is whichever row
     // the list has selected, so it is shown rather than offered.
@@ -560,7 +896,8 @@ describe('chunk version history comparison', () => {
 
     // v2 replaced v0, so "the changes of v2" is that pair, not v2 against
     // whatever the previous view happened to be comparing. The row is picked by
-    // role: "v2" is also the label the base dropdown shows once v3 is selected.
+    // its accessible name: the bare "2" the base dropdown shows once v3 is
+    // selected is not a row label.
     fireEvent.click(screen.getByRole('button', { name: /^v2\b/ }));
 
     expect(diffArgs.current).toEqual(['chunk-1', 'doc-1', 0, 2]);
@@ -637,6 +974,7 @@ describe('chunk version changes panel', () => {
     versionsState.current = [versionRow(1, true)];
 
     render(<ChunkVersionHistory chunkId="chunk-1" docId="doc-1" />);
+    openChanges();
 
     expect(screen.getByText('chunk.noDiff')).toBeInTheDocument();
     expect(screen.queryByText('chunk.keyword')).not.toBeInTheDocument();
@@ -670,6 +1008,7 @@ describe('chunk version changes panel', () => {
     versionsState.current = [versionRow(1, true)];
 
     render(<ChunkVersionHistory chunkId="chunk-1" docId="doc-1" />);
+    openChanges();
 
     expect(screen.getByText('chunk.diffFieldVisibility')).toBeInTheDocument();
     // The untouched keyword list is gone, so the "Unchanged" badge is too.
@@ -691,6 +1030,7 @@ describe('chunk version changes panel', () => {
     versionsState.current = [versionRow(1, true)];
 
     render(<ChunkVersionHistory chunkId="chunk-1" docId="doc-1" />);
+    openChanges();
 
     expect(screen.getByText('chunk.noDiff')).toBeInTheDocument();
     expect(screen.queryByText('position_int')).not.toBeInTheDocument();
@@ -721,6 +1061,7 @@ describe('chunk version history delete marker', () => {
     };
 
     render(<ChunkVersionHistory chunkId="c-1" docId="doc-1" />);
+    openChanges();
 
     expect(screen.getByText('chunk.versionChunkDeleted')).toBeInTheDocument();
     expect(screen.queryByText('chunk.noDiff')).not.toBeInTheDocument();
@@ -737,5 +1078,37 @@ describe('chunk version history delete marker', () => {
 
     expect(screen.getByText('chunk.versionChunkDeleted')).toBeInTheDocument();
     expect(screen.queryByText('chunk.versionEmpty')).not.toBeInTheDocument();
+  });
+});
+describe('chunk version history baseline comparison', () => {
+  beforeEach(() => {
+    versionsState.current = [
+      versionRow(3, true),
+      versionRow(2),
+      versionRow(1),
+      versionRow(0),
+    ];
+  });
+
+  it('names the baseline as the base of v1', () => {
+    render(<ChunkVersionHistory chunkId="c-1" docId="doc-1" />);
+    fireEvent.click(screen.getByRole('button', { name: /^v1\b/ }));
+    openChanges();
+
+    // v1 replaced v0, and the box names it rather than falling back to the
+    // placeholder: zero is a version like any other, not an empty selection.
+    expect(diffArgs.current).toEqual(['c-1', 'doc-1', 0, 1]);
+    expect(screen.getByRole('combobox')).toHaveTextContent('0');
+  });
+
+  it('names the baseline as the base of v0 too', () => {
+    render(<ChunkVersionHistory chunkId="c-1" docId="doc-1" />);
+    fireEvent.click(screen.getByRole('button', { name: /^v0\b/ }));
+    openChanges();
+
+    // Nothing precedes the baseline, so the comparison falls back to itself and
+    // the box still shows that version instead of an empty selection.
+    expect(diffArgs.current).toEqual(['c-1', 'doc-1', 0, 0]);
+    expect(screen.getByRole('combobox')).toHaveTextContent('0');
   });
 });

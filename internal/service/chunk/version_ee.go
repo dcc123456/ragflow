@@ -620,28 +620,144 @@ func (s *ChunkService) ListVersions(ctx context.Context, req *service.ChunkVersi
 		latest = rows[0].Version
 	}
 	versions := make([]service.ChunkVersionSummary, 0, len(rows))
+	kept := make([]*entity.ChunkVersion, 0, len(rows))
 	for _, row := range rows {
 		if row.DocID != doc.ID || row.DatasetID != doc.KbID {
 			continue
 		}
+		kept = append(kept, row)
 		versions = append(versions, service.ChunkVersionSummary{
-			Version:      row.Version,
-			CreatedBy:    row.CreatedBy,
-			RestoredFrom: row.RestoredFrom,
-			CreateTime:   chunkVersionCreatedAt(row.CreateTime),
-			CreateDate:   formatChunkVersionTime(row.CreateTime),
-			Latest:       row.Version == latest,
-			Kind:         row.Kind,
+			Version:        row.Version,
+			CreatedBy:      row.CreatedBy,
+			RestoredFrom:   row.RestoredFrom,
+			CreateTime:     chunkVersionCreatedAt(row.CreateTime),
+			CreateDate:     formatChunkVersionTime(row.CreateTime),
+			Latest:         row.Version == latest,
+			Kind:           row.Kind,
+			DatasetVersion: row.DatasetVersion,
 		})
 	}
 
 	resolveChunkVersionActors(ctx, versions)
+	s.applyChunkVersionFacts(ctx, doc.KbID, kept, versions)
 
 	return &service.ListChunkVersionsResponse{
 		ChunkID:  req.ChunkID,
 		Total:    len(versions),
 		Versions: versions,
 	}, nil
+}
+
+// chunkVersionOrigin says where a history row came from. The actor answers most
+// rows; a row the system wrote is a parse baseline, a replay, or a removal. The
+// last one takes the dataset version's kind: a re-parse and a dataset restore
+// both drop chunks with no actor, and only that version says which did it.
+func chunkVersionOrigin(kind, createdBy, datasetVersionKind string) string {
+	switch kind {
+	case entity.ChunkVersionKindParse:
+		return service.ChunkVersionOriginParse
+	case entity.ChunkVersionKindAdd, entity.ChunkVersionKindEdit:
+		// A parse baseline is kind "parse", so an add or an edit is the page
+		// acting on the chunk, including the enable switch.
+		return service.ChunkVersionOriginChunk
+	case entity.ChunkVersionKindRestore:
+		if chunkVersionHasSystemActor(createdBy) {
+			// Only a dataset restore's replay restores without a user.
+			return service.ChunkVersionOriginRestore
+		}
+		return service.ChunkVersionOriginChunk
+	case entity.ChunkVersionKindDelete:
+		if !chunkVersionHasSystemActor(createdBy) {
+			return service.ChunkVersionOriginChunk
+		}
+		switch datasetVersionKind {
+		case entity.DatasetVersionKindRestore:
+			return service.ChunkVersionOriginRestore
+		case "":
+			// The version is gone, so the history cannot tell rather than guess.
+			return ""
+		default:
+			// A parse, or the cleanup of a failed run: the pipeline dropped it.
+			return service.ChunkVersionOriginParse
+		}
+	}
+	return ""
+}
+
+// chunkVersionHasSystemActor reports a row with no user on it: an empty actor and
+// the "system" marker mean the same thing.
+func chunkVersionHasSystemActor(createdBy string) bool {
+	actor := strings.TrimSpace(createdBy)
+	return actor == "" || actor == entity.ChunkVersionSystemActor
+}
+
+// chunkVersionTrigger names the user whose request produced the row: the row's own
+// actor when a person wrote it, otherwise whoever triggered the dataset version it
+// was anchored at - the answer a history list means by "who changed this".
+func chunkVersionTrigger(row *entity.ChunkVersion, fact dao.DatasetVersionFact) string {
+	if row == nil {
+		return ""
+	}
+	if !chunkVersionHasSystemActor(row.CreatedBy) {
+		return strings.TrimSpace(row.CreatedBy)
+	}
+	return strings.TrimSpace(fact.CreatedBy)
+}
+
+// applyChunkVersionFacts fills the two fields a row cannot answer alone: Origin
+// and TriggeredBy. A history of edits costs no query - only a system-written row
+// needs its dataset version.
+func (s *ChunkService) applyChunkVersionFacts(ctx context.Context, datasetID string, rows []*entity.ChunkVersion, versions []service.ChunkVersionSummary) {
+	if len(rows) == 0 || len(rows) != len(versions) {
+		return
+	}
+	facts := chunkVersionDatasetFacts(ctx, datasetID, rows)
+	triggers := make([]string, 0, len(versions))
+	for i, row := range rows {
+		fact := facts[row.DatasetVersion]
+		versions[i].Origin = chunkVersionOrigin(row.Kind, row.CreatedBy, fact.Kind)
+		versions[i].TriggeredBy = chunkVersionTrigger(row, fact)
+		triggers = append(triggers, versions[i].TriggeredBy)
+	}
+	// The list names the person, so the id is resolved once for all rows.
+	names := chunkVersionActorNames(ctx, triggers)
+	for i := range versions {
+		if name := strings.TrimSpace(names[versions[i].TriggeredBy]); name != "" {
+			versions[i].TriggeredByName = name
+		}
+	}
+}
+
+// chunkVersionDatasetFacts reads the dataset version behind every system-written
+// row, whose actor and origin both come from the version it was anchored at.
+func chunkVersionDatasetFacts(ctx context.Context, datasetID string, rows []*entity.ChunkVersion) map[int64]dao.DatasetVersionFact {
+	if dao.DB == nil {
+		return nil
+	}
+	needed := make([]int64, 0, len(rows))
+	seen := make(map[int64]struct{}, len(rows))
+	for _, row := range rows {
+		if !chunkVersionHasSystemActor(row.CreatedBy) {
+			continue
+		}
+		if _, ok := seen[row.DatasetVersion]; ok {
+			continue
+		}
+		seen[row.DatasetVersion] = struct{}{}
+		needed = append(needed, row.DatasetVersion)
+	}
+	if len(needed) == 0 {
+		return nil
+	}
+	facts, err := dao.NewDatasetVersionDAO().FactsByVersion(ctx, dao.DB, datasetID, needed)
+	if err != nil {
+		// The reader still gets the kind and the actor; only these two are lost.
+		common.Warn("Chunk history: failed to read the dataset versions behind system rows",
+			zap.String("dataset_id", datasetID),
+			zap.Error(err))
+		return nil
+	}
+	return facts
 }
 
 // chunkVersionActorNames resolves actor ids to nicknames in one batched lookup.
@@ -729,13 +845,14 @@ func (s *ChunkService) GetVersion(ctx context.Context, req *service.ChunkVersion
 	}
 
 	response := &service.GetChunkVersionResponse{
-		Version:      row.Version,
-		CreatedBy:    row.CreatedBy,
-		RestoredFrom: row.RestoredFrom,
-		CreateTime:   chunkVersionCreatedAt(row.CreateTime),
-		CreateDate:   formatChunkVersionTime(row.CreateTime),
-		Latest:       row.Version == latest,
-		Kind:         row.Kind,
+		Version:        row.Version,
+		CreatedBy:      row.CreatedBy,
+		RestoredFrom:   row.RestoredFrom,
+		CreateTime:     chunkVersionCreatedAt(row.CreateTime),
+		CreateDate:     formatChunkVersionTime(row.CreateTime),
+		Latest:         row.Version == latest,
+		Kind:           row.Kind,
+		DatasetVersion: row.DatasetVersion,
 		// The client sees what the version said, not how it was indexed: a full
 		// snapshot carries the token columns, the vector and the metadata that
 		// names its producer, and none of those are the panel's business.
@@ -744,6 +861,15 @@ func (s *ChunkService) GetVersion(ctx context.Context, req *service.ChunkVersion
 	actors := []service.ChunkVersionSummary{{CreatedBy: row.CreatedBy}}
 	resolveChunkVersionActors(ctx, actors)
 	response.CreatedByName = actors[0].CreatedByName
+	// The detail reports the origin and the trigger as well: the preview is where a
+	// reader asks whether they made this change or a dataset restore did.
+	facts := chunkVersionDatasetFacts(ctx, doc.KbID, []*entity.ChunkVersion{row})
+	fact := facts[row.DatasetVersion]
+	response.Origin = chunkVersionOrigin(row.Kind, row.CreatedBy, fact.Kind)
+	response.TriggeredBy = chunkVersionTrigger(row, fact)
+	if names := chunkVersionActorNames(ctx, []string{response.TriggeredBy}); len(names) > 0 {
+		response.TriggeredByName = names[response.TriggeredBy]
+	}
 	return response, nil
 }
 

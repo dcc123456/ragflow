@@ -26,6 +26,12 @@ func setupChatPipelineVisionTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("failed to open sqlite: %v", err)
 	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("failed to acquire sql.DB: %v", err)
+	}
+	// SQLite :memory: databases are per connection; async queries must reuse the seeded connection.
+	sqlDB.SetMaxOpenConns(1)
 	if err := db.AutoMigrate(
 		&entity.Tenant{},
 		&entity.UserTenant{},

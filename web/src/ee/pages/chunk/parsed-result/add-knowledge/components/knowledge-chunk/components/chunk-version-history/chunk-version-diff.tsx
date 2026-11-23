@@ -158,7 +158,7 @@ function ImageFieldDiff({
         </span>
       )}
       <figcaption className="text-sm tabular-nums text-text-secondary">
-        v{version}
+        {version}
       </figcaption>
     </figure>
   );

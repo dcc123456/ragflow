@@ -187,7 +187,6 @@ func TestParseArgsUnknownFlagRejected(t *testing.T) {
 		{"--api", "--debug"},
 		{"--api", "--enable-mcpserver"},
 		{"--api", "--mcp-port=9382"},
-		{"--api", "--port=9380"},
 		{"--api", "-p", "9380"},
 		{"--api", "--init-superuser"},
 		{"--ingestor", "--ingestor-tier=low"},
@@ -235,19 +234,15 @@ func TestParseArgsValueEdgeCases(t *testing.T) {
 	if args.ConfigPath == nil || *args.ConfigPath != "" {
 		t.Errorf("--config= name = %v, want empty string", args.ConfigPath)
 	}
-	args, err = parseArgsFrom([]string{"ragflow_server", "--api", "--log-level="})
-	if err != nil {
-		t.Fatalf("--log-level= error = %v", err)
-	}
-	if args.LogLevel == nil || *args.LogLevel != "info" {
-		t.Errorf("--log-level= logLevel = %v, want info", args.LogLevel)
+	if _, err := parseArgsFrom([]string{"ragflow_server", "--api", "--log-level="}); err == nil {
+		t.Error("--log-level= error = nil, want rejection")
 	}
 }
 
 // Every value-taking flag requires an argument.
 func TestParseArgsMissingValue(t *testing.T) {
 	valueFlags := []string{
-		"--log-level", "--config", "--deepdoc-device", "-f",
+		"--log-level", "--config", "--deepdoc-device", "--port", "-f",
 	}
 	for _, flag := range valueFlags {
 		argv := append([]string{"ragflow_server", "--api"}, flag)
@@ -272,8 +267,8 @@ func TestParseArgsDefaults(t *testing.T) {
 		}
 	}
 
-	if args.LogLevel == nil || *args.LogLevel != "info" {
-		t.Errorf("logLevel = %v, want info", args.LogLevel)
+	if args.LogLevel != nil {
+		t.Errorf("logLevel = %v, want nil", args.LogLevel)
 	}
 	if args.ConfigPath == nil || *args.ConfigPath != "" {
 		t.Errorf("configPath = %v, want empty string", args.ConfigPath)

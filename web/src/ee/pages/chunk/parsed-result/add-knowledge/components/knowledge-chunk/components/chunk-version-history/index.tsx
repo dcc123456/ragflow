@@ -39,6 +39,16 @@ import ChunkVersionDiffPanel from './chunk-version-diff';
 
 type VersionPanelMode = 'preview' | 'diff';
 
+// Which side produced a version, as a label key. The actor line cannot answer
+// this on its own: a dataset restore rewrites chunks with nobody's name on them,
+// so the preview names the origin beside the actor.
+const ORIGIN_LABEL_KEYS: Record<string, string> = {
+  parse: 'chunk.originParse',
+  chunk: 'chunk.originChunk',
+  // dataset_restore has no general label: a replay can only write a restore or
+  // a removal, and both name the dataset version below instead.
+};
+
 interface ChunkVersionHistoryProps {
   chunkId: string;
   docId: string;
@@ -55,9 +65,47 @@ interface VersionRowProps {
 // it into the epoch. One rule, so the list and the header cannot disagree.
 const versionTime = (millis?: number) => (millis ? formatDate(millis) : '');
 
+// The user a row credits: the person whose request produced it. A system-written
+// row names nobody itself, so the server credits whoever triggered the dataset
+// version it was written under - the user who asked for the parse or the restore.
+// The raw actor is only a fallback, for a row whose dataset version is gone.
+type ChunkVersionActorFields = {
+  created_by?: string;
+  created_by_name?: string;
+  triggered_by?: string;
+  triggered_by_name?: string;
+};
+
+const chunkVersionActor = (item: ChunkVersionActorFields) => ({
+  created_by: item.triggered_by || item.created_by,
+  created_by_name: item.triggered_by_name || item.created_by_name,
+});
+
+const chunkVersionActorLabel = (
+  item: ChunkVersionActorFields,
+  systemLabel: string,
+) => versionActorLabel(chunkVersionActor(item), systemLabel);
+
+// The list is a way into a version, not a table of one: it carries the instant
+// the version was written and the user whose request produced it. That user is
+// named the way the preview names them - the nickname the server resolved, the raw
+// id for a user that no longer exists, and the localised label for a row nothing
+// can attribute - so the two panes cannot disagree about who made a change.
+// Everything else (the number, the head marker, the state it was restored from) is
+// read in the preview beside it, which the selection drives.
 function VersionRow({ item, selected, onSelect }: VersionRowProps) {
   const { t } = useTranslation();
-  const actor = versionActorLabel(item, t('chunk.systemActor'));
+  const time = versionTime(item.create_time);
+  const actor = chunkVersionActorLabel(item, t('chunk.systemActor'));
+  const actorInfo = chunkVersionActor(item);
+  // A nickname is not an identity: an administrator who has to act on the row
+  // still needs the id, so it stays on the row as a tooltip. A row the system
+  // wrote has the marker there instead of a person, so it gets no tooltip.
+  const actorId =
+    actorInfo.created_by_name?.trim() &&
+    actorInfo.created_by?.trim() !== 'system'
+      ? actorInfo.created_by?.trim()
+      : undefined;
   const handleSelect = useCallback(
     () => onSelect(item.version),
     [item.version, onSelect],
@@ -67,35 +115,27 @@ function VersionRow({ item, selected, onSelect }: VersionRowProps) {
     <button
       type="button"
       onClick={handleSelect}
+      // The number is off the face of the row, so it is the row's accessible
+      // name: without it every row would read as an instant and a user, and
+      // nothing would say which version is which.
+      aria-label={[`v${item.version}`, time, actor].filter(Boolean).join(' ')}
       className={cn(
         'w-full rounded-md px-2 py-1.5 text-left transition-colors',
         'hover:bg-bg-card focus-visible:outline-none',
         selected && 'bg-bg-card',
       )}
     >
-      <div className="flex items-center gap-1.5">
-        <span className={cn('text-sm', selected && 'text-text-primary')}>
-          v{item.version}
-        </span>
-        {item.latest && (
-          <span className="rounded-sm bg-bg-card px-1 text-xs text-text-secondary">
-            {t('chunk.currentVersion')}
-          </span>
-        )}
-      </div>
-      <div className="truncate text-xs text-text-secondary">
-        {versionTime(item.create_time)}
-      </div>
-      {!!actor && (
-        <div className="truncate text-xs text-text-secondary" title={actor}>
-          {t('chunk.changedBy', { user: actor })}
+      {!!time && (
+        <div className="truncate text-sm tabular-nums text-text-primary">
+          {time}
         </div>
       )}
-      {/* v0 is the parse baseline, so restored_from 0 is a valid source. Kind,
-          not the numeric value, says whether the row is a restore. */}
-      {item.kind === 'restore' && (
-        <div className="truncate text-xs text-text-secondary">
-          {t('chunk.restoredFrom', { version: item.restored_from })}
+      {!!actor && (
+        <div
+          className="truncate text-xs text-text-secondary"
+          title={actorId || undefined}
+        >
+          {actor}
         </div>
       )}
     </button>
@@ -126,7 +166,7 @@ function VersionSelect({
       <SelectContent>
         {versions.map((item) => (
           <SelectItem key={item.version} value={String(item.version)}>
-            v{item.version}
+            {String(item.version)}
           </SelectItem>
         ))}
       </SelectContent>
@@ -148,6 +188,26 @@ function VersionField({
     <div className="space-y-1">
       <div className="text-sm font-medium text-text-secondary">{label}</div>
       {children}
+    </div>
+  );
+}
+
+// A meta line is the label-and-value pair the preview uses for the version it
+// is showing, laid out on one line: those facts are short and belong above the
+// content, not stacked into it the way the fields below are.
+function MetaLine({
+  label,
+  children,
+}: {
+  label: string;
+  children?: ReactNode;
+}) {
+  return (
+    <div className="flex items-baseline gap-2 text-sm">
+      <span className="w-16 shrink-0 text-text-secondary">{label}</span>
+      <span className="min-w-0 flex-1 break-words text-text-primary">
+        {children}
+      </span>
     </div>
   );
 }
@@ -213,7 +273,9 @@ function ChunkVersionHistory({ chunkId, docId }: ChunkVersionHistoryProps) {
   // sentence and the generic one is used.
   const [deleteRefusal, setDeleteRefusal] = useState<string | null>(null);
 
-  const [mode, setMode] = useState<VersionPanelMode>('diff');
+  // The panel opens on the version the list selected; the comparison is a switch
+  // away.
+  const [mode, setMode] = useState<VersionPanelMode>('preview');
   // The base of the comparison is not state of its own until the user names one:
   // by default it is the version the selection replaced, which is what "the
   // changes of vN" means. A pick from the dropdown overrides it for as long as
@@ -318,13 +380,54 @@ function ChunkVersionHistory({ chunkId, docId }: ChunkVersionHistoryProps) {
   const selectedEntry = versions.find(
     (item) => item.version === selectedVersion,
   );
-  // Who produced the previewed version; empty when the row names nobody.
-  const detailActor = detail
-    ? versionActorLabel(detail, t('chunk.systemActor'))
-    : '';
-  // Empty for a row that records no instant, so the header omits the slot
-  // instead of spending a gap on an empty span.
-  const detailTime = versionTime(detail?.create_time);
+  // The preview header is read from the row the list selected until the detail
+  // request answers (and from a detail that names no version, which only a
+  // hand-built payload does): the list no longer prints the number, so the pane
+  // must not come up blank about which version it is showing.
+  const headerVersion = detail?.version !== undefined ? detail : selectedEntry;
+  // The header answers only what the list cannot: which version this pane shows
+  // and where it came from. Origin keeps both halves in one line: a restore
+  // names the state it replayed, and a replay by the dataset versioning says so
+  // in the same sentence.
+  //
+  // An addition and a removal read better from the kind than from the side,
+  // which they share with an edit; a removal is the one that can also come from
+  // the pipeline, so its origin decides the wording.
+  const originKey = headerVersion?.origin
+    ? ORIGIN_LABEL_KEYS[headerVersion.origin]
+    : undefined;
+  const kindOriginKey =
+    headerVersion?.kind === 'add'
+      ? 'chunk.originAdd'
+      : headerVersion?.kind === 'delete' && headerVersion.origin
+        ? headerVersion.origin === 'parse'
+          ? 'chunk.originRemoveParse'
+          : 'chunk.originRemove'
+        : undefined;
+  const originLabel =
+    headerVersion?.kind === 'restore'
+      ? headerVersion.origin === 'dataset_restore'
+        ? headerVersion.dataset_version !== undefined
+          ? t('chunk.restoredFromDatasetVersion', {
+              version: headerVersion.restored_from,
+              dataset: headerVersion.dataset_version,
+            })
+          : t('chunk.restoredFromDataset', {
+              version: headerVersion.restored_from,
+            })
+        : t('chunk.restoredFrom', { version: headerVersion.restored_from })
+      : headerVersion?.kind === 'delete' &&
+          headerVersion.origin === 'dataset_restore'
+        ? headerVersion.dataset_version !== undefined
+          ? t('chunk.originRestore', {
+              dataset: headerVersion.dataset_version,
+            })
+          : t('chunk.originRestorePlain')
+        : kindOriginKey
+          ? t(kindOriginKey)
+          : originKey
+            ? t(originKey)
+            : '';
   const selectedKind = detail?.kind ?? selectedEntry?.kind;
   // A removal marker describes no state: it records that the chunk was gone from
   // that version on, and a tombstone carries no snapshot to read. Both panes say
@@ -341,7 +444,10 @@ function ChunkVersionHistory({ chunkId, docId }: ChunkVersionHistoryProps) {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
       <div className="flex min-h-0 flex-1 gap-4">
-        <aside className="flex w-[200px] shrink-0 flex-col border-r-0.5 border-border-button pr-2">
+        {/* Wide enough for the instant and the author side by side: the row
+            carries a full timestamp and a nickname, and a narrower column would
+            cut one of them in every row. */}
+        <aside className="flex w-[240px] shrink-0 flex-col border-r-0.5 border-border-button pr-2">
           <div className="min-h-0 flex-1 space-y-1 overflow-y-auto">
             {loading && versions.length === 0 && (
               <div className="flex justify-center py-8">
@@ -479,45 +585,47 @@ function ChunkVersionHistory({ chunkId, docId }: ChunkVersionHistoryProps) {
         </aside>
 
         {/* The mode switch belongs to the panel it switches, so it sits above the
-            changes or the content, not above the version list. The changes come
-            first: comparing two versions is what a history is opened for, and
-            reading one on its own is the follow-up question. */}
+            changes or the details, not above the version list. The details come
+            first: the list selects a version, and reading that version is what the
+            selection is for; comparing it with another one is the follow-up. */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-1">
-              <Button
-                variant={mode === 'diff' ? 'secondary' : 'ghost'}
-                size="sm"
-                onClick={() => setMode('diff')}
-              >
-                {t('chunk.versionChanges')}
-              </Button>
-              <Button
-                variant={mode === 'preview' ? 'secondary' : 'ghost'}
-                size="sm"
-                onClick={() => setMode('preview')}
-              >
-                {t('chunk.versionContent')}
-              </Button>
-            </div>
-            {mode === 'diff' && compareTo !== undefined && (
-              <div className="flex items-center gap-2">
-                {/* Only the base of the comparison is picked. The version on the
-                    right is whatever the list selected, shown as it stands so
-                    the panel is never comparing a version with itself. */}
-                <VersionSelect
-                  value={compareFrom}
-                  versions={orderedVersions}
-                  placeholder={t('chunk.compareFrom')}
-                  onChange={setCompareFromOverride}
-                />
-                <span className="text-sm text-text-secondary">→</span>
-                <span className="rounded-sm bg-bg-card px-2 py-1 text-sm text-text-primary">
-                  v{compareTo}
-                </span>
-              </div>
-            )}
+          <div className="flex items-center gap-1">
+            <Button
+              variant={mode === 'preview' ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => setMode('preview')}
+            >
+              {t('chunk.versionContent')}
+            </Button>
+            <Button
+              variant={mode === 'diff' ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => setMode('diff')}
+            >
+              {t('chunk.versionChanges')}
+            </Button>
           </div>
+
+          {/* The pair sits under the switch rather than beside it: it describes
+              the comparison below, so it reads as its heading instead of as a
+              third control in the toolbar. The margin under it is what separates
+              the heading from the fields it introduces. Only the base is picked.
+              The version on the right is whatever the list selected, shown as it
+              stands so the panel is never comparing a version with itself. */}
+          {mode === 'diff' && compareTo !== undefined && (
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <VersionSelect
+                value={compareFrom}
+                versions={orderedVersions}
+                placeholder={t('chunk.compareFrom')}
+                onChange={setCompareFromOverride}
+              />
+              <span className="text-sm text-text-secondary">→</span>
+              <span className="rounded-sm bg-bg-card px-2 py-1 text-sm text-text-primary">
+                {compareTo}
+              </span>
+            </div>
+          )}
 
           {mode === 'diff' ? (
             <ChunkVersionDiffPanel
@@ -532,33 +640,25 @@ function ChunkVersionHistory({ chunkId, docId }: ChunkVersionHistoryProps) {
             <section className="flex min-h-0 min-w-0 flex-1 flex-col">
               <Spin spinning={detailLoading} className="flex-1 min-h-0">
                 <div className="h-full space-y-3 overflow-y-auto pr-1">
-                  {/* Which version this pane is showing, before the text itself:
-                    the list on the left can be scrolled away from the row. */}
-                  {detail && (
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-text-secondary">
-                      <span className="font-medium text-text-primary">
-                        v{detail.version}
-                      </span>
-                      {detail.latest && (
-                        <span>{t('chunk.currentVersion')}</span>
-                      )}
-                      {/* Same v0 caveat as the list: kind is the restore flag. */}
-                      {detail.kind === 'restore' && (
-                        <span>
-                          {t('chunk.restoredFrom', {
-                            version: detail.restored_from,
-                          })}
+                  {/* Two facts the list cannot give: which version this pane is
+                      showing, and where it came from. The instant and the
+                      person are on the row that selected it. */}
+                  {headerVersion && (
+                    <div className="space-y-1 rounded-md bg-bg-card px-2 py-1.5">
+                      <MetaLine label={t('chunk.detailVersion')}>
+                        <span className="font-medium tabular-nums">
+                          {headerVersion.version}
                         </span>
-                      )}
-                      {!!detailTime && (
-                        <span className="tabular-nums">{detailTime}</span>
-                      )}
-                      {/* The server resolves the actor id to a nickname; the id
-                          is only a fallback for a user that no longer exists. */}
-                      {!!detailActor && (
-                        <span>
-                          {t('chunk.changedBy', { user: detailActor })}
-                        </span>
+                        {headerVersion.latest && (
+                          <span className="ml-1.5 text-text-secondary">
+                            {t('chunk.currentVersion')}
+                          </span>
+                        )}
+                      </MetaLine>
+                      {!!originLabel && (
+                        <MetaLine label={t('chunk.detailOrigin')}>
+                          {originLabel}
+                        </MetaLine>
                       )}
                     </div>
                   )}

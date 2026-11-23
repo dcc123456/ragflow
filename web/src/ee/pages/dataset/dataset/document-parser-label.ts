@@ -1,10 +1,13 @@
 import i18n from '@/locales/config';
 
+const EnterpriseParserLabelKeys: Record<string, string> = {
+  cad: 'flow.fileFormatOptions.cad',
+  visio: 'flow.fileFormatOptions.visio',
+};
+
 export function getEnterpriseDocumentParserLabel(
   chunkMethod: string,
 ): string | undefined {
-  if (chunkMethod !== 'cad') {
-    return undefined;
-  }
-  return i18n.t('flow.fileFormatOptions.cad');
+  const key = EnterpriseParserLabelKeys[chunkMethod];
+  return key ? i18n.t(key) : undefined;
 }

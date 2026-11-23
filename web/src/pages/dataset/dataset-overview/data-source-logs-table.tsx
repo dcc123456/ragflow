@@ -99,6 +99,7 @@ const DataSourceLogsTable = ({ datasetId }: { datasetId: string }) => {
     data: visibleLogs,
     columns,
     manualPagination: true,
+    getRowId: (log) => log.id,
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),

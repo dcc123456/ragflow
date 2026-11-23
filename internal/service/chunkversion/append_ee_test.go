@@ -63,7 +63,7 @@ func TestAppendAddBaselineStartsTheTimeline(t *testing.T) {
 		"doc_id":              "doc-1",
 		"content_with_weight": "added by hand",
 		"important_kwd":       []string{"alpha"},
-	})
+	}, "user-1")
 
 	var rows []entity.ChunkVersion
 	if err := db.Order("version").Find(&rows).Error; err != nil {
@@ -83,6 +83,11 @@ func TestAppendAddBaselineStartsTheTimeline(t *testing.T) {
 	}
 	if rows[0].Version != 0 || rows[0].Kind != entity.ChunkVersionKindAdd {
 		t.Fatalf("row = v%d/%s, want v0/add", rows[0].Version, rows[0].Kind)
+	}
+	// The baseline of a chunk someone added by hand names that person, so the
+	// history can show who made the change and which side it came from.
+	if rows[0].CreatedBy != "user-1" {
+		t.Fatalf("baseline actor = %q, want the user who added the chunk", rows[0].CreatedBy)
 	}
 	if got, _ := rows[0].Snapshot["content_with_weight"].(string); got != "added by hand" {
 		t.Fatalf("snapshot content = %q, want the chunk's text", got)
@@ -112,7 +117,7 @@ func TestAppendAddBaselineReopensARemovedChunk(t *testing.T) {
 
 	AppendAddBaseline(t.Context(), db, "kb-1", "doc-1", "chunk-1", 1, SnapshotMeta{EmbeddingID: "embd-1", Language: "en"}, map[string]interface{}{
 		"id": "chunk-1", "doc_id": "doc-1", "content_with_weight": "back again",
-	})
+	}, "user-1")
 
 	latest, err := dao.NewChunkVersionDAO().GetLatest(t.Context(), db, "chunk-1")
 	if err != nil {
@@ -236,8 +241,8 @@ func TestAppendAddBaselineIsIdempotent(t *testing.T) {
 	db := setupChunkHistoryDB(t)
 
 	row := map[string]interface{}{"id": "chunk-1", "doc_id": "doc-1", "content_with_weight": "same text"}
-	AppendAddBaseline(t.Context(), db, "kb-1", "doc-1", "chunk-1", 1, SnapshotMeta{}, row)
-	AppendAddBaseline(t.Context(), db, "kb-1", "doc-1", "chunk-1", 1, SnapshotMeta{}, row)
+	AppendAddBaseline(t.Context(), db, "kb-1", "doc-1", "chunk-1", 1, SnapshotMeta{}, row, "user-1")
+	AppendAddBaseline(t.Context(), db, "kb-1", "doc-1", "chunk-1", 1, SnapshotMeta{}, row, "user-1")
 
 	var count int64
 	if err := db.Model(&entity.ChunkVersion{}).Where("chunk_id = ?", "chunk-1").Count(&count).Error; err != nil {

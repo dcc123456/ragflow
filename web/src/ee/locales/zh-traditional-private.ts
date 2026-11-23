@@ -15,6 +15,11 @@ export default {
       versionEmpty: '該版本沒有保存內容。',
       versionChunkDeleted: '該 chunk 在該版本中被刪除。',
       restoredFrom: '從 v{{version}} 恢復',
+      // 由資料集版本還原回放觸發的恢復，觸發原因寫在同一行裡。
+      restoredFromDataset: '從 v{{version}} 恢復（資料集版本還原回放）',
+      // 這一版所屬的資料集版本，便於在資料集時間線上定位。
+      restoredFromDatasetVersion:
+        '從 v{{version}} 恢復（資料集版本：{{dataset}}）',
       restoreVersion: '恢復',
       restoreVersionTitle: '恢復到 v{{version}}？',
       restoreVersionDescription:
@@ -33,7 +38,22 @@ export default {
       tags: '標籤',
       versionHistoryTip: '選擇一個版本可以查看它保存的內容。',
       versionChanges: '變更',
-      versionContent: '內容',
+      // 這一欄展示的是該版本保存的完整狀態（正文、關鍵詞、問題、標籤、啟用狀態），
+      // 叫「內容」會讓人以為只有正文。
+      versionContent: '詳情',
+      // 這一版從哪來：還原寫明回放的版本；回放不帶操作人，只看操作人無法分辨。
+      detailOrigin: '版本來源',
+      originChunk: '手動修改',
+      // 版本行也可能記錄解析塊的新增或刪除，只說「手動操作」分不出是哪一種。三條
+      // 人工來源用同一個句式，下面「by…」那幾條說的才是人沒有動手的一側。
+      originAdd: '手動新增',
+      originRemove: '手動刪除',
+      // 重新解析會丟棄它不再產生的解析塊，那是解析流程刪的，不是人刪的。
+      originRemoveParse: '文件重新解析時移除',
+      // 資料集版本還原回放到了一個沒有該解析塊的狀態，因此這一版記錄的是移除。
+      originRestore: '移除（資料集版本：{{dataset}}）',
+      originRestorePlain: '移除',
+      originParse: '文件解析生成',
       compareFrom: '從',
       compareTip: '選擇兩個版本查看變化。',
       noDiff: '兩個版本沒有差異。',
@@ -46,6 +66,16 @@ export default {
       diffFieldVisibility: '啟用狀態',
       // 該版本沒有記錄圖片時，在對比的對應一側顯示。
       noImage: '無圖片',
+      // 卡片上的詳情彈層：這一行是什麼、何時產生、何時最後變更。兩個時間取自
+      // 版本歷史，因為版本記錄是解析塊時間點的唯一來源。
+      detail: '詳情',
+      detailTitle: '解析塊詳情',
+      detailId: '解析塊 ID',
+      detailCreatedAt: '建立時間',
+      detailUpdatedAt: '更新時間',
+      // 預覽頭也用它說明目前顯示的是哪個版本：左側列表只顯示時間和使用者。
+      detailVersion: '版本',
+      detailStatus: '狀態',
     },
     datasetVersion: {
       current: '目前',
@@ -77,14 +107,14 @@ export default {
       restoreConfirmDeleteOnly: '將移除該版本之後上傳的 {{deleted}} 個文件',
       restoreConfirmConfig: '同時套用 {{count}} 項設定變更',
       restoreIncompleteTitle: '{{count}} 個文件未能完整恢復',
-      restoreIncompleteBody:
-        '這些文件記錄已放回，但內容沒有：需要重新解析 {{names}}',
-      restoreIncompleteBodyWithReasons:
-        '這些文件記錄已放回，但內容沒有：需要重新解析 {{names}}（{{reasons}}）',
+      // 這句話引出下面的列表：每行一個文件，行尾是伺服器給該文件的原因。
+      restoreIncompleteBody: '這些文件記錄已放回，但內容沒有，需要重新解析：',
+      restoreIncompleteMore: '另有 {{count}} 個未列出',
+      // 原因跟在它所屬的文件後面，因此指代單個文件。
       restoreMissingNoChunkHistory: '沒有可回溯到該版本的解析歷史',
-      restoreMissingRemovalGone: '文件刪除記錄已被清理',
-      restoreMissingReplayFailed: '解析塊回放失敗',
-      restoreMissingHistoryUnreadable: '解析歷史讀取失敗',
+      restoreMissingRemovalGone: '該文件的刪除記錄已被清理',
+      restoreMissingReplayFailed: '該文件的解析塊回放失敗',
+      restoreMissingHistoryUnreadable: '該文件的解析歷史讀取失敗',
       restored: '已恢復到該版本',
       delete: '刪除',
       deleteTitle: '確定刪除版本 {{version}}？',

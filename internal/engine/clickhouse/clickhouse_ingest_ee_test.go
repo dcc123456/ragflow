@@ -178,7 +178,7 @@ func TestDrainChannelCollectsIngestionLogs(t *testing.T) {
 	ch <- &common.ModelUsage{TenantID: "t"}
 	d := newTestDriver(ch)
 
-	usg, opLog, ing := d.drainChannel()
+	usg, opLog, ing, _ := d.drainChannel()
 	if len(ing) != 1 || ing[0].TaskID != "x" {
 		t.Fatalf("expected exactly 1 ingestion log drained, got %#v", ing)
 	}

@@ -41,6 +41,25 @@ type ChunkVersionRequest struct {
 	ExpectedVersion *int `json:"expected_version,omitempty"`
 }
 
+// The origins of a chunk history row: where a change came from, as opposed to what
+// it did. Kind says what happened, Origin says who made it happen - a removal a
+// re-parse produced and one a dataset restore produced are both actorless "delete"
+// rows.
+const (
+	// ChunkVersionOriginParse is a row the ingestion pipeline wrote: the parse
+	// baseline, the tombstone of a chunk a re-parse replaced, and the cleanup of
+	// a run that failed while indexing.
+	ChunkVersionOriginParse = "parse"
+	// ChunkVersionOriginChunk is a row a user produced on the chunk side: the
+	// chunk page or the API adding, editing, enabling, disabling, removing or
+	// restoring one chunk.
+	ChunkVersionOriginChunk = "chunk"
+	// ChunkVersionOriginRestore is a row the replay of a dataset version restore
+	// wrote: the content of a document was rolled back, or a chunk uploaded
+	// after the anchor was dropped, without anyone touching that chunk.
+	ChunkVersionOriginRestore = "dataset_restore"
+)
+
 // ChunkVersionSummary is the list entry of one chunk version. The snapshot is
 // omitted here; it is loaded per version when a caller previews or restores it.
 type ChunkVersionSummary struct {
@@ -66,6 +85,22 @@ type ChunkVersionSummary struct {
 	// row is the baseline a replay rebuilds from and a delete row is what marks
 	// the chunk as removed, so both are protected from deletion.
 	Kind string `json:"kind"`
+	// Origin is the ChunkVersionOrigin* value saying whether the ingestion
+	// pipeline, a user, or a dataset version restore caused this row. Empty when
+	// the history cannot say - a removal whose dataset version row is gone.
+	Origin string `json:"origin,omitempty"`
+	// TriggeredBy is the user whose request produced the row, which is what a
+	// history list means by "who changed this". It differs from CreatedBy for a
+	// system-written row only: that row is attributed to whoever triggered the
+	// dataset version it was written under. Empty when that version is gone.
+	TriggeredBy string `json:"triggered_by,omitempty"`
+	// TriggeredByName is TriggeredBy resolved to a nickname, empty for a user that
+	// no longer exists (the client falls back to the id) and for a row with no
+	// trigger at all.
+	TriggeredByName string `json:"triggered_by_name,omitempty"`
+	// DatasetVersion is the dataset version this row belongs to - the state of the
+	// dataset the chunk was in when the row was written.
+	DatasetVersion int64 `json:"dataset_version"`
 }
 
 // ListChunkVersionsResponse is the version history of one chunk, newest first.
@@ -90,10 +125,21 @@ type GetChunkVersionResponse struct {
 	CreateTime int64 `json:"create_time"`
 	// CreateDate is the legacy server-formatted display string, kept for
 	// compatibility; the web UI reads CreateTime instead.
-	CreateDate string                 `json:"create_date,omitempty"`
-	Latest     bool                   `json:"latest"`
-	Kind       string                 `json:"kind"`
-	Chunk      map[string]interface{} `json:"chunk"`
+	CreateDate string `json:"create_date,omitempty"`
+	Latest     bool   `json:"latest"`
+	Kind       string `json:"kind"`
+	// Origin is the ChunkVersionOrigin* value of the row, resolved the same way
+	// as in the list: it says whether a user acting on this chunk or a dataset
+	// version restore produced the change.
+	Origin string `json:"origin,omitempty"`
+	// TriggeredBy and TriggeredByName are the user whose request produced the row,
+	// resolved the same way as in the list.
+	TriggeredBy     string `json:"triggered_by,omitempty"`
+	TriggeredByName string `json:"triggered_by_name,omitempty"`
+	// DatasetVersion is the version the list reports for this row: the dataset
+	// state it belongs to.
+	DatasetVersion int64                  `json:"dataset_version"`
+	Chunk          map[string]interface{} `json:"chunk"`
 }
 
 // ChunkVersionDiffRequest names the two versions to compare. To is optional:
