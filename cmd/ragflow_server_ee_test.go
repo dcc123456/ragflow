@@ -88,34 +88,17 @@ func TestSelectedLogLevelPrecedence(t *testing.T) {
 	}
 	if _, err = parseArgsForTest(t, "--api", "--debug"); err == nil {
 		t.Error("parseArgs(--api --debug) error = nil, want rejection")
-	} else if !strings.Contains(err.Error(), "flag provided but not defined") {
-		// The stdlib flag package owns unknown-flag errors now; the old
-		// "unknown parameter" string no longer applies.
-		t.Errorf("parseArgs(--api --debug) error = %q, want \"flag provided but not defined\"", err)
+	} else if !strings.Contains(err.Error(), "unknown long flag '--debug'") {
+		t.Errorf("parseArgs(--api --debug) error = %q, want unknown long flag", err)
 	}
 }
 
-// Mode flags share a single slot, so the last one passed wins. Putting
-// --migrate next to a server mode is not a runtime conflict, so it must not
-// be rejected.
-func TestParseArgsMigrateFollowsLastModeWins(t *testing.T) {
+func TestParseArgsMigrateConflictsWithServerMode(t *testing.T) {
 	for _, mode := range []string{"--api", "--admin", "--ingestor", "--syncer"} {
-		want := strings.TrimPrefix(mode, "--")
-
-		args, err := parseArgsForTest(t, mode, "--migrate")
-		if err != nil {
-			t.Fatalf("parseArgs(%s --migrate) error = %v", mode, err)
-		}
-		if args.Mode == nil || *args.Mode != "migrate" {
-			t.Errorf("parseArgs(%s --migrate) mode = %v, want migrate", mode, args.Mode)
-		}
-
-		args, err = parseArgsForTest(t, "--migrate", mode)
-		if err != nil {
-			t.Fatalf("parseArgs(--migrate %s) error = %v", mode, err)
-		}
-		if args.Mode == nil || *args.Mode != want {
-			t.Errorf("parseArgs(--migrate %s) mode = %v, want %s", mode, args.Mode, want)
+		for _, argv := range [][]string{{mode, "--migrate"}, {"--migrate", mode}} {
+			if _, err := parseArgsForTest(t, argv...); err == nil || !strings.Contains(err.Error(), "only one mode flag") {
+				t.Errorf("parseArgs(%v) error = %v, want conflicting modes", argv, err)
+			}
 		}
 	}
 }
