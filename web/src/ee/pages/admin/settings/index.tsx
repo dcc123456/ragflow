@@ -30,7 +30,6 @@ import SMTPSettingsForm from './form-group/smtp';
 import WhitelistSettingsFormGroup from './form-group/whitelist';
 
 import useAdminVariables from '@/ee/pages/admin/hooks/useAdminVariables';
-import { ChangePasswordDialog } from './change-password-dialog';
 import { License } from './license';
 
 const schema = z.object({
@@ -103,9 +102,6 @@ function AdminSettings() {
           <div className="w-1/2 min-w-[40rem] max-w-[56rem] h-full flex flex-col">
             <ScrollArea className="flex-1 h-full">
               <License></License>
-              <div className="p-6 border-b-0.5 border-border-button">
-                <ChangePasswordDialog />
-              </div>
               <div className="p-6">
                 <Form {...form}>
                   <form
