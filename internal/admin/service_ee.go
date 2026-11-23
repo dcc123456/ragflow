@@ -2071,6 +2071,9 @@ func (s *Service) ShowVerificationEmail(ctx context.Context) (map[string]interfa
 func (s *Service) GetTokenStats(ctx context.Context, userName, fromDate, toDate, granularity string) ([]map[string]interface{}, error) {
 	user, err := s.userDAO.GetByEmail(ctx, dao.DB, userName)
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, common.ErrUserNotFound
+		}
 		return nil, err
 	}
 	clickhouseDriver := clickhouse.GetDriver()
