@@ -29,7 +29,11 @@ func setupChannelCompletionAPI(t *testing.T) (*gin.Engine, *AgentHandler) {
 	if err := server.Init(""); err != nil {
 		t.Fatal(err)
 	}
-	_, _, db := setupGinContextWithUserAndDB(t, http.MethodPost, "/")
+	gin.SetMode(gin.TestMode)
+	db := setupHandlerAgentsTestDB(t)
+	orig := dao.DB
+	dao.DB = db
+	t.Cleanup(func() { dao.DB = orig })
 	sqlDB, err := db.DB()
 	if err != nil {
 		t.Fatal(err)
@@ -109,8 +113,10 @@ func TestChatChannelCompletionRESTAgentRefreshAndResume(t *testing.T) {
 	if err := testsupport.PrepareEnterprisePermissionFixture(dao.DB, "user-1", "member"); err != nil {
 		t.Fatal(err)
 	}
-	if err := testsupport.GrantTestResourcePermission(dao.DB, "user-1", "canvas", "workflow", "member", "read"); err != nil {
-		t.Fatal(err)
+	for _, resource := range []struct{ kind, id string }{{"dialog", "channel"}, {"canvas", "workflow"}} {
+		if err := testsupport.GrantTestResourcePermission(dao.DB, "user-1", resource.kind, resource.id, "member", "read"); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := dao.DB.Model(&entity.UserCanvas{}).Where("id = ?", "workflow").Update("permission", string(entity.TenantPermissionTeam)).Error; err != nil {
 		t.Fatal(err)
@@ -187,7 +193,7 @@ func TestChatChannelCompletionRESTChatMemberKey(t *testing.T) {
 	if err := testsupport.PrepareEnterprisePermissionFixture(dao.DB, "user-1", "member"); err != nil {
 		t.Fatal(err)
 	}
-	for _, resource := range []struct{ kind, id string }{{"chat", "chat"}, {"model_instance", "instance"}} {
+	for _, resource := range []struct{ kind, id string }{{"dialog", "channel"}, {"dialog", "chat"}, {"model_instance", "instance"}} {
 		if err := testsupport.GrantTestResourcePermission(dao.DB, "user-1", resource.kind, resource.id, "member", "owner"); err != nil {
 			t.Fatal(err)
 		}

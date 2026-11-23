@@ -18,7 +18,6 @@ func TestChatChannelRESTExecution(t *testing.T) {
 			if err := db.AutoMigrate(&entity.APIToken{}); err != nil {
 				t.Fatal(err)
 			}
-			serviceTestContext(t, "owner", "owner", "member")
 			for _, row := range []any{
 				&entity.User{ID: "owner", Email: "owner@example.com", AccessToken: new("owner-access")},
 				&entity.User{ID: "member", Email: "member@example.com", AccessToken: new("member-access")},
@@ -29,6 +28,7 @@ func TestChatChannelRESTExecution(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			serviceTestContext(t, "owner", "owner", "member")
 			channel := &entity.ChatChannel{Config: entity.JSONMap{}, ID: "channel", TenantID: "owner", Name: "Support", Status: 1, ChatID: new("target")}
 			if agent {
 				channel.ChatID = nil
@@ -145,10 +145,10 @@ func TestChatChannelRESTRejectsMissingKeyAndStopsDisabledChannel(t *testing.T) {
 func TestChatChannelRESTRejectsBusinessErrorWithoutLeakingMessage(t *testing.T) {
 	db := setupChatChannelServiceTestDB(t)
 	createChatChannelTestAPIKey(t, db, "owner")
-	serviceTestContext(t, "owner", "owner")
 	if err := db.Create(&entity.User{ID: "owner", Email: "owner@example.com", AccessToken: new("owner-access")}).Error; err != nil {
 		t.Fatal(err)
 	}
+	serviceTestContext(t, "owner", "owner")
 	createServiceTestDialog(t, db, "chat", "owner", "Support")
 	createServiceTestChannel(t, db, &entity.ChatChannel{ID: "channel", TenantID: "owner", Config: entity.JSONMap{}, ChatID: new("chat"), Status: 1})
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
