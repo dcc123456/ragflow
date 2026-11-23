@@ -158,7 +158,7 @@ func (s *Service) SetSystemLicense(ctx context.Context, licenseStr string) (map[
 
 	GlobalServerStatusStore.SetLicense(license)
 
-	if license.Type != utility.SAAS {
+	if license.Type == utility.SAAS {
 		common.Info("SaaS license is valid")
 		return result, nil
 	}
