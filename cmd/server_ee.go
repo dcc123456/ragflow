@@ -19,27 +19,18 @@
 package main
 
 import (
-	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"strconv"
 
 	"ragflow/internal/common"
-	"ragflow/internal/server/admin"
-	apipkg "ragflow/internal/server/api"
 	"ragflow/internal/server/bootstrap"
-	chatterpkg "ragflow/internal/server/chatter"
-	ingestorpkg "ragflow/internal/server/ingestor"
-	syncerpkg "ragflow/internal/server/syncer"
 )
 
 func registerFlags(fs *flag.FlagSet, args *bootstrap.ServerArgs) func() error {
 	var modes []string
-	var port, concurrency, cpuCores int
+	var concurrency, cpuCores int
 	var tier string
-	fs.IntVar(&port, "port", 0, "")
-	fs.IntVar(&port, "p", 0, "")
 	fs.BoolVar(&args.InitSuperUser, "init-superuser", false, "")
 	fs.IntVar(&concurrency, "deepdoc-inference-concurrency", 0, "")
 	fs.IntVar(&cpuCores, "deepdoc-inference-cpu-cores", 0, "")
@@ -52,12 +43,6 @@ func registerFlags(fs *flag.FlagSet, args *bootstrap.ServerArgs) func() error {
 		fs.Visit(func(f *flag.Flag) { seen[f.Name] = true })
 		if len(modes) > 0 {
 			args.Mode = &modes[len(modes)-1]
-		}
-		if seen["port"] || seen["p"] {
-			if port <= 0 || port > 65535 {
-				return fmt.Errorf("invalid port: %d", port)
-			}
-			args.Port = &port
 		}
 		if seen["deepdoc-inference-concurrency"] {
 			if concurrency <= 0 {
@@ -78,31 +63,6 @@ func registerFlags(fs *flag.FlagSet, args *bootstrap.ServerArgs) func() error {
 			args.IngestorTier = &tier
 		}
 		return nil
-	}
-}
-
-func validateServerMode(args *bootstrap.ServerArgs) error {
-	if args.Mode == nil {
-		printHelp(args)
-		return errors.New("select a server mode")
-	}
-	return nil
-}
-
-func runEEServices(ctx context.Context, cancel context.CancelFunc, args *bootstrap.ServerArgs, services *bootstrap.AgentServices) error {
-	switch *args.Mode {
-	case "admin":
-		return admin.Run(ctx, args)
-	case "api":
-		return apipkg.Run(ctx, *args.Name, args, services)
-	case "ingestor":
-		return ingestorpkg.Run(ctx, cancel, args, services)
-	case "syncer":
-		return syncerpkg.Run(ctx, cancel, args)
-	case "chatter":
-		return chatterpkg.Run(ctx, args, services)
-	default:
-		return fmt.Errorf("invalid server mode: %s", *args.Mode)
 	}
 }
 
