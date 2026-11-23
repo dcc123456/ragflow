@@ -53,25 +53,17 @@ func captureHelpStderr(t *testing.T, fn func()) string {
 	return string(out)
 }
 
-// TestPrintHelpIngestorDocumentsIngestorTier verifies that the ingestor help
-// block exposes every ingestor-specific startup knob, including the tier.
-// Without this an operator cannot discover the flag from --help even though
-// it is accepted by the parser.
-func TestPrintHelpIngestorDocumentsIngestorTier(t *testing.T) {
-	mode := "ingestor"
-	args := &bootstrap.ServerArgs{Mode: &mode}
-	help := captureHelpStderr(t, func() { printHelp(args) })
-	if !strings.Contains(help, "--ingestor-tier") {
-		t.Fatalf("ingestor help does not document --ingestor-tier:\n%s", help)
+func TestPrintHelpDefaultStartup(t *testing.T) {
+	help := captureHelpStderr(t, func() { printHelp(&bootstrap.ServerArgs{}) })
+	for _, want := range []string{"one process by default", "--admin", "--api", "--ingestor", "--syncer", "--chatter", "--migrate", "--config", "--log-level", "--profile", "--help", "--version"} {
+		if !strings.Contains(help, want) {
+			t.Errorf("help does not document %q:\n%s", want, help)
+		}
 	}
-	// Adversarial: the flag is ingestor-specific; it must not leak into an
-	// unrelated mode's help block. A wrong implementation that simply printed
-	// the flag unconditionally would be caught here.
-	adminMode := "admin"
-	adminArgs := &bootstrap.ServerArgs{Mode: &adminMode}
-	adminHelp := captureHelpStderr(t, func() { printHelp(adminArgs) })
-	if strings.Contains(adminHelp, "--ingestor-tier") {
-		t.Fatalf("admin help must not document --ingestor-tier:\n%s", adminHelp)
+	for _, flag := range []string{"--ingestor-tier", "--init-superuser", "--port", "--deepdoc-inference-concurrency", "--deepdoc-inference-cpu-cores"} {
+		if strings.Contains(help, flag) {
+			t.Errorf("help documents unsupported flag %q:\n%s", flag, help)
+		}
 	}
 }
 

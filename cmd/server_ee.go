@@ -23,7 +23,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"os"
 	"strconv"
 
 	"ragflow/internal/common"
@@ -79,27 +78,6 @@ func registerFlags(fs *flag.FlagSet, args *bootstrap.ServerArgs) func() error {
 			args.IngestorTier = &tier
 		}
 		return nil
-	}
-}
-
-func printHelp(args *bootstrap.ServerArgs) {
-	if args.Mode == nil {
-		fmt.Fprintf(os.Stderr, "Usage: %s --api|--admin|--ingestor|--syncer|--chatter|--deepdoc [OPTIONS]\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "       %s --migrate [OPTIONS]\n\n", os.Args[0])
-		fmt.Fprintln(os.Stderr, "Modes: --admin, --api, --ingestor, --syncer, --chatter, --deepdoc")
-		fmt.Fprintln(os.Stderr, "  --migrate          \tRun database migrations and exit")
-	} else {
-		fmt.Fprintf(os.Stderr, "Usage: %s --%s [OPTIONS]\n\n", os.Args[0], *args.Mode)
-	}
-	printCommonHelp()
-	fmt.Fprintln(os.Stderr, "  -p, --port int     \tServer port (overrides configuration)")
-	if args.Mode == nil || *args.Mode == "admin" {
-		fmt.Fprintln(os.Stderr, "  --init-superuser   \tInitialize superuser account (admin)")
-	}
-	if args.Mode == nil || *args.Mode == "ingestor" {
-		fmt.Fprintln(os.Stderr, "  --ingestor-tier string\tIngestion lanes to consume")
-		fmt.Fprintln(os.Stderr, "  --deepdoc-inference-concurrency int\tIn-process inference concurrency")
-		fmt.Fprintln(os.Stderr, "  --deepdoc-inference-cpu-cores int\tInference CPU budget (0: all cores)")
 	}
 }
 
