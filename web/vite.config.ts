@@ -134,6 +134,9 @@ export default defineConfig(({ mode }) => {
       exclude: [],
       force: false,
     },
+    worker: {
+      format: 'es',
+    },
     build: {
       outDir: 'dist',
       assetsDir: 'assets',

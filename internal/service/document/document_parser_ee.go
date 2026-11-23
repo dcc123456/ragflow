@@ -20,17 +20,19 @@ package document
 
 import "ragflow/internal/utility"
 
-// dedicatedParserExtension binds a CAD drawing to the cad built-in pipeline.
-// The CAD parser is enterprise-only, so this is the only file type the
-// enterprise edition adds to the community routing.
+// dedicatedParserExtension binds enterprise drawing formats (CAD and Visio)
+// to their dedicated built-in pipelines.
 //
 // The filetype argument is the upload category, and every unrecognised binary
 // extension lands in the visual bucket, so a .dxf arrives as FileTypeVISUAL.
 // The semantic type therefore has to come from the filename registry, the same
 // way the presentation branch resolves .pptx.
 func dedicatedParserExtension(_ utility.FileType, filename string) string {
-	if utility.GetFileType(filename) == utility.FileTypeCAD {
+	switch utility.GetFileType(filename) {
+	case utility.FileTypeCAD:
 		return "cad"
+	case utility.FileTypeVSDX:
+		return "visio"
 	}
 	return ""
 }

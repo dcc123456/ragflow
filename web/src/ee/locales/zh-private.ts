@@ -260,6 +260,8 @@ export default {
         '按图框和空间布局切分 CAD 图纸，并可使用视觉模型描述图纸区域。',
       cadParserNoConfig:
         'CAD 图纸由内置解析器处理，无需配置。视觉增强请在 CAD Chunker 中设置。',
+      visioParserNoConfig:
+        'Visio 绘图（.vsdx）由内置解析器按页解析，无需额外配置。',
       cadVisionEnhancementTip:
         '使用视觉模型描述图纸区域中的几何、符号和空间关系；关闭时仅使用 CAD 原生文字。',
       extractorResumeTitle: '简历结构化抽取',
@@ -267,6 +269,7 @@ export default {
         '对文本运行四路 LLM 抽取（基本信息 / 工作经历 / 教育经历 / 项目经历），产出结构化元数据、关键词与向量摘要。姓名、公司、职位、学校、学位与工龄会先与原文比对再入库。重新解析会覆盖受管元数据字段；简历无需开启其他抽取组。',
       fileFormatOptions: {
         cad: 'CAD 图纸',
+        visio: 'Visio 绘图',
       },
     },
     setting: {
@@ -824,6 +827,23 @@ export default {
     system: {
       uploadDescription:
         '每次上传的总文件大小限制为 {{size}},严禁上传违禁文件。',
+    },
+    visioPreview: {
+      controlsLabel: 'Visio 预览控制',
+      previousPage: '上一页',
+      nextPage: '下一页',
+      pageSelect: 'Visio 页面',
+      pageFallback: '第 {{index}} 页',
+      zoomOut: '缩小',
+      zoomIn: '放大',
+      fitToWindow: '适应窗口',
+      fit: '适应',
+      targetPageMissing:
+        '无法在当前版本中定位引用的 Visio 页面，请手动切换页面查看。',
+      fileTooLarge: 'Visio 预览仅支持不超过 32 MiB 的文件。',
+      fetchFailed: '获取 Visio 文档失败',
+      loadFailed: '加载 Visio 文件失败',
+      renderFailed: '渲染 Visio 页面失败',
     },
   },
 };

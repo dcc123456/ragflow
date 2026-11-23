@@ -20,8 +20,8 @@ const createHighlight = (pageNumber: number): IHighlight => ({
   },
 });
 
-describe('CAD citation source locate', () => {
-  it.each(['dwg', 'dxf', 'dxfb', 'DWG', 'DxFb'])(
+describe('Enterprise citation source locate', () => {
+  it.each(['dwg', 'dxf', 'dxfb', 'DWG', 'DxFb', 'vsdx', 'VSDX'])(
     'opens %s citations in the in-app document preview',
     (extension) => {
       expect(supportsSourceLocate(extension)).toBe(true);

@@ -1,0 +1,271 @@
+{
+    "id": "visio",
+    "title": {
+        "en": "Visio Drawing",
+        "de": "Visio-Zeichnung",
+        "zh": "Visio 绘图"
+    },
+    "description": {
+        "en": "This template parses Microsoft Visio (.vsdx) drawings page by page, extracting explicit connector relations and shape text per foreground page.",
+        "de": "Diese Vorlage parst Microsoft Visio (.vsdx)-Zeichnungen seitenweise und extrahiert explizite Verbindungsbeziehungen sowie Formtexte pro Vordergrundseite.",
+        "zh": "此模板按页解析 Microsoft Visio（.vsdx）绘图，提取每个前景页中的显式连线关系与图形文本，保持单页单块结构。"
+    },
+    "canvas_type": "Ingestion Pipeline",
+    "canvas_category": "dataflow_canvas",
+    "parser_ids": [
+        "visio"
+    ],
+    "dsl": {
+        "components": {
+            "File": {
+                "downstream": [
+                    "Parser:PaperTrail"
+                ],
+                "obj": {
+                    "component_name": "File",
+                    "params": {}
+                },
+                "upstream": []
+            },
+            "Parser:PaperTrail": {
+                "downstream": [
+                    "PageChunker:VisioPages"
+                ],
+                "obj": {
+                    "component_name": "Parser",
+                    "params": {
+                        "enable_vision_enhancement": false,
+                        "vlm": {
+                            "llm_id": ""
+                        },
+                        "visio": {}
+                    }
+                },
+                "upstream": [
+                    "File"
+                ]
+            },
+            "PageChunker:VisioPages": {
+                "downstream": [
+                    "Extractor:AutoExtractDefault"
+                ],
+                "obj": {
+                    "component_name": "PageChunker",
+                    "params": {
+                        "outputs": {
+                            "chunks": {
+                                "type": "Array<Object>",
+                                "value": []
+                            }
+                        }
+                    }
+                },
+                "upstream": [
+                    "Parser:PaperTrail"
+                ]
+            },
+            "Extractor:AutoExtractDefault": {
+                "downstream": [
+                    "Tokenizer:IndexText"
+                ],
+                "obj": {
+                    "component_name": "Extractor",
+                    "params": {
+                        "llm_id": "",
+                        "keywords": {
+                            "top_n": 0
+                        },
+                        "questions": {
+                            "top_n": 0
+                        },
+                        "tags": {
+                            "top_n": 0,
+                            "tag_file_id": ""
+                        },
+                        "summary": {
+                            "enabled": false
+                        },
+                        "metadata": {
+                            "enabled": false,
+                            "metadata": [],
+                            "built_in_metadata": []
+                        }
+                    }
+                },
+                "upstream": [
+                    "PageChunker:VisioPages"
+                ]
+            },
+            "Tokenizer:IndexText": {
+                "downstream": [],
+                "obj": {
+                    "component_name": "Tokenizer",
+                    "params": {
+                        "fields": "text",
+                        "filename_embd_weight": 0.1,
+                        "outputs": {},
+                        "search_method": [
+                            "embedding",
+                            "full_text"
+                        ]
+                    }
+                },
+                "upstream": [
+                    "Extractor:AutoExtractDefault"
+                ]
+            }
+        },
+        "globals": {
+            "sys.history": []
+        },
+        "graph": {
+            "edges": [
+                {
+                    "id": "xy-edge__Filestart-Parser:PaperTrailend",
+                    "source": "File",
+                    "sourceHandle": "start",
+                    "target": "Parser:PaperTrail",
+                    "targetHandle": "end"
+                },
+                {
+                    "id": "xy-edge__Parser:PaperTrailstart-PageChunker:VisioPagesend",
+                    "source": "Parser:PaperTrail",
+                    "sourceHandle": "start",
+                    "target": "PageChunker:VisioPages",
+                    "targetHandle": "end"
+                },
+                {
+                    "id": "xy-edge__PageChunker:VisioPagesstart-Extractor:AutoExtractDefaultend",
+                    "source": "PageChunker:VisioPages",
+                    "sourceHandle": "start",
+                    "target": "Extractor:AutoExtractDefault",
+                    "targetHandle": "end"
+                },
+                {
+                    "id": "xy-edge__Extractor:AutoExtractDefaultstart-Tokenizer:IndexTextend",
+                    "source": "Extractor:AutoExtractDefault",
+                    "sourceHandle": "start",
+                    "target": "Tokenizer:IndexText",
+                    "targetHandle": "end"
+                }
+            ],
+            "nodes": [
+                {
+                    "data": {
+                        "label": "File",
+                        "name": "File"
+                    },
+                    "id": "File",
+                    "position": {
+                        "x": 50,
+                        "y": 200
+                    },
+                    "type": "beginNode"
+                },
+                {
+                    "data": {
+                        "form": {
+                            "enable_vision_enhancement": false,
+                            "vlm": {
+                                "llm_id": ""
+                            },
+                            "visio": {},
+                            "setups": [
+                                {
+                                    "fileFormat": "visio"
+                                }
+                            ]
+                        },
+                        "label": "Parser",
+                        "name": "Parser"
+                    },
+                    "id": "Parser:PaperTrail",
+                    "position": {
+                        "x": 316,
+                        "y": 188
+                    },
+                    "type": "parserNode"
+                },
+                {
+                    "data": {
+                        "label": "PageChunker",
+                        "name": "Page Chunker",
+                        "form": {
+                            "outputs": {
+                                "chunks": {
+                                    "type": "Array<Object>",
+                                    "value": []
+                                }
+                            }
+                        }
+                    },
+                    "id": "PageChunker:VisioPages",
+                    "position": {
+                        "x": 616,
+                        "y": 188
+                    },
+                    "type": "chunkerNode"
+                },
+                {
+                    "data": {
+                        "form": {
+                            "llm_id": "",
+                            "keywords": {
+                                "top_n": 0
+                            },
+                            "questions": {
+                                "top_n": 0
+                            },
+                            "tags": {
+                                "top_n": 0,
+                                "tag_file_id": ""
+                            },
+                            "summary": {
+                                "enabled": false
+                            },
+                            "metadata": {
+                                "enabled": false,
+                                "metadata": [],
+                                "built_in_metadata": []
+                            }
+                        },
+                        "label": "Extractor",
+                        "name": "Extractor"
+                    },
+                    "id": "Extractor:AutoExtractDefault",
+                    "position": {
+                        "x": 916,
+                        "y": 195
+                    },
+                    "type": "contextNode"
+                },
+                {
+                    "data": {
+                        "form": {
+                            "fields": "text",
+                            "filename_embd_weight": 0.1,
+                            "outputs": {},
+                            "search_method": [
+                                "embedding",
+                                "full_text"
+                            ]
+                        },
+                        "label": "Tokenizer",
+                        "name": "Indexer"
+                    },
+                    "id": "Tokenizer:IndexText",
+                    "position": {
+                        "x": 1216,
+                        "y": 168
+                    },
+                    "type": "tokenizerNode"
+                }
+            ]
+        },
+        "history": [],
+        "messages": [],
+        "path": [],
+        "retrieval": [],
+        "variables": []
+    }
+}

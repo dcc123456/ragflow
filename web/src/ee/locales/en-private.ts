@@ -467,6 +467,8 @@ export default {
         'Split CAD drawings by sheet and spatial layout, with optional vision-model descriptions of drawing regions.',
       cadParserNoConfig:
         'CAD drawings are processed by the built-in parser and require no configuration. Configure vision enhancement in CAD Chunker.',
+      visioParserNoConfig:
+        'Visio drawings (.vsdx) are processed by the built-in parser page by page and require no configuration.',
       cadVisionEnhancementTip:
         'Use a vision model to describe geometry, symbols, and spatial relationships in drawing regions; when off, only native CAD text is used.',
       extractorResumeTitle: 'Resume extraction',
@@ -474,6 +476,7 @@ export default {
         'Runs four LLM lanes (basic info, work experience, education, projects) over the text and writes structured metadata, keywords, and the embedding summary. Names, employers, positions, schools, degrees, and tenure are checked against the source text before they are stored. Re-parsing overwrites the managed metadata fields; the other extraction groups are not needed for resumes.',
       fileFormatOptions: {
         cad: 'CAD Drawing',
+        visio: 'Visio Drawing',
       },
       version: {
         noPublished: 'No published versions',
@@ -1201,6 +1204,23 @@ export default {
     system: {
       uploadDescription:
         'The total file size limit per upload is {{size}}. Uploading prohibited files is strictly forbidden.',
+    },
+    visioPreview: {
+      controlsLabel: 'Visio preview controls',
+      previousPage: 'Previous page',
+      nextPage: 'Next page',
+      pageSelect: 'Visio page',
+      pageFallback: 'Page {{index}}',
+      zoomOut: 'Zoom out',
+      zoomIn: 'Zoom in',
+      fitToWindow: 'Fit to window',
+      fit: 'Fit',
+      targetPageMissing:
+        'Unable to locate the referenced Visio page in this version; please select the page manually.',
+      fileTooLarge: 'Visio preview supports files up to 32 MiB.',
+      fetchFailed: 'Failed to fetch Visio document',
+      loadFailed: 'Failed to load Visio file',
+      renderFailed: 'Failed to render Visio page',
     },
   },
 };
