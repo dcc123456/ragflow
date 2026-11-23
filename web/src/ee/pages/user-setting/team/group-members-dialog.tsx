@@ -449,7 +449,7 @@ export function GroupMembersDialog({
   return (
     <Dialog open onOpenChange={hideModal}>
       <DialogContent className="sm:max-w-[600px]">
-        <DialogHeader>
+        <DialogHeader className="min-w-0">
           <DialogTitle>{t('permission.manageMember')}</DialogTitle>
           <p className="truncate text-sm text-text-secondary">{group.name}</p>
         </DialogHeader>
