@@ -1,14 +1,8 @@
-x-monitoring-environment: &monitoring-environment
-  DB_TYPE: ${DB_TYPE:-mysql}
-  DOC_ENGINE: ${DOC_ENGINE:-elasticsearch}
-  MYSQL_EXPORTER_PORT: ${MYSQL_EXPORTER_PORT:-9104}
-  KVROCKS_EXPORTER_PORT: ${KVROCKS_EXPORTER_PORT:-9121}
-  NATS_EXPORTER_PORT: ${NATS_EXPORTER_PORT:-7777}
-  ES_EXPORTER_PORT: ${ES_EXPORTER_PORT:-9114}
-  MONITORING_MINIO_ENABLED: ${MONITORING_MINIO_ENABLED:-true}
-  MONITORING_CLICKHOUSE_ENABLED: ${MONITORING_CLICKHOUSE_ENABLED:-true}
-  MINIO_METRICS_ADDRESS: ${MINIO_METRICS_ADDRESS:-minio:9000}
-  CLICKHOUSE_METRICS_ADDRESS: ${CLICKHOUSE_METRICS_ADDRESS:-clickhouse:9363}
+x-exporter: &exporter
+  mem_limit: ${MEM_LIMIT}
+  networks:
+    - ragflow
+  restart: unless-stopped
 
 services:
   es01:
@@ -304,7 +298,7 @@ services:
       - metadata-MySQL
       - metadata-MYSQL
     # mysql:5.7 linux/arm64 image is unavailable.
-    image: mysql:8.0.40
+    image: &mysql-image mysql:8.0.40
     env_file: .env
     ulimits:
       nofile:
@@ -367,7 +361,7 @@ services:
 
 
   minio:
-    image: pgsty/silo:RELEASE.2026-08-06T00-00-00Z
+    image: &silo-image pgsty/silo:RELEASE.2026-08-06T00-00-00Z
     ulimits:
       nofile:
         soft: 65536
@@ -439,46 +433,161 @@ services:
       retries: 120
 
 
-  components-exporter:
+  mysql-monitoring-init:
     profiles:
-      - prometheus
-    build:
-      context: ./exporter
-    image: ragflow/components-exporter:local
-    mem_limit: ${MEM_LIMIT}
-    networks:
-      - ragflow
-    restart: unless-stopped
+      - prometheus-db-mysql
+    image: *mysql-image
+    entrypoint: ["/bin/bash", "/monitoring/mysql-init.sh"]
+    restart: "no"
+    depends_on:
+      mysql:
+        condition: service_healthy
+        required: false
     environment:
-      <<: *monitoring-environment
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-}
       MYSQL_EXPORTER_ADDRESS: ${MYSQL_EXPORTER_ADDRESS:-mysql:3306}
       MYSQL_EXPORTER_USER: ${MYSQL_EXPORTER_USER:-exporter}
+      MYSQL_EXPORTER_PASSWORD: ${MYSQL_EXPORTER_PASSWORD:-}
+    volumes:
+      - ./prometheus/mysql-init.sh:/monitoring/mysql-init.sh:ro
+    networks:
+      - ragflow
+
+
+  mysql-exporter:
+    <<: *exporter
+    profiles:
+      - prometheus-db-mysql
+    image: prom/mysqld-exporter:v0.21.0
+    depends_on:
+      mysql-monitoring-init:
+        condition: service_completed_successfully
+        required: false
+    command:
+      - --config.my-cnf=
+      - --mysqld.address=${MYSQL_EXPORTER_ADDRESS:-mysql:3306}
+      - --mysqld.username=${MYSQL_EXPORTER_USER:-exporter}
+      - --web.listen-address=:${MYSQL_EXPORTER_PORT:-9104}
+    environment:
       MYSQLD_EXPORTER_PASSWORD: ${MYSQL_EXPORTER_PASSWORD:-}
+
+
+  kvrocks-exporter:
+    <<: *exporter
+    profiles:
+      - prometheus
+    image: kvrocks/kvrocks-exporter:1.0.11
+    command:
+      - --connection-timeout=3s
+      - --web.listen-address=:${KVROCKS_EXPORTER_PORT:-9121}
+    environment:
       KVROCKS_ADDR: ${KVROCKS_EXPORTER_ADDRESS:-kvrocks://kvrocks:6379}
       KVROCKS_PASSWORD: ${REDIS_PASSWORD:-}
-      NATS_MONITORING_URL: ${NATS_MONITORING_URL:-http://${NATS_HOST:-nats}:8222}
-      ELASTICSEARCH_EXPORTER_URL: ${ELASTICSEARCH_EXPORTER_URL:-http://${ES_HOST:-es01}:9200}
-      OPENSEARCH_EXPORTER_URL: ${OPENSEARCH_EXPORTER_URL:-http://${OS_HOST:-opensearch39}:9201}
-      ES_EXPORTER_USER: ${ES_EXPORTER_USER:-elastic}
-      OPENSEARCH_EXPORTER_USER: ${OPENSEARCH_EXPORTER_USER:-admin}
-      ES_EXPORTER_PASSWORD: ${ES_EXPORTER_PASSWORD:-${ELASTIC_PASSWORD:-}}
-      OPENSEARCH_EXPORTER_PASSWORD: ${OPENSEARCH_EXPORTER_PASSWORD:-${OPENSEARCH_PASSWORD:-}}
-    stop_grace_period: 15s
+
+
+  nats-exporter:
+    <<: *exporter
+    profiles:
+      - prometheus
+    image: natsio/prometheus-nats-exporter:0.20.3
+    command:
+      - -port
+      - "${NATS_EXPORTER_PORT:-7777}"
+      - -prefix
+      - nats
+      - -varz
+      - -healthz
+      - -jsz=all
+      - ${NATS_MONITORING_URL:-http://${NATS_HOST:-nats}:8222}
+
+
+  elasticsearch-exporter:
+    <<: *exporter
+    profiles:
+      - prometheus-doc-elasticsearch
+    image: quay.io/prometheuscommunity/elasticsearch-exporter:v1.11.0
+    command:
+      - --es.uri=${ELASTICSEARCH_EXPORTER_URL:-http://${ES_HOST:-es01}:9200}
+      - --es.all
+      - --web.listen-address=:${ES_EXPORTER_PORT:-9114}
+    environment:
+      ES_USERNAME: ${ES_EXPORTER_USER:-elastic}
+      ES_PASSWORD: ${ES_EXPORTER_PASSWORD:-${ELASTIC_PASSWORD:-}}
+
+
+  opensearch-exporter:
+    <<: *exporter
+    profiles:
+      - prometheus-doc-opensearch
+    image: quay.io/prometheuscommunity/elasticsearch-exporter:v1.11.0
+    command:
+      - --es.uri=${OPENSEARCH_EXPORTER_URL:-http://${OS_HOST:-opensearch39}:9201}
+      - --es.all
+      - --web.listen-address=:${ES_EXPORTER_PORT:-9114}
+    environment:
+      ES_USERNAME: ${OPENSEARCH_EXPORTER_USER:-admin}
+      ES_PASSWORD: ${OPENSEARCH_EXPORTER_PASSWORD:-${OPENSEARCH_PASSWORD:-}}
+
+
+  silo-monitoring-init:
+    profiles:
+      - prometheus
+    image: *silo-image
+    entrypoint: ["/bin/sh", "/monitoring/silo-init.sh"]
+    restart: "no"
+    network_mode: none
+    user: "0:0"
+    environment:
+      MONITORING_MINIO_ENABLED: ${MONITORING_MINIO_ENABLED:-true}
+      MINIO_METRICS_ADDRESS: ${MINIO_METRICS_ADDRESS:-minio:9000}
+      MINIO_USER: ${MINIO_USER:-}
+      MINIO_PASSWORD: ${MINIO_PASSWORD:-}
+    volumes:
+      - ./prometheus/silo-init.sh:/monitoring/silo-init.sh:ro
+      - prometheus_credentials:/monitoring/credentials
 
 
   prometheus:
     profiles:
       - prometheus
+      # Explicitly targeting Prometheus also activates the selected backend profiles.
+      - prometheus-db-${DB_TYPE:-mysql}
+      - prometheus-doc-${DOC_ENGINE:-elasticsearch}
     image: prom/prometheus:v3.16.0
     depends_on:
-      - components-exporter
+      silo-monitoring-init:
+        condition: service_completed_successfully
+        required: false
+        restart: true
+      kvrocks-exporter:
+        condition: service_started
+      nats-exporter:
+        condition: service_started
+      mysql-exporter:
+        condition: service_started
+        required: false
+      elasticsearch-exporter:
+        condition: service_started
+        required: false
+      opensearch-exporter:
+        condition: service_started
+        required: false
     networks:
       - ragflow
     ports:
       - "127.0.0.1:9090:9090"
     entrypoint: ["/bin/sh", "/etc/prometheus/entrypoint.sh"]
     environment:
-      <<: *monitoring-environment
+      DB_TYPE: ${DB_TYPE:-mysql}
+      DOC_ENGINE: ${DOC_ENGINE:-elasticsearch}
+      MYSQL_EXPORTER_PORT: ${MYSQL_EXPORTER_PORT:-9104}
+      KVROCKS_EXPORTER_PORT: ${KVROCKS_EXPORTER_PORT:-9121}
+      NATS_EXPORTER_PORT: ${NATS_EXPORTER_PORT:-7777}
+      ES_EXPORTER_PORT: ${ES_EXPORTER_PORT:-9114}
+      MONITORING_MINIO_ENABLED: ${MONITORING_MINIO_ENABLED:-true}
+      MONITORING_CLICKHOUSE_ENABLED: ${MONITORING_CLICKHOUSE_ENABLED:-true}
+      MINIO_METRICS_ADDRESS: ${MINIO_METRICS_ADDRESS:-minio:9000}
+      CLICKHOUSE_METRICS_ADDRESS: ${CLICKHOUSE_METRICS_ADDRESS:-clickhouse:9363}
     command:
       - --storage.tsdb.path=/prometheus
     restart: unless-stopped
@@ -489,15 +598,13 @@ services:
         read_only: true
         bind:
           create_host_path: false
-      - type: bind
-        source: ./exporter/monitoring-config.sh
-        target: /etc/exporter/monitoring-config.sh
-        read_only: true
-        bind:
-          create_host_path: false
       - type: volume
         source: prometheus_data
         target: /prometheus
+      - type: volume
+        source: prometheus_credentials
+        target: /monitoring/credentials
+        read_only: true
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:9090/-/ready"]
       interval: 15s
@@ -652,6 +759,8 @@ services:
 
 
 volumes:
+  prometheus_credentials:
+    driver: local
   prometheus_data:
     driver: local
   esdata01:

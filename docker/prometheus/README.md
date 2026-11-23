@@ -1,31 +1,35 @@
 # Service monitoring
 
 Prometheus monitors MinIO/Silo and ClickHouse directly, plus MySQL, Kvrocks, NATS
-and Elasticsearch/OpenSearch through the combined components-exporter container.
-Both monitoring containers join the `ragflow` bridge network and communicate by
-service name. Prometheus publishes its UI at `127.0.0.1:9090`; exporter ports stay
-inside the Compose network. Monitoring starts independently of the application
-and monitored services.
+and Elasticsearch/OpenSearch through separate exporter containers using their
+published images. The containers join the `ragflow` bridge network and
+communicate by service name. Prometheus publishes its UI at `127.0.0.1:9090`.
+Exporter ports stay inside the Compose network.
 
 ## Start monitoring
 
-Run from the repository root, using the same Compose project name as the
-application deployment. Start the middleware first, then prepare credentials once:
+Run every command on this page from the repository root, the directory containing
+`docker/`, `internal/`, and `web/`. Paths such as `docker/.env` and
+`docker/docker-compose-base.yml` are relative to that directory. If your shell is
+currently in `docker/`, run `cd ..` first.
+
+Use the deployment's `docker/.env`. If the application uses a custom Compose
+project name, apply the same project setting to these commands.
 
 ```bash
-bash docker/prometheus/setup.sh
+docker compose --env-file docker/.env -f docker/docker-compose-base.yml up -d prometheus
 ```
 
-Start monitoring after setup succeeds:
+`-d` runs the containers in the background. To wait until services are running or
+healthy before the command returns, replace `-d` with `--wait`. Compose enforces
+the initialization dependencies in both modes.
 
-```bash
-docker compose --env-file docker/.env -f docker/docker-compose-base.yml up -d --build --wait prometheus
-```
+Starting `prometheus` also starts the exporters selected by `DB_TYPE` and
+`DOC_ENGINE`, plus the Kvrocks and NATS exporters and the credential
+initialization jobs.
 
-Starting `prometheus` also starts `components-exporter`. The dependency waits
-for container startup, not backend health.
-
-To include monitoring in normal deployment startup, append `prometheus` to
+To include monitoring in normal deployment startup, append
+`prometheus,prometheus-db-${DB_TYPE},prometheus-doc-${DOC_ENGINE}` to
 `COMPOSE_PROFILES` in `docker/.env`.
 
 ## Configuration
@@ -36,12 +40,13 @@ Targets follow the deployment settings in `docker/.env`:
 | --- | --- | --- |
 | `minio-job` | `minio:9000/minio/metrics/v3` | `MONITORING_MINIO_ENABLED=true` (default) |
 | `clickhouse` | `clickhouse:9363/metrics` | `MONITORING_CLICKHOUSE_ENABLED=true` (default) |
-| `mysql` | `components-exporter:9104/metrics` | `DB_TYPE=mysql` |
-| `kvrocks` | `components-exporter:9121/metrics` | Always |
-| `nats` | `components-exporter:7777/metrics` | Always |
-| `elasticsearch` | `components-exporter:9114/metrics` | `DOC_ENGINE=elasticsearch` or `opensearch` |
+| `mysql` | `mysql-exporter:9104/metrics` | `DB_TYPE=mysql` |
+| `kvrocks` | `kvrocks-exporter:9121/metrics` | Always |
+| `nats` | `nats-exporter:7777/metrics` | Always |
+| `elasticsearch` | `elasticsearch-exporter:9114/metrics` | `DOC_ENGINE=elasticsearch` |
+| `elasticsearch` | `opensearch-exporter:9114/metrics` | `DOC_ENGINE=opensearch` |
 
-Keep `DB_TYPE` and `DOC_ENGINE` consistent with the application. Set
+Use lowercase `DB_TYPE` and `DOC_ENGINE` values that match the application. Set
 `MONITORING_MINIO_ENABLED=false` or `MONITORING_CLICKHOUSE_ENABLED=false` when
 that service is unused.
 
@@ -67,45 +72,38 @@ the ports used between these containers.
 
 Exporter listener ports use `MYSQL_EXPORTER_PORT`, `KVROCKS_EXPORTER_PORT`,
 `NATS_EXPORTER_PORT` and `ES_EXPORTER_PORT`. Prometheus uses the same values.
-An invalid or conflicting listener disables only that exporter.
+Each exporter listens in its own container, so they can reuse the same port.
+Prometheus marks ports outside 1024–65535 as **Not configured**.
 
-`components-exporter` uses `MEM_LIMIT` from `docker/.env` as the total memory limit
-for Supervisor and all exporter processes. Recreate the container with Compose
-after changing this limit.
+`MEM_LIMIT` in `docker/.env` sets the memory limit for each exporter container.
 
 Adjust the `global` time settings in `prometheus.yml` to control scrape frequency,
 scrape timeout and rule evaluation frequency. Each alert's `for` controls how long
 its condition must hold before firing. After changing deployment settings or
 exporter credentials, repeat the startup command above.
-Changes under `docker/exporter` require rebuilding `components-exporter`; the
-startup command includes `--build` so its copied scripts stay up to date.
 
 ## Credentials
 
-`setup.sh` uses `docker/.env` and `docker/docker-compose-base.yml`. Additional
-arguments are forwarded to Compose; for example, use `-p PROJECT` for your
-deployment's project name. It connects to the running Compose `mysql:3306` and
-`minio:9000` services, so both must be running. This is a one-time initialization
-command for those two services. Prepare credentials separately for external services.
+The MySQL exporter and Prometheus wait for their respective initialization
+jobs. The jobs are optional startup dependencies, so a credential failure leaves
+the monitoring services available and `up --wait` reports the failed job.
 
 ### MySQL
 
-Set `MYSQL_EXPORTER_USER` and `MYSQL_EXPORTER_PASSWORD` in `.env`. The script uses
-`MYSQL_PASSWORD` to connect as root, creates the monitoring account if absent,
-then verifies its password and grants `PROCESS`, `REPLICATION CLIENT`, and
-`SELECT ON performance_schema.*`. Existing passwords are never reset.
+For `MYSQL_EXPORTER_ADDRESS=mysql:3306`, `mysql-monitoring-init` waits for the
+bundled MySQL health check and connects as root with `MYSQL_PASSWORD`. It creates
+`MYSQL_EXPORTER_USER` if absent, verifies `MYSQL_EXPORTER_PASSWORD`, and applies
+the `PROCESS`, `REPLICATION CLIENT`, and `SELECT ON performance_schema.*` grants.
+Existing passwords stay in place. For an external address, prepare the account
+on that server and set the exporter username and password in `.env`.
 
 ### MinIO/Silo
 
-Every run generates a v3 token using `MINIO_USER` and `MINIO_PASSWORD` and saves
-it to `secrets/minio.token` with owner UID/GID 65534 and mode 600, using `sudo`
-when needed. Token contents are ignored by Git. A failed generation leaves the
-existing token file in place. After running setup, restart an already running
-Prometheus to read the generated token:
-
-```bash
-docker compose --env-file docker/.env -f docker/docker-compose-base.yml restart prometheus
-```
+When MinIO monitoring is enabled and `MINIO_METRICS_ADDRESS=minio:9000`,
+`silo-monitoring-init` signs a v3 token offline with `MINIO_USER` and
+`MINIO_PASSWORD`. Prometheus reads it from the `prometheus_credentials` volume.
+For an external address, put its v3 bearer token in `secrets/minio.token` with
+owner UID/GID 65534 and mode 600 before starting Prometheus.
 
 A missing or unreadable token marks MinIO monitoring as **Not configured**.
 An invalid nonempty token makes its scrape fail. Other jobs continue running.
@@ -142,17 +140,25 @@ Prometheus itself needs an external uptime check.
 
 ```bash
 # Inspect monitoring containers.
-docker compose --env-file docker/.env -f docker/docker-compose-base.yml ps components-exporter prometheus
+docker compose --env-file docker/.env -f docker/docker-compose-base.yml ps \
+  prometheus mysql-exporter kvrocks-exporter nats-exporter elasticsearch-exporter opensearch-exporter
+
+# Inspect credential initialization.
+docker compose --env-file docker/.env -f docker/docker-compose-base.yml logs \
+  mysql-monitoring-init silo-monitoring-init
 
 # Reload rule changes.
 docker compose --env-file docker/.env -f docker/docker-compose-base.yml kill -s SIGHUP prometheus
 
 # Stop monitoring.
-docker compose --env-file docker/.env -f docker/docker-compose-base.yml stop components-exporter prometheus
+docker compose --env-file docker/.env -f docker/docker-compose-base.yml stop \
+  prometheus mysql-exporter kvrocks-exporter nats-exporter elasticsearch-exporter opensearch-exporter
 
 # Validate configuration and rules using the image's promtool.
 docker compose --env-file docker/.env -f docker/docker-compose-base.yml run --rm --no-deps prometheus --check-config
-docker compose --env-file docker/.env -f docker/docker-compose-base.yml --profile prometheus config --quiet
+
+# Validate Compose configuration across all profiles.
+docker compose --env-file docker/.env -f docker/docker-compose-base.yml --profile '*' config --quiet
 ```
 
 Prometheus creates its target files and expected inventory at startup, and copies

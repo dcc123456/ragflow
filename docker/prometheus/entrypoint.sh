@@ -3,8 +3,6 @@ set -eu
 umask 077
 
 script_dir="$(CDPATH= cd -- "$(dirname "$0")" && pwd)"
-. "$script_dir/../exporter/monitoring-config.sh"
-monitoring_init
 runtime="$(mktemp -d "${TMPDIR:-/tmp}/ragflow-prometheus.XXXXXX")"
 cleanup() { rm -rf "$runtime"; }
 trap cleanup EXIT
@@ -41,6 +39,11 @@ inventory() {
 EOF
 }
 
+valid_port() {
+    case "$1" in ''|*[!0-9]*|0*) return 1 ;; esac
+    [ "${#1}" -le 5 ] && [ "$1" -ge "$2" ] && [ "$1" -le 65535 ]
+}
+
 # Direct endpoints accept host:port or [IPv6]:port, with no YAML/JSON metacharacters.
 native_target() {
     job="$1" service="$2" selection="$3" address="$4" credentials_ready="$5"
@@ -48,7 +51,7 @@ native_target() {
     case "$selection" in
         false) selected=0 ;;
         true)
-            if printf '%s' "$address" | LC_ALL=C grep -Eq '^(\[[0-9a-fA-F:]+\]|[a-zA-Z0-9_.-]+):[0-9]+$' && monitoring_valid_port "${address##*:}" 1; then
+            if printf '%s' "$address" | LC_ALL=C grep -Eq '^(\[[0-9a-fA-F:]+\]|[a-zA-Z0-9_.-]+):[0-9]+$' && valid_port "${address##*:}" 1; then
                 valid=1
             else
                 echo "$service monitoring configuration invalid: expected host:port" >&2
@@ -61,24 +64,44 @@ native_target() {
     inventory "$job" "$service" "$selected" "$configured" "$address" "$valid"
 }
 
+exporter_target() {
+    if [ -z "$3" ]; then
+        inventory "$1" "$2" 0 0 '' 0
+    elif valid_port "$4" 1024; then
+        inventory "$1" "$2" 1 1 "$3:$4" 1
+    else
+        echo "$2 exporter configuration invalid: listener port must be 1024..65535" >&2
+        inventory "$1" "$2" 1 0 '' 0
+    fi
+}
+
 # An empty private credentials file keeps missing tokens local to the MinIO job.
+minio_enabled="${MONITORING_MINIO_ENABLED:-true}"
+minio_address="${MINIO_METRICS_ADDRESS:-minio:9000}"
+minio_token="$script_dir/secrets/minio.token"
+if [ "$minio_address" = minio:9000 ]; then
+    minio_token=/monitoring/credentials/minio.token
+fi
 minio_credentials_ready=0
-if [ -s "$script_dir/secrets/minio.token" ] && cp "$script_dir/secrets/minio.token" "$runtime/minio.token"; then
+if [ "$minio_enabled" = true ] && [ -s "$minio_token" ] && cp "$minio_token" "$runtime/minio.token"; then
     minio_credentials_ready=1
 else
     : > "$runtime/minio.token"
 fi
-native_target minio-job minio "${MONITORING_MINIO_ENABLED:-true}" "${MINIO_METRICS_ADDRESS:-minio:9000}" "$minio_credentials_ready"
+native_target minio-job minio "$minio_enabled" "$minio_address" "$minio_credentials_ready"
 native_target clickhouse clickhouse "${MONITORING_CLICKHOUSE_ENABLED:-true}" "${CLICKHOUSE_METRICS_ADDRESS:-clickhouse:9363}" 1
 
-configured=0; if [ "$MYSQL_EXPORTER_ENABLED" = true ]; then configured=1; fi
-inventory mysql mysql "$MYSQL_EXPORTER_SELECTED" "$configured" "components-exporter:$MYSQL_EXPORTER_PORT" "$configured"
-configured=0; if [ "$KVROCKS_EXPORTER_ENABLED" = true ]; then configured=1; fi
-inventory kvrocks kvrocks 1 "$configured" "components-exporter:$KVROCKS_EXPORTER_PORT" "$configured"
-configured=0; if [ "$NATS_EXPORTER_ENABLED" = true ]; then configured=1; fi
-inventory nats nats 1 "$configured" "components-exporter:$NATS_EXPORTER_PORT" "$configured"
-configured=0; if [ "$ES_EXPORTER_ENABLED" = true ]; then configured=1; fi
-inventory elasticsearch elasticsearch "$ES_EXPORTER_SELECTED" "$configured" "components-exporter:$ES_EXPORTER_PORT" "$configured"
+mysql_exporter=''
+if [ "${DB_TYPE:-mysql}" = mysql ]; then mysql_exporter=mysql-exporter; fi
+doc_engine="${DOC_ENGINE:-elasticsearch}"
+search_exporter=''
+case "$doc_engine" in
+    elasticsearch|opensearch) search_exporter="$doc_engine-exporter" ;;
+esac
+exporter_target mysql mysql "$mysql_exporter" "${MYSQL_EXPORTER_PORT:-9104}"
+exporter_target kvrocks kvrocks kvrocks-exporter "${KVROCKS_EXPORTER_PORT:-9121}"
+exporter_target nats nats nats-exporter "${NATS_EXPORTER_PORT:-7777}"
+exporter_target elasticsearch elasticsearch "$search_exporter" "${ES_EXPORTER_PORT:-9114}"
 
 case "${1:-}" in
     --generate-config)
