@@ -26,6 +26,7 @@ import (
 
 	"ragflow/internal/common"
 	"ragflow/internal/dao"
+	"ragflow/internal/ingestion/pipeline"
 )
 
 // AdminIngestionTask is the administrator-facing task response.
@@ -63,7 +64,7 @@ func (s *IngestionTaskService) ListForAdmin(ctx context.Context, filter dao.Admi
 			ID:            task.ID,
 			PipelineLogID: task.PipelineLogID,
 			PipelineID:    task.PipelineID,
-			PipelineName:  ptrStringValue(task.PipelineName),
+			PipelineName:  resolveAdminIngestionPipelineName(task),
 			UserID:        task.UserID,
 			Nickname:      ptrStringValue(task.Nickname),
 			Email:         ptrStringValue(task.Email),
@@ -77,6 +78,24 @@ func (s *IngestionTaskService) ListForAdmin(ctx context.Context, filter dao.Admi
 		})
 	}
 	return result, total, nil
+}
+
+func resolveAdminIngestionPipelineName(task dao.AdminIngestionTaskRow) string {
+	if task.PipelineID != nil {
+		return strings.TrimSpace(ptrStringValue(task.PipelineTitle))
+	}
+
+	parserID := strings.TrimSpace(ptrStringValue(task.ParserID))
+	if parserID == "" {
+		return ""
+	}
+	registry, err := pipeline.DefaultRegistry()
+	if err == nil {
+		if template, ok := registry.Get(parserID); ok && template.Title != "" {
+			return template.Title
+		}
+	}
+	return parserID
 }
 
 func normalizeAdminIngestionTaskFilter(filter dao.AdminIngestionTaskFilter) (dao.AdminIngestionTaskFilter, error) {

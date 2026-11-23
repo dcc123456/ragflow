@@ -46,7 +46,8 @@ type AdminIngestionTaskRow struct {
 	ID            string     `gorm:"column:id"`
 	PipelineLogID *string    `gorm:"column:pipeline_log_id"`
 	PipelineID    *string    `gorm:"column:pipeline_id"`
-	PipelineName  *string    `gorm:"column:pipeline_name"`
+	PipelineTitle *string    `gorm:"column:pipeline_title"`
+	ParserID      *string    `gorm:"column:parser_id"`
 	UserID        string     `gorm:"column:user_id"`
 	Nickname      *string    `gorm:"column:nickname"`
 	Email         *string    `gorm:"column:email"`
@@ -91,8 +92,8 @@ func (d *IngestionTaskDAO) ListForAdmin(ctx context.Context, db *gorm.DB, filter
 		Joins("LEFT JOIN " + statement.Quote("user") + " AS usr ON usr.id = task.user_id").
 		Joins("LEFT JOIN knowledgebase AS kb ON kb.id = task.dataset_id").
 		Joins("LEFT JOIN document AS doc ON doc.id = task.document_id").
-		Joins("LEFT JOIN user_canvas AS canvas ON canvas.id = doc.pipeline_id").
-		Select("task.id, task.pipeline_log_id, doc.pipeline_id, canvas.title AS pipeline_name, " +
+		Joins("LEFT JOIN pipeline_operation_log AS run ON run.id = task.pipeline_log_id").
+		Select("task.id, task.pipeline_log_id, NULLIF(run.pipeline_id, '') AS pipeline_id, run.pipeline_title, run.parser_id, " +
 			"task.user_id, usr.nickname, usr.email, task.document_id, doc.name AS document_name, " +
 			"task.dataset_id, kb.name AS dataset_name, task.status, task.create_date, task.update_date")
 	if err := orderAdminIngestionTasks(query, orderColumn, filter.Desc).Scan(&tasks).Error; err != nil {

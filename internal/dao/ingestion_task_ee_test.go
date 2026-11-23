@@ -50,8 +50,8 @@ func setupAdminIngestionTaskDB(t *testing.T) (*gorm.DB, *adminIngestionQueryLogg
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&entity.User{}, &entity.Document{}, &entity.Knowledgebase{}, &entity.UserCanvas{},
-		&entity.IngestionTask{}); err != nil {
+	if err := db.AutoMigrate(&entity.User{}, &entity.Document{}, &entity.Knowledgebase{},
+		&entity.IngestionTask{}, &entity.PipelineOperationLog{}); err != nil {
 		t.Fatal(err)
 	}
 	return db, queryLogger
@@ -80,7 +80,11 @@ func TestAdminIngestionTasksFilterUsesCurrentMetadata(t *testing.T) {
 	} {
 		insertAdminIngestionRow(t, db, kb)
 	}
-	insertAdminIngestionRow(t, db, &entity.UserCanvas{ID: "current-pipeline", UserID: "user-1", Title: adminTaskString("Current pipeline")})
+	insertAdminIngestionRow(t, db, &entity.PipelineOperationLog{
+		ID: "bound-run", DocumentID: "doc-1", TenantID: "user-1", KbID: "dataset-1",
+		PipelineID: adminTaskString("original-pipeline"), PipelineTitle: adminTaskString("Original pipeline"),
+		ParserID: "naive", OperationStatus: common.RUNNING,
+	})
 	for _, doc := range []*entity.Document{
 		{ID: "doc-1", KbID: "dataset-1", ParserID: "naive", PipelineID: adminTaskString("current-pipeline"),
 			Name: adminTaskString("Current 100%_!.pdf"), ParserConfig: entity.JSONMap{}, SourceType: "local", Type: "pdf", CreatedBy: "user-1", Suffix: "pdf"},
@@ -137,7 +141,7 @@ func TestAdminIngestionTasksFilterUsesCurrentMetadata(t *testing.T) {
 				return
 			}
 			row := tasks[0]
-			if row.ID != "task-a" || row.PipelineID == nil || *row.PipelineID != "current-pipeline" || row.PipelineName == nil || *row.PipelineName != "Current pipeline" ||
+			if row.ID != "task-a" || row.PipelineID == nil || *row.PipelineID != "original-pipeline" || row.PipelineTitle == nil || *row.PipelineTitle != "Original pipeline" ||
 				row.DocumentName == nil || *row.DocumentName != "Current 100%_!.pdf" || row.Nickname == nil || *row.Nickname != "Alice" ||
 				row.Email == nil || *row.Email != "alice@example.test" || row.DatasetName == nil || *row.DatasetName != "Guides 100%_!" {
 				t.Fatalf("unexpected metadata: %+v", row)
@@ -162,8 +166,9 @@ func TestAdminIngestionTasksFilterUsesCurrentMetadata(t *testing.T) {
 	filter = defaultAdminTaskFilter()
 	filter.DatasetID = "dataset-1"
 	tasks, total, err := NewIngestionTaskDAO().ListForAdmin(t.Context(), db, filter)
-	if err != nil || total != 1 || len(tasks) != 1 || tasks[0].ID != "task-a" || tasks[0].DocumentName != nil || tasks[0].PipelineName != nil || tasks[0].PipelineID != nil {
-		t.Fatalf("deleted document must retain the task with absent metadata: tasks=%+v total=%d err=%v", tasks, total, err)
+	if err != nil || total != 1 || len(tasks) != 1 || tasks[0].ID != "task-a" || tasks[0].DocumentName != nil || tasks[0].PipelineTitle == nil || *tasks[0].PipelineTitle != "Original pipeline" ||
+		tasks[0].PipelineID == nil || *tasks[0].PipelineID != "original-pipeline" {
+		t.Fatalf("deleted document must retain the task and its run metadata: tasks=%+v total=%d err=%v", tasks, total, err)
 	}
 	filter.DocumentName = "Current"
 	tasks, total, err = NewIngestionTaskDAO().ListForAdmin(t.Context(), db, filter)
@@ -203,7 +208,7 @@ func TestAdminIngestionTasksPageAndSortRetainMissingMetadata(t *testing.T) {
 				t.Fatalf("order=%q desc=%t page %d: tasks=%+v total=%d err=%v", order.column, filter.Desc, filter.Page, tasks, total, err)
 			}
 			for i, task := range tasks {
-				if task.ID != wantIDs[i] || task.Nickname != nil || task.Email != nil || task.DatasetName != nil || task.DocumentName != nil || task.PipelineName != nil {
+				if task.ID != wantIDs[i] || task.Nickname != nil || task.Email != nil || task.DatasetName != nil || task.DocumentName != nil || task.PipelineTitle != nil {
 					t.Fatalf("order=%q desc=%t page %d row %d = %+v, want %s with absent metadata", order.column, filter.Desc, filter.Page, i, task, wantIDs[i])
 				}
 			}

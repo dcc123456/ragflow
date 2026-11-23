@@ -48,7 +48,7 @@ func setupAdminIngestionTaskDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	db := testutil.SetupTestDB(t,
 		&entity.IngestionTask{},
-		&entity.User{}, &entity.Document{}, &entity.Knowledgebase{}, &entity.UserCanvas{},
+		&entity.User{}, &entity.Document{}, &entity.Knowledgebase{}, &entity.UserCanvas{}, &entity.PipelineOperationLog{},
 	)
 	t.Cleanup(testutil.ReplaceDBForTest(t, db))
 	return db
@@ -103,6 +103,13 @@ func TestAdminIngestionTasksUsesQueryFiltersAndPaginationWithoutBody(t *testing.
 		if err := db.Create(&entity.UserCanvas{ID: "pipeline-" + fixture.id, UserID: fixture.user, Title: testutil.StrPtr("Current pipeline")}).Error; err != nil {
 			t.Fatal(err)
 		}
+		if err := db.Create(&entity.PipelineOperationLog{
+			ID: runID, DocumentID: doc.ID, TenantID: fixture.user, KbID: fixture.dataset,
+			PipelineID: testutil.StrPtr("original-" + fixture.id), PipelineTitle: testutil.StrPtr("Original pipeline"),
+			ParserID: doc.ParserID, OperationStatus: fixture.status,
+		}).Error; err != nil {
+			t.Fatal(err)
+		}
 		task := entity.IngestionTask{
 			ID: fixture.id, UserID: fixture.user, DocumentID: doc.ID, DatasetID: fixture.dataset,
 			Status: fixture.status, PipelineLogID: &runID, BaseModel: entity.BaseModel{
@@ -143,7 +150,7 @@ func TestAdminIngestionTasksUsesQueryFiltersAndPaginationWithoutBody(t *testing.
 		t.Fatal(err)
 	}
 	want := map[string]interface{}{
-		"id": "task-b", "pipeline_log_id": "run-task-b", "pipeline_id": "pipeline-task-b", "pipeline_name": "Current pipeline",
+		"id": "task-b", "pipeline_log_id": "run-task-b", "pipeline_id": "original-task-b", "pipeline_name": "Original pipeline",
 		"user_id": "user-a", "nickname": "Alice", "email": "alice@example.com",
 		"document_id": "doc-task-b", "document_name": "Contract task-b", "dataset_id": "dataset-a", "dataset_name": "Legal Guides",
 		"status": common.RUNNING, "create_date": "2026-01-02T08:00:00Z", "update_date": "2026-01-02T09:00:00Z",
@@ -210,6 +217,60 @@ func TestAdminIngestionTasksUsesQueryFiltersAndPaginationWithoutBody(t *testing.
 			len(result.Data) != test.wantCount || result.Data[0].ID != test.wantID {
 			t.Fatalf("query %s: HTTP %d, body = %s, want %d tasks starting with %s", test.query, response.Code, response.Body.String(), test.wantCount, test.wantID)
 		}
+	}
+}
+
+func TestAdminIngestionTasksDisplaysBuiltinPipelineFromRun(t *testing.T) {
+	for _, tc := range []struct {
+		name, parserID, wantName string
+	}{
+		{name: "known parser", parserID: "cad", wantName: "CAD Drawing"},
+		{name: "unknown parser", parserID: "old-parser", wantName: "old-parser"},
+		{name: "missing run"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db := setupAdminIngestionTaskDB(t)
+			doc := entity.Document{
+				ID: "doc", KbID: "dataset", CreatedBy: "user", ParserID: "general",
+				PipelineID: testutil.StrPtr("current-pipeline"), Type: "txt", ParserConfig: entity.JSONMap{},
+			}
+			if err := db.Create(&doc).Error; err != nil {
+				t.Fatal(err)
+			}
+			if err := db.Create(&entity.UserCanvas{
+				ID: "current-pipeline", UserID: "user", Title: testutil.StrPtr("Current pipeline"),
+			}).Error; err != nil {
+				t.Fatal(err)
+			}
+			if tc.parserID != "" {
+				if err := db.Create(&entity.PipelineOperationLog{
+					ID: "run", DocumentID: doc.ID, TenantID: "user", KbID: doc.KbID,
+					ParserID: tc.parserID, PipelineTitle: testutil.StrPtr(tc.parserID), OperationStatus: common.COMPLETED,
+				}).Error; err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := db.Create(&entity.IngestionTask{
+				ID: "task", DocumentID: doc.ID, DatasetID: doc.KbID, UserID: "user",
+				PipelineLogID: testutil.StrPtr("run"), Status: common.COMPLETED,
+			}).Error; err != nil {
+				t.Fatal(err)
+			}
+			engine := adminIngestionTaskTestRouter(&Handler{service: &Service{ingestionTaskSvc: servicepkg.NewIngestionTaskService()}})
+			response := httptest.NewRecorder()
+			engine.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/admin/ingestion/tasks", nil))
+			var result adminIngestionTaskTestResponse
+			if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+				t.Fatal(err)
+			}
+			if response.Code != http.StatusOK || result.Code != common.CodeSuccess || result.Total != 1 || len(result.Data) != 1 {
+				t.Fatalf("HTTP %d, body = %s, want one task", response.Code, response.Body.String())
+			}
+			task := result.Data[0]
+			if task.PipelineName != tc.wantName || task.PipelineID != nil {
+				t.Fatalf("response = %s, want pipeline name %q and a null pipeline ID", response.Body.String(), tc.wantName)
+			}
+		})
 	}
 }
 
