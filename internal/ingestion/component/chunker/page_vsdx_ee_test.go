@@ -21,6 +21,7 @@ package chunker
 import (
 	"archive/zip"
 	"bytes"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -137,5 +138,35 @@ func TestPageChunkerVSDXEndToEnd(t *testing.T) {
 	}
 	if got := chunks[1]["position_int"]; !reflect.DeepEqual(got, [][]int{{2, 7, 0, 0, 0}}) {
 		t.Errorf("chunks[1].position_int = %#v, want [[2 7 0 0 0]]", got)
+	}
+}
+
+func TestPageChunkerVSDUsesVisioPagePositions(t *testing.T) {
+	data, err := os.ReadFile("../../../parser/parser/testdata/Visio11FormatLine.vsd")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := component.NewParserComponent(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := p.Invoke(t.Context(), nil, map[string]any{
+		"name": "lines.VSD", "binary": data,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	chunks := slideChunksOf(t, parsed)
+	if len(chunks) != 1 {
+		t.Fatalf("want one page chunk, got %d", len(chunks))
+	}
+	if text, _ := chunks[0]["text"].(string); !strings.Contains(text, "Very small") {
+		t.Fatalf("page text missing from chunk: %q", text)
+	}
+	if _, err := indexdoc.ProcessChunksForPipeline(chunks, "doc-vsd", "lines.VSD", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if got := chunks[0]["page_num_int"]; !reflect.DeepEqual(got, []int{1}) {
+		t.Fatalf("page_num_int = %v, want [1]", got)
 	}
 }

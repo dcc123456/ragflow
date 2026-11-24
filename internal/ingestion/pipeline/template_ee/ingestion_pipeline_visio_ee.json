@@ -6,9 +6,9 @@
         "zh": "Visio 绘图"
     },
     "description": {
-        "en": "This template parses Microsoft Visio (.vsdx) drawings page by page, extracting explicit connector relations and shape text per foreground page.",
-        "de": "Diese Vorlage parst Microsoft Visio (.vsdx)-Zeichnungen seitenweise und extrahiert explizite Verbindungsbeziehungen sowie Formtexte pro Vordergrundseite.",
-        "zh": "此模板按页解析 Microsoft Visio（.vsdx）绘图，提取每个前景页中的显式连线关系与图形文本，保持单页单块结构。"
+        "en": "Extracts shape text and explicit connections from .vsdx and .vsdm drawings, and shape text and supported glue connections from Visio v11 .vsd drawings. Each foreground page is processed separately.",
+        "de": "Extrahiert pro Vordergrundseite Formtexte und explizite Verbindungen aus .vsdx- und .vsdm-Zeichnungen sowie Formtexte und unterstützte Verbindungen aus Visio-v11-.vsd-Zeichnungen.",
+        "zh": "按前景页提取 .vsdx 和 .vsdm 绘图中的文字与显式连线，以及 Visio v11 .vsd 绘图中的文字与可识别的粘连关系。"
     },
     "canvas_type": "Ingestion Pipeline",
     "canvas_category": "dataflow_canvas",

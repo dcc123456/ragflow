@@ -74,7 +74,7 @@ func TestResolveVisioDocumentParserPreservesDeclaredCanvas(t *testing.T) {
 	pipelineID := "custom-visio-canvas"
 	config := entity.JSONMap{"Parser:Custom": map[string]any{"visio": map[string]any{}}}
 	kb := &entity.Knowledgebase{PipelineID: &pipelineID, ParserConfig: config}
-	for _, filename := range []string{"arch.vsdx", "ARCH.VSDX"} {
+	for _, filename := range []string{"arch.vsdx", "ARCH.VSDX", "arch.vsd", "ARCH.VSD", "arch.vsdm", "ARCH.VSDM"} {
 		t.Run(filename, func(t *testing.T) {
 			selection, got := resolveDocumentParser(t.Context(), kb, filename, utility.FilenameType(filename), config)
 			if !selection.IsPipeline() || selection.PipelineID != pipelineID {
@@ -93,7 +93,7 @@ func TestResolveVisioDocumentParserUsesBuiltinForUndeclaredFamily(t *testing.T) 
 	seedDocumentParserTenant(t, "tenant-1", "user-1")
 	config := generalParserConfig()
 	kb := &entity.Knowledgebase{TenantID: "tenant-1", ParserID: "general", ParserConfig: config}
-	for _, filename := range []string{"arch.vsdx", "ARCH.VSDX"} {
+	for _, filename := range []string{"arch.vsdx", "ARCH.VSDX", "arch.vsd", "ARCH.VSD", "arch.vsdm", "ARCH.VSDM"} {
 		t.Run(filename, func(t *testing.T) {
 			selection, got := resolveDocumentParser(t.Context(), kb, filename, utility.FilenameType(filename), config)
 			if !selection.IsBuiltIn() || selection.ParserID != "visio" {

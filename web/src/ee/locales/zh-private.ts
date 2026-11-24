@@ -268,7 +268,7 @@ export default {
       cadParserNoConfig:
         'CAD 图纸由内置解析器处理，无需配置。视觉增强请在 CAD Chunker 中设置。',
       visioParserNoConfig:
-        'Visio 绘图（.vsdx）由内置解析器按页解析，无需额外配置。',
+        '内置解析器按页解析 .vsdx、.vsdm 和 Visio v11 .vsd 绘图，无需额外配置。',
       cadVisionEnhancementTip:
         '使用视觉模型描述图纸区域中的几何、符号和空间关系；关闭时仅使用 CAD 原生文字。',
       extractorResumeTitle: '简历结构化抽取',

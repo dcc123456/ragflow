@@ -23,6 +23,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -179,12 +180,12 @@ func TestVSDXParser_MultiPageBackgroundMastersAndExplicitConnects(t *testing.T) 
 	data := buildTestVSDX(t, entries)
 
 	// Verify GetParser & TryParse routing.
-	p, ft, err := GetParser(utility.FileTypeVSDX, data)
+	p, ft, err := GetParser(utility.FileTypeVisio, data)
 	if err != nil {
 		t.Fatalf("GetParser: %v", err)
 	}
-	if ft != utility.FileTypeVSDX {
-		t.Fatalf("detected type = %q, want %q", ft, utility.FileTypeVSDX)
+	if ft != utility.FileTypeVisio {
+		t.Fatalf("detected type = %q, want %q", ft, utility.FileTypeVisio)
 	}
 
 	res := p.ParseWithResult(context.Background(), "arch.vsdx", data)
@@ -244,10 +245,33 @@ func TestVSDXParser_MultiPageBackgroundMastersAndExplicitConnects(t *testing.T) 
 	if err != nil || string(pos3) != "[[3,7,0,0,0]]" {
 		t.Errorf("page 3 positions = %s (err=%v), want [[3,7,0,0,0]]", string(pos3), err)
 	}
+
+	t.Run("macro-enabled drawing preserves page output", func(t *testing.T) {
+		entries["[Content_Types].xml"] = `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Override PartName="/visio/document.xml" ContentType="application/vnd.ms-visio.drawing.macroEnabled.main+xml"/>
+  <Override PartName="/visio/vbaProject.bin" ContentType="application/vnd.ms-office.vbaProject"/>
+</Types>`
+		entries["visio/_rels/document.xml.rels"] = strings.Replace(entries["visio/_rels/document.xml.rels"], "</Relationships>", `
+  <Relationship Id="rId3" Type="http://schemas.microsoft.com/office/2006/relationships/vbaProject" Target="vbaProject.bin"/>
+</Relationships>`, 1)
+		entries["visio/vbaProject.bin"] = "opaque VBA data ignored during drawing extraction"
+		data := buildTestVSDX(t, entries)
+		p, _, err := GetParser(utility.GetFileType("arch.vsdm"), data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		macro := p.ParseWithResult(t.Context(), "arch.vsdm", data)
+		if macro.Err != nil {
+			t.Fatal(macro.Err)
+		}
+		if !reflect.DeepEqual(macro.JSON, res.JSON) || macro.File["page_count"] != res.File["page_count"] {
+			t.Fatalf("adding the VBA part changed drawing output: format metadata %v", macro.File)
+		}
+	})
 }
 
 func TestVSDXParser_InvalidInputs(t *testing.T) {
-	p := NewVSDXParser()
+	p := visioParser{}
 	if res := p.ParseWithResult(context.Background(), "empty.vsdx", nil); res.Err == nil {
 		t.Fatal("expected error for empty data")
 	}
@@ -273,7 +297,7 @@ func TestVSDXParser_MissingPageDoesNotAdvanceDisplayNum(t *testing.T) {
   <Shapes><Shape ID="1" Type="Shape"><Text>Service A</Text></Shape></Shapes>
 </PageContents>`
 
-	res := NewVSDXParser().ParseWithResult(context.Background(), "skipped.vsdx", buildTestVSDX(t, entries))
+	res := (visioParser{}).ParseWithResult(context.Background(), "skipped.vsdx", buildTestVSDX(t, entries))
 	if res.Err != nil {
 		t.Fatalf("ParseWithResult: %v", res.Err)
 	}
@@ -294,12 +318,12 @@ func TestVSDXParser_MissingPageDoesNotAdvanceDisplayNum(t *testing.T) {
 }
 
 func TestVSDXParser_ResourceGuards(t *testing.T) {
-	p := NewVSDXParser()
+	p := visioParser{}
 
 	t.Run("input size limit", func(t *testing.T) {
-		orig := maxVSDXInputBytes
-		maxVSDXInputBytes = 10
-		t.Cleanup(func() { maxVSDXInputBytes = orig })
+		orig := maxVisioInputBytes
+		maxVisioInputBytes = 10
+		t.Cleanup(func() { maxVisioInputBytes = orig })
 		if res := p.ParseWithResult(context.Background(), "large.vsdx", make([]byte, 11)); res.Err == nil || !strings.Contains(res.Err.Error(), "exceeds") {
 			t.Fatalf("expected input size limit error, got %v", res.Err)
 		}
@@ -328,9 +352,9 @@ func TestVSDXParser_ResourceGuards(t *testing.T) {
 	})
 
 	t.Run("page count limit", func(t *testing.T) {
-		orig := maxVSDXPages
-		maxVSDXPages = 2
-		t.Cleanup(func() { maxVSDXPages = orig })
+		orig := maxVisioPages
+		maxVisioPages = 2
+		t.Cleanup(func() { maxVisioPages = orig })
 		entries := testVSDXBaseEntries()
 		entries["visio/pages/pages.xml"] = `<?xml version="1.0" encoding="UTF-8"?>
 <Pages xmlns="http://schemas.microsoft.com/office/visio/2012/main">

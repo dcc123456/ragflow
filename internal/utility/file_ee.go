@@ -24,8 +24,8 @@ package utility
 // community switch changing.
 const FileTypeCAD FileType = "cad"
 
-// FileTypeVSDX is the enterprise-only Microsoft Visio OpenXML drawing type (.vsdx).
-const FileTypeVSDX FileType = "visio"
+// FileTypeVisio is the enterprise-only Visio drawing family (.vsd, .vsdx and .vsdm).
+const FileTypeVisio FileType = "visio"
 
 func init() {
 	RegisterExtensionFileType("wps", FileTypeDOC)
@@ -34,5 +34,7 @@ func init() {
 	RegisterExtensionFileType("ett", FileTypeXLS)
 	RegisterExtensionFileType("dps", FileTypePPT)
 	RegisterExtensionFileType("dpt", FileTypePPT)
-	RegisterExtensionFileType("vsdx", FileTypeVSDX)
+	RegisterExtensionFileType("vsdx", FileTypeVisio)
+	RegisterExtensionFileType("vsdm", FileTypeVisio)
+	RegisterExtensionFileType("vsd", FileTypeVisio)
 }

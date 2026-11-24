@@ -31,6 +31,6 @@ func init() {
 	utility.RegisterExtensionFileType("dxfb", utility.FileTypeCAD)
 	RegisterParserFactory(utility.FileTypeCAD,
 		func(textOnly bool) (ParseResultProducer, error) { return NewCADParser(textOnly), nil })
-	RegisterParserFactory(utility.FileTypeVSDX,
-		func(_ bool) (ParseResultProducer, error) { return NewVSDXParser(), nil })
+	RegisterParserFactory(utility.FileTypeVisio,
+		func(_ bool) (ParseResultProducer, error) { return visioParser{}, nil })
 }

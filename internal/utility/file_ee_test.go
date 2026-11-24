@@ -59,14 +59,14 @@ func TestWPSFileTypesRejectUnrelatedAndInvalidNames(t *testing.T) {
 	}
 }
 
-func TestVSDXFileTypes(t *testing.T) {
-	for _, name := range []string{"arch.vsdx", "dir/拓扑图.VSDX"} {
+func TestVisioFileTypes(t *testing.T) {
+	for _, name := range []string{"arch.vsdx", "dir/拓扑图.VSDX", "arch.vsd", "dir/拓扑图.VSD", "arch.vsdm", "dir/拓扑图.VSDM"} {
 		t.Run(name, func(t *testing.T) {
-			if got := GetFileType(name); got != FileTypeVSDX {
-				t.Errorf("GetFileType(%q) = %q, want %q", name, got, FileTypeVSDX)
+			if got := GetFileType(name); got != FileTypeVisio {
+				t.Errorf("GetFileType(%q) = %q, want %q", name, got, FileTypeVisio)
 			}
-			if got := FilenameType(name); got != FileTypeVSDX {
-				t.Errorf("FilenameType(%q) = %q, want %q", name, got, FileTypeVSDX)
+			if got := FilenameType(name); got != FileTypeVisio {
+				t.Errorf("FilenameType(%q) = %q, want %q", name, got, FileTypeVisio)
 			}
 		})
 	}

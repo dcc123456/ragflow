@@ -35,7 +35,7 @@ func dedicatedParserExtension(_ utility.FileType, filename string) string {
 	switch utility.GetFileType(filename) {
 	case utility.FileTypeCAD:
 		return "cad"
-	case utility.FileTypeVSDX:
+	case utility.FileTypeVisio:
 		return "visio"
 	}
 	return ""

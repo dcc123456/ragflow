@@ -32,106 +32,17 @@ import (
 )
 
 var (
-	maxVSDXInputBytes              = 100 << 20 // 100 MiB compressed archive limit
 	maxVSDXEntryBytes        int64 = 32 << 20  // 32 MiB single XML entry limit
 	maxVSDXUncompressedBytes int64 = 128 << 20 // 128 MiB cumulative uncompressed XML budget
-	maxVSDXPages                   = 200
 )
 
-// VSDXParser parses Microsoft Visio (.vsdx) OpenXML drawings in pure Go.
-// Each non-empty foreground page becomes one TextItem carrying its explicit
-// connection relations, unconnected shape texts, and a [displayPage, visioID]
-// position tuple for PageChunker and frontend page navigation.
-type VSDXParser struct{}
-
-// NewVSDXParser constructs a VSDXParser.
-func NewVSDXParser() *VSDXParser {
-	return &VSDXParser{}
-}
-
-// String identifies the parser in logs and diagnostics.
-func (p *VSDXParser) String() string {
-	return "VSDXParser"
-}
-
-// ParseWithResult implements ParseResultProducer.
-func (p *VSDXParser) ParseWithResult(ctx context.Context, filename string, data []byte) ParseResult {
-	if p == nil {
-		return ParseResult{Err: fmt.Errorf("VSDXParser is nil")}
-	}
-	if err := ctx.Err(); err != nil {
-		return ParseResult{Err: err}
-	}
-	if len(data) == 0 {
-		return ParseResult{Err: fmt.Errorf("vsdx: empty file %q", filename)}
-	}
-	if len(data) > maxVSDXInputBytes {
-		return ParseResult{Err: fmt.Errorf("vsdx: file size %d exceeds %d byte limit", len(data), maxVSDXInputBytes)}
-	}
-
+func parseVSDX(ctx context.Context, data []byte) ([]visioPage, error) {
 	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
-		return ParseResult{Err: fmt.Errorf("vsdx: open zip: %w", err)}
+		return nil, fmt.Errorf("open zip: %w", err)
 	}
-
-	pkg := newVSDXPackage(zr)
-	doc, err := pkg.parseDocument(ctx)
-	if err != nil {
-		return ParseResult{Err: err}
-	}
-
-	items := make([]DocItem, 0, len(doc.ForegroundPages))
-	for _, page := range doc.ForegroundPages {
-		text := formatVSDXPageText(page)
-		if text == "" {
-			continue
-		}
-		items = append(items, TextItem{
-			Text: text,
-			Extra: map[string]any{
-				"positions": [][]float64{{float64(page.DisplayNum), float64(page.VisioID), 0, 0, 0}},
-			},
-		})
-	}
-
-	return ParseResult{
-		File: map[string]any{
-			"name":       filename,
-			"format":     "vsdx",
-			"page_count": len(doc.ForegroundPages),
-		},
-		JSON: items,
-	}
+	return newVSDXPackage(zr).parseDocument(ctx)
 }
-
-// vsdxDocument holds parsed foreground pages ready for text rendering.
-type vsdxDocument struct {
-	ForegroundPages []vsdxPage
-}
-
-type vsdxPage struct {
-	VisioID     int
-	DisplayNum  int
-	Name        string
-	Connections []vsdxConnection
-	ExtraTexts  []string
-}
-
-type vsdxConnection struct {
-	FromText string
-	ToText   string
-	Label    string
-	Dir      vsdxDirection
-}
-
-type vsdxDirection int
-
-const (
-	vsdxDirUndirected vsdxDirection = iota
-	vsdxDirForward
-	vsdxDirBackward
-	vsdxDirBidirectional
-)
 
 type vsdxMaster struct {
 	ID         string
@@ -191,13 +102,13 @@ func (p *vsdxPackage) readEntry(ctx context.Context, entryPath string) ([]byte, 
 	}
 	rc, err := zf.Open()
 	if err != nil {
-		return nil, true, fmt.Errorf("vsdx: open %q: %w", entryPath, err)
+		return nil, true, fmt.Errorf("open %q: %w", entryPath, err)
 	}
 	defer rc.Close()
 
 	remaining := maxVSDXUncompressedBytes - p.totalRead
 	if remaining <= 0 {
-		return nil, true, fmt.Errorf("vsdx: uncompressed content exceeds %d byte limit", maxVSDXUncompressedBytes)
+		return nil, true, fmt.Errorf("uncompressed content exceeds %d byte limit", maxVSDXUncompressedBytes)
 	}
 	limit := int64(maxVSDXEntryBytes)
 	if remaining < limit {
@@ -206,10 +117,10 @@ func (p *vsdxPackage) readEntry(ctx context.Context, entryPath string) ([]byte, 
 
 	raw, err := io.ReadAll(io.LimitReader(rc, limit+1))
 	if err != nil {
-		return nil, true, fmt.Errorf("vsdx: read %q: %w", entryPath, err)
+		return nil, true, fmt.Errorf("read %q: %w", entryPath, err)
 	}
 	if int64(len(raw)) > limit {
-		return nil, true, fmt.Errorf("vsdx: entry %q exceeds size budget", entryPath)
+		return nil, true, fmt.Errorf("entry %q exceeds size budget", entryPath)
 	}
 	p.totalRead += int64(len(raw))
 	return raw, true, nil
@@ -258,7 +169,7 @@ func (p *vsdxPackage) readRels(ctx context.Context, sourcePath string) (map[stri
 	}
 	var rels vsdxRelsXML
 	if err := xml.Unmarshal(raw, &rels); err != nil {
-		return nil, nil, fmt.Errorf("vsdx: decode rels for %q: %w", sourcePath, err)
+		return nil, nil, fmt.Errorf("decode rels for %q: %w", sourcePath, err)
 	}
 	for _, rel := range rels.Relationships {
 		resolved := resolveRelTarget(sourcePath, rel.Target)
@@ -274,7 +185,7 @@ func (p *vsdxPackage) readRels(ctx context.Context, sourcePath string) (map[stri
 
 // --- Package parsing ---
 
-func (p *vsdxPackage) parseDocument(ctx context.Context) (*vsdxDocument, error) {
+func (p *vsdxPackage) parseDocument(ctx context.Context) ([]visioPage, error) {
 	_, rootByType, err := p.readRels(ctx, "")
 	if err != nil {
 		return nil, err
@@ -286,7 +197,7 @@ func (p *vsdxPackage) parseDocument(ctx context.Context) (*vsdxDocument, error) 
 	if _, exists, err := p.readEntry(ctx, docPath); err != nil {
 		return nil, err
 	} else if !exists {
-		return nil, fmt.Errorf("vsdx: missing document entry %q", docPath)
+		return nil, fmt.Errorf("missing document entry %q", docPath)
 	}
 
 	_, docByType, err := p.readRels(ctx, docPath)
@@ -306,11 +217,7 @@ func (p *vsdxPackage) parseDocument(ctx context.Context) (*vsdxDocument, error) 
 	if pagesPath == "" {
 		pagesPath = "visio/pages/pages.xml"
 	}
-	pages, err := p.parsePages(ctx, pagesPath, masters)
-	if err != nil {
-		return nil, err
-	}
-	return &vsdxDocument{ForegroundPages: pages}, nil
+	return p.parsePages(ctx, pagesPath, masters)
 }
 
 type vsdxMastersXML struct {
@@ -333,7 +240,7 @@ func (p *vsdxPackage) parseMasters(ctx context.Context, mastersPath string) (map
 	}
 	var mlist vsdxMastersXML
 	if err := xml.Unmarshal(raw, &mlist); err != nil {
-		return nil, fmt.Errorf("vsdx: decode %q: %w", mastersPath, err)
+		return nil, fmt.Errorf("decode %q: %w", mastersPath, err)
 	}
 	relsByID, _, err := p.readRels(ctx, mastersPath)
 	if err != nil {
@@ -358,7 +265,7 @@ func (p *vsdxPackage) parseMasters(ctx context.Context, mastersPath string) (map
 		}
 		master, err := decodeVSDXMaster(m.ID, mRaw)
 		if err != nil {
-			return nil, fmt.Errorf("vsdx: decode master %q: %w", target, err)
+			return nil, fmt.Errorf("decode master %q: %w", target, err)
 		}
 		out[m.ID] = master
 	}
@@ -401,27 +308,27 @@ type vsdxPageMetaXML struct {
 	Rel        vsdxRefXML `xml:"Rel"`
 }
 
-func (p *vsdxPackage) parsePages(ctx context.Context, pagesPath string, masters map[string]*vsdxMaster) ([]vsdxPage, error) {
+func (p *vsdxPackage) parsePages(ctx context.Context, pagesPath string, masters map[string]*vsdxMaster) ([]visioPage, error) {
 	raw, exists, err := p.readEntry(ctx, pagesPath)
 	if err != nil {
 		return nil, err
 	}
 	if !exists {
-		return nil, fmt.Errorf("vsdx: missing pages index %q", pagesPath)
+		return nil, fmt.Errorf("missing pages index %q", pagesPath)
 	}
 	var plist vsdxPagesXML
 	if err := xml.Unmarshal(raw, &plist); err != nil {
-		return nil, fmt.Errorf("vsdx: decode %q: %w", pagesPath, err)
+		return nil, fmt.Errorf("decode %q: %w", pagesPath, err)
 	}
-	if len(plist.Pages) > maxVSDXPages {
-		return nil, fmt.Errorf("vsdx: page count %d exceeds %d limit", len(plist.Pages), maxVSDXPages)
+	if len(plist.Pages) > maxVisioPages {
+		return nil, fmt.Errorf("page count %d exceeds %d limit", len(plist.Pages), maxVisioPages)
 	}
 	relsByID, _, err := p.readRels(ctx, pagesPath)
 	if err != nil {
 		return nil, err
 	}
 
-	var out []vsdxPage
+	var out []visioPage
 	displayNum := 0
 	for _, meta := range plist.Pages {
 		if err := ctx.Err(); err != nil {
@@ -445,7 +352,7 @@ func (p *vsdxPackage) parsePages(ctx context.Context, pagesPath string, masters 
 		visioID, _ := strconv.Atoi(strings.TrimSpace(meta.ID))
 		page, err := decodeVSDXPage(visioID, displayNum, strings.TrimSpace(meta.Name), pageRaw, masters)
 		if err != nil {
-			return nil, fmt.Errorf("vsdx: decode page %q: %w", target, err)
+			return nil, fmt.Errorf("decode page %q: %w", target, err)
 		}
 		out = append(out, page)
 	}
@@ -499,10 +406,10 @@ type vsdxConnectXML struct {
 	ToSheet   string `xml:"ToSheet,attr"`
 }
 
-func decodeVSDXPage(visioID, displayNum int, name string, raw []byte, masters map[string]*vsdxMaster) (vsdxPage, error) {
+func decodeVSDXPage(visioID, displayNum int, name string, raw []byte, masters map[string]*vsdxMaster) (visioPage, error) {
 	var pc vsdxPageContentsXML
 	if err := xml.Unmarshal(raw, &pc); err != nil {
-		return vsdxPage{}, err
+		return visioPage{}, err
 	}
 
 	shapesByID := map[string]*vsdxShapeData{}
@@ -517,7 +424,7 @@ func decodeVSDXPage(visioID, displayNum int, name string, raw []byte, masters ma
 	connections, usedShapeIDs, connectorIDs, emittedConnectorIDs := buildVSDXConnections(pc.Connects, shapesByID)
 	extraTexts := collectExtraShapeTexts(orderedShapes, usedShapeIDs, connectorIDs, emittedConnectorIDs)
 
-	return vsdxPage{
+	return visioPage{
 		VisioID:     visioID,
 		DisplayNum:  displayNum,
 		Name:        name,
@@ -689,7 +596,7 @@ type rawConnectorEndpoints struct {
 	endSeen   map[string]struct{}
 }
 
-func buildVSDXConnections(connects []vsdxConnectXML, shapesByID map[string]*vsdxShapeData) ([]vsdxConnection, map[string]struct{}, map[string]struct{}, map[string]struct{}) {
+func buildVSDXConnections(connects []vsdxConnectXML, shapesByID map[string]*vsdxShapeData) ([]visioConnection, map[string]struct{}, map[string]struct{}, map[string]struct{}) {
 	byConnector := map[string]*rawConnectorEndpoints{}
 	connectorOrder := make([]string, 0, len(connects)/2)
 	connectorIDs := make(map[string]struct{}, len(connects)/2)
@@ -727,7 +634,7 @@ func buildVSDXConnections(connects []vsdxConnectXML, shapesByID map[string]*vsdx
 		}
 	}
 
-	var connections []vsdxConnection
+	var connections []visioConnection
 	usedShapeIDs := map[string]struct{}{}
 	for _, connID := range connectorOrder {
 		ep := byConnector[connID]
@@ -750,7 +657,7 @@ func buildVSDXConnections(connects []vsdxConnectXML, shapesByID map[string]*vsdx
 
 		connShape := shapesByID[connID]
 		label := ""
-		dir := vsdxDirUndirected
+		dir := visioDirUndirected
 		if connShape != nil {
 			label = connShape.Text
 			dir = resolveArrowDirection(connShape.BeginArrow, connShape.EndArrow)
@@ -758,13 +665,13 @@ func buildVSDXConnections(connects []vsdxConnectXML, shapesByID map[string]*vsdx
 
 		var fromText, toText string
 		switch dir {
-		case vsdxDirBackward:
+		case visioDirBackward:
 			fromText, toText = endText, beginText
 		default:
 			fromText, toText = beginText, endText
 		}
 
-		connections = append(connections, vsdxConnection{
+		connections = append(connections, visioConnection{
 			FromText: fromText,
 			ToText:   toText,
 			Label:    label,
@@ -846,18 +753,18 @@ func markShapeFamilyUsed(shapeID string, shapesByID map[string]*vsdxShapeData, u
 	}
 }
 
-func resolveArrowDirection(beginArrow, endArrow string) vsdxDirection {
+func resolveArrowDirection(beginArrow, endArrow string) visioDirection {
 	hasBegin := hasVisibleArrow(beginArrow)
 	hasEnd := hasVisibleArrow(endArrow)
 	switch {
 	case hasBegin && hasEnd:
-		return vsdxDirBidirectional
+		return visioDirBidirectional
 	case hasEnd:
-		return vsdxDirForward
+		return visioDirForward
 	case hasBegin:
-		return vsdxDirBackward
+		return visioDirBackward
 	default:
-		return vsdxDirUndirected
+		return visioDirUndirected
 	}
 }
 
@@ -900,48 +807,4 @@ func collectExtraShapeTexts(orderedShapes []*vsdxShapeData, usedShapeIDs, connec
 		out = append(out, s.Text)
 	}
 	return out
-}
-
-func formatVSDXPageText(page vsdxPage) string {
-	if len(page.Connections) == 0 && len(page.ExtraTexts) == 0 {
-		return ""
-	}
-	var b strings.Builder
-	if page.Name != "" {
-		fmt.Fprintf(&b, "[Page %d: %s]", page.DisplayNum, page.Name)
-	} else {
-		fmt.Fprintf(&b, "[Page %d]", page.DisplayNum)
-	}
-
-	if len(page.Connections) > 0 {
-		b.WriteString("\nConnections:")
-		for _, conn := range page.Connections {
-			b.WriteString("\n- ")
-			b.WriteString(formatVSDXConnectionSentence(conn))
-		}
-	}
-	if len(page.ExtraTexts) > 0 {
-		b.WriteString("\nOther shapes and notes:")
-		for _, t := range page.ExtraTexts {
-			b.WriteString("\n- ")
-			b.WriteString(t)
-		}
-	}
-	return b.String()
-}
-
-func formatVSDXConnectionSentence(c vsdxConnection) string {
-	var base string
-	switch c.Dir {
-	case vsdxDirForward, vsdxDirBackward:
-		base = fmt.Sprintf("%s points to %s", c.FromText, c.ToText)
-	case vsdxDirBidirectional:
-		base = fmt.Sprintf("%s is bidirectionally connected to %s", c.FromText, c.ToText)
-	default:
-		base = fmt.Sprintf("%s is connected to %s", c.FromText, c.ToText)
-	}
-	if c.Label != "" {
-		return base + fmt.Sprintf(", labeled %q.", c.Label)
-	}
-	return base + "."
 }

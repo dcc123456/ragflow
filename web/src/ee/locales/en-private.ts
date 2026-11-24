@@ -475,7 +475,7 @@ export default {
       cadParserNoConfig:
         'CAD drawings are processed by the built-in parser and require no configuration. Configure vision enhancement in CAD Chunker.',
       visioParserNoConfig:
-        'Visio drawings (.vsdx) are processed by the built-in parser page by page and require no configuration.',
+        'The built-in parser processes .vsdx, .vsdm, and Visio v11 .vsd drawings page by page without extra configuration.',
       cadVisionEnhancementTip:
         'Use a vision model to describe geometry, symbols, and spatial relationships in drawing regions; when off, only native CAD text is used.',
       extractorResumeTitle: 'Resume extraction',
