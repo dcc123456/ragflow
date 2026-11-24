@@ -60,7 +60,7 @@ func TestPrintHelpDefaultStartup(t *testing.T) {
 			t.Errorf("help does not document %q:\n%s", want, help)
 		}
 	}
-	for _, flag := range []string{"--ingestor-tier", "--init-superuser"} {
+	for _, flag := range []string{"--deepdoc", "--ingestor-tier", "--init-superuser"} {
 		if !strings.Contains(help, flag) {
 			t.Errorf("help does not document enterprise flag %q:\n%s", flag, help)
 		}

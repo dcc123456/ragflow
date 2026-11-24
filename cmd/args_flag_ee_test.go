@@ -105,13 +105,20 @@ func TestParseArgsBoolFlagForms(t *testing.T) {
 
 // Mode flags use long names; a disabled mode selects nothing.
 func TestParseArgsModeFlags(t *testing.T) {
-	for _, mode := range []string{"admin", "api", "ingestor", "syncer", "chatter", "migrate"} {
+	for _, mode := range []string{"admin", "api", "ingestor", "syncer", "chatter", "deepdoc", "migrate"} {
 		args, err := parseArgsFrom([]string{"ragflow_server", "--" + mode})
 		if err != nil {
 			t.Fatalf("parseArgsFrom(--%s) error = %v", mode, err)
 		}
 		if args.Mode == nil || *args.Mode != mode {
 			t.Errorf("parseArgsFrom(--%s) mode = %v, want %s", mode, args.Mode, mode)
+		}
+		if mode != "deepdoc" {
+			for _, flags := range [][]string{{"--deepdoc", "--" + mode}, {"--" + mode, "--deepdoc"}} {
+				if _, err := parseArgsFrom(append([]string{"ragflow_server"}, flags...)); err == nil {
+					t.Errorf("parseArgsFrom(%v) error = nil, want conflicting modes", flags)
+				}
+			}
 		}
 	}
 
@@ -189,7 +196,6 @@ func TestParseArgsUnknownFlagRejected(t *testing.T) {
 		{"--api", "--enable-mcpserver"},
 		{"--api", "--mcp-port=9382"},
 		{"--api", "-p", "9380"},
-		{"--deepdoc"},
 		{"-api"},
 		{"-config", "cfg.yaml"},
 	} {

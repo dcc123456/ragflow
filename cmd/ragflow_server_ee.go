@@ -30,10 +30,18 @@ import (
 
 func registerEEFlags(app *kingpin.Application, args *bootstrap.ServerArgs) func() error {
 	var tierSet bool
+	deepdoc := app.Flag("deepdoc", "Run only the DeepDoc inference server").Bool()
 	app.Flag("init-superuser", "Initialize the superuser (automatic with --admin and default startup)").BoolVar(&args.InitSuperUser)
 	args.IngestorTier = app.Flag("ingestor-tier", "Ingestor lane: low, medium or high (default: low)").IsSetByUser(&tierSet).String()
 
 	return func() error {
+		if *deepdoc {
+			if args.Mode != nil {
+				return fmt.Errorf("only one mode flag may be specified: --%s and --deepdoc", *args.Mode)
+			}
+			mode := "deepdoc"
+			args.Mode = &mode
+		}
 		if tierSet {
 			if _, err := common.ParseIngestorTier(*args.IngestorTier); err != nil {
 				return err
@@ -48,6 +56,7 @@ func registerEEFlags(app *kingpin.Application, args *bootstrap.ServerArgs) func(
 func printEEHelp() {
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Enterprise options:")
+	fmt.Fprintln(os.Stderr, "  --deepdoc                             \tRun only the DeepDoc inference server (default port: 8001; override with --port)")
 	fmt.Fprintln(os.Stderr, "  --init-superuser                      \tInitialize the superuser (automatic with --admin and default startup)")
 	fmt.Fprintln(os.Stderr, "  --ingestor-tier string                \tIngestor lane: low, medium or high (default: low)")
 }
