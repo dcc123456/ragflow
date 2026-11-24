@@ -14,18 +14,6 @@ groups:
           impact: "Cluster is partially or completely unavailable. Search and indexing operations will fail."
           action: "Check cluster health API, review node status, investigate unassigned shards immediately."
 
-      - alert: ElasticsearchClusterYellow
-        expr: elasticsearch_cluster_health_status{color="yellow"} == 1
-        for: 10m
-        labels:
-          severity: warning
-          service: elasticsearch
-        annotations:
-          summary: "Elasticsearch cluster status is YELLOW"
-          description: "Elasticsearch cluster '{{ $labels.cluster }}' has been in YELLOW status for over 10 minutes. All primary shards are available but replica shards are missing."
-          impact: "Cluster is operational but in degraded state. Reduced fault tolerance for node failures."
-          action: "Investigate unassigned replica shards, check node connectivity and disk space."
-
       # JVM Memory Alerts
       - alert: ElasticsearchJVMHighMemoryUsage
         expr: elasticsearch_jvm_memory_used_bytes / elasticsearch_jvm_memory_max_bytes > 0.85
