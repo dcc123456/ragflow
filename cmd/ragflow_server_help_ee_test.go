@@ -60,9 +60,19 @@ func TestPrintHelpDefaultStartup(t *testing.T) {
 			t.Errorf("help does not document %q:\n%s", want, help)
 		}
 	}
-	for _, flag := range []string{"--ingestor-tier", "--init-superuser", "--deepdoc-inference-concurrency", "--deepdoc-inference-cpu-cores"} {
+	for _, flag := range []string{"--ingestor-tier", "--init-superuser"} {
+		if !strings.Contains(help, flag) {
+			t.Errorf("help does not document enterprise flag %q:\n%s", flag, help)
+		}
+	}
+	for _, flag := range []string{"--deepdoc-inference-concurrency", "--deepdoc-inference-cpu-cores"} {
 		if strings.Contains(help, flag) {
-			t.Errorf("help documents unsupported flag %q:\n%s", flag, help)
+			t.Errorf("help documents removed flag %q:\n%s", flag, help)
+		}
+	}
+	for _, want := range []string{"low, medium or high", "default: low"} {
+		if !strings.Contains(help, want) {
+			t.Errorf("help does not explain %q:\n%s", want, help)
 		}
 	}
 }
