@@ -29,7 +29,7 @@ Use this file as the local operating guide for the current codebase. Prefer the 
 - `api/`, `rag/`, `deepdoc/`, and `agent/`: legacy Python implementation pending deletion. Do not add features or extend dependencies there.
 - `internal/`: main Go application code. Important subtrees:
 - `internal/agent/`: Go agent runtime, canvas execution, components, tool bindings, workflow helpers.
-- `internal/agentic_rag/`: agentic retrieval loop, BM25 service, citation handling.
+- `internal/agentic_rag/`: Go agentic-RAG engine — the ReAct loop, the retrieval tools (`search_semantic_chunks` / `search_bm25_chunks` / `grep_chunks` / `list_chunks`), and citation assembly.
 - `internal/admin/`: Go admin routes, handlers, and services.
 - `internal/channels/`: chat-channel connectors (DingTalk and friends) with their bootstrap wiring.
 - `internal/binding/cpp/`: C++ tokenizer binding built by `build.sh` for the Go server.
@@ -43,12 +43,13 @@ Use this file as the local operating guide for the current codebase. Prefer the 
 - `internal/ingestion/`: Go ingestion pipeline, canvas adapter, components, wiring, service orchestration.
 - `internal/ingestion/component/`: stage implementations such as file/parser/chunker/tokenizer/extractor.
 - `internal/ingestion/pipeline/`: DSL translation, canvas-driven execution, checkpoints, resume/run logic.
-- `internal/mcp/`: MCP server and client transport, connector registration, tool catalogue.
+- `internal/mcp/`: MCP server and client transport, connector registration, tool catalogue; also the MCP bridge that exposes the agentic-RAG retrieval tools to Codex over HTTP, scoped by an opaque per-thread ticket.
 - `internal/permission/`: resource-permission policy, query scope, integration resource resolution.
 - `internal/parser/`: parser and chunk libraries used by ingestion and other Go paths.
 - `internal/parser/parser/`: typed parse-result parsers for markdown/html/pdf/docx/xlsx/text and related families.
 - `internal/parser/chunk/`: chunk operator library and DSL/typed execution helpers.
 - `internal/service/`: higher-level business services used by handlers and server flows.
+- `internal/codexagent/`: mode-8 Codex client — session→thread mapping, the turn runner (create/resume/rebuild), and the MCP-tool-call approval dispatch.
 - `internal/storage/`: storage backends and in-memory test doubles.
 - `internal/tokenizer/`: BPE tokenizer, asset loading, and token counting.
 - `internal/utility/`: small cross-cutting helpers (rate limiting, quotas, conversion, best-effort wrappers).
@@ -120,6 +121,7 @@ Rules:
 - New tests that touch a real external service MUST carry `integration`/`e2e`/`manual` — do not rely on `t.Skip` + env vars to soft-isolate them in the default unit run. Keep an env guard as a harmless secondary safety net if desired.
 - `manual` is never wired into CI or any automated pipeline.
 - `unit` (no tag) must stay free of external-service dependencies so `bash build.sh --test` runs without MySQL/MinIO/ES/Infinity/LLM. The native CGO static libraries (`office_oxide`/`pdfium`/`pdf_oxide`) are still required at build time and are wired by `build.sh --test`; that is expected, not an external service.
+- Mode-8 integration tests (`internal/codexagent`, `internal/mcp`, and the mode-8 path in `internal/service`) additionally need a local `codex` binary on `PATH` and an OpenAI-compatible (Responses API) model in `OPENAI_BASE_URL`/`OPENAI_API_KEY`/`OPENAI_MODEL`, gated by `RAGFLOW_CODEX_IT=1`; they skip when those are absent. Run them via `bash build.sh --test-integration ./internal/codexagent/...` (it supplies the CGO env and the `integration` tag).
 
 ## Working Rules
 - When reviewing documentation or code, inspect the full affected path and report all verifiable findings in one review; do not return after only a few findings and expose further issues in later rounds.
@@ -127,6 +129,10 @@ Rules:
 - Before editing, inspect the nearest code path that actually owns the behavior.
 - For server changes, work in the Go implementation. If a Python behavior is still needed, port it to Go and test the Go path before removing the Python code.
 - Keep changes small and local unless the task is explicitly a broader refactor.
+- Apply the **minimal-necessary principle**: write only what the task needs. Before writing code, stop at the first sufficient option — does it need to exist → is it already in this codebase → does the standard library do it → a native platform feature → an installed dependency → can it be one line → only then the minimum that works. Reuse what exists, prefer deleting over adding, and keep the diff to the owning abstraction. (Reference: https://github.com/DietrichGebert/ponytail)
+- Minimal necessary is **not** fewest lines: never cut input validation at a trust boundary, error handling, security, or accessibility to shrink a diff.
+- Lazy about the solution, never about reading: inspect the code the change touches and trace the real flow before choosing the smallest fix.
+- Leave one small test on new logic that has a branch, a loop, a parser, money, or a security decision. When you skip something or cannot verify it, say so and name the risk.
 - Prefer one implementation path instead of preserving old and new versions side by side.
 - Preserve behavior with focused tests when the behavior is still valid; do not keep tests that protect obsolete behavior.
 - If a surface is only there for compatibility, remove it unless the user asks to keep it.

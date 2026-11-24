@@ -308,3 +308,18 @@ gomod_cache
 parity/
 # downloaded Go native deps (fetched by ragflow_deps/download_go_deps.py)
 ragflow_deps/
+# codex app-server binary + archive (fetched by docker/codex/download_deps.py; never committed)
+docker/codex/codex-app-server
+docker/codex/*.tar.gz
+# codex container runtime home mount (docker/codex/entrypoint.sh mounts this
+# into the codex container; contents are created by the container as uid 10001)
+docker/codex-home/
+
+# local benchmark run artifacts (mode-8 config + results; never committed)
+outputs/
+tools/benchmark/qa_benchmark_conf_mode8_10.json
+
+# Tools built with `go build ./tools/<x>/` land in the repo root; never commit them.
+/benchmark
+/strategy_rsi
+/mode8verify

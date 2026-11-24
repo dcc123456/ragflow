@@ -463,6 +463,9 @@ export default {
       },
     },
     flow: {
+      removeLowContrastWordText: 'Ignore nearly invisible text in Word',
+      removeLowContrastWordTextDescription:
+        'Skip text that is too close to the background color when parsing DOC and DOCX.',
       cADChunkerDescription:
         'Split CAD drawings by sheet and spatial layout, with optional vision-model descriptions of drawing regions.',
       cadParserNoConfig:
@@ -1221,6 +1224,20 @@ export default {
       fetchFailed: 'Failed to fetch Visio document',
       loadFailed: 'Failed to load Visio file',
       renderFailed: 'Failed to render Visio page',
+    },
+    // Reasoning-engine levels 6-8 (see @/ee/hooks/use-thinking-modes).
+    chat: {
+      thinkingLevelAgentic: 'react',
+      thinkingLevelAgenticDescription: 'Self-directed corpus exploration',
+      thinkingLevelPlanExplorerAuditor: 'planer-explorer-auditor',
+      thinkingLevelPlanExplorerAuditorDescription:
+        'Plans a question decomposition, then explores it under a delivery gate',
+      thinkingLevelIterative: 'IterSynth',
+      thinkingLevelIterativeDescription:
+        'Rewrites its research summary every round',
+      thinkingLevelCodex: 'agentic pro',
+      thinkingLevelCodexDescription:
+        'Delegates to a shared Codex agent that reads the knowledge base',
     },
   },
 };

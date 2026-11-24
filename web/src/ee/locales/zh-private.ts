@@ -256,6 +256,9 @@ export default {
       },
     },
     flow: {
+      removeLowContrastWordText: '忽略 Word 中难以看清的文字',
+      removeLowContrastWordTextDescription:
+        '解析 DOC 和 DOCX 时，跳过与背景色过于接近的文字。',
       cADChunkerDescription:
         '按图框和空间布局切分 CAD 图纸，并可使用视觉模型描述图纸区域。',
       cadParserNoConfig:
@@ -844,6 +847,18 @@ export default {
       fetchFailed: '获取 Visio 文档失败',
       loadFailed: '加载 Visio 文件失败',
       renderFailed: '渲染 Visio 页面失败',
+    },
+    // Reasoning-engine levels 6-8 (see @/ee/hooks/use-thinking-modes).
+    chat: {
+      thinkingLevelAgentic: 'react',
+      thinkingLevelAgenticDescription: '自主探索语料库',
+      thinkingLevelPlanExplorerAuditor: 'planer-explorer-auditor',
+      thinkingLevelPlanExplorerAuditorDescription:
+        '先规划问题分解，再在交付门禁下探索',
+      thinkingLevelIterative: 'IterSynth',
+      thinkingLevelIterativeDescription: '每轮重写研究摘要',
+      thinkingLevelCodex: 'agentic pro',
+      thinkingLevelCodexDescription: '交由共享 Codex 智能体阅读知识库',
     },
   },
 };

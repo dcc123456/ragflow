@@ -1,0 +1,389 @@
+{
+  "chat_id": "0e5857e4907011f18a8527a64e461315",
+  "concurrency": 4,
+  "judge_chat_id": "7289513c907011f18a8527a64e461315",
+  "ragflow_api_key": "ragflow-xGRCgHIMf6AsBy286eX8idKWQFY5qSrzpzFRKjIu8mk",
+  "backend": {
+    "scheme": "http",
+    "host": "127.0.0.1",
+    "port": 9380
+  },
+  "ragflow_chat": {
+    "fresh_session_per_question": true,
+    "stream": false,
+    "reasoning": 5
+  },
+  "dataset": {
+    "name": "frames",
+    "description": "FRAMES: 824 multi-hop questions rated on factuality, retrieval and reasoning. The corpus (Wikipedia snapshot) lives inside the RAGFlow knowledge base, so corpus_path is null.",
+    "questions_path": "/home/zhichyu/Downloads/data/frames/frames_mapping.json",
+    "corpus_path": "/home/zhichyu/Downloads/data/frames/corpus"
+  },
+  "output": {
+    "output_dir": "outputs/frames_<timestamp>",
+    "answers_jsonl": "answers.jsonl"
+  },
+  "question_ids": {
+    "include": [
+      "99",
+      "103",
+      "123",
+      "132",
+      "371",
+      "481",
+      "612",
+      "617",
+      "629",
+      "646",
+      "667",
+      "733",
+      "819"
+    ],
+    "random": 72,
+    "exclude": [
+      "0",
+      "3",
+      "5",
+      "10",
+      "16",
+      "17",
+      "19",
+      "31",
+      "35",
+      "46",
+      "60",
+      "66",
+      "77",
+      "96",
+      "122",
+      "127",
+      "129",
+      "142",
+      "148",
+      "154",
+      "157",
+      "160",
+      "161",
+      "234",
+      "235",
+      "237",
+      "249",
+      "262",
+      "267",
+      "275",
+      "291",
+      "297",
+      "298",
+      "300",
+      "319",
+      "320",
+      "337",
+      "338",
+      "339",
+      "340",
+      "343",
+      "346",
+      "355",
+      "359",
+      "360",
+      "362",
+      "372",
+      "382",
+      "388",
+      "390",
+      "396",
+      "407",
+      "420",
+      "423",
+      "428",
+      "429",
+      "434",
+      "435",
+      "440",
+      "448",
+      "449",
+      "464",
+      "474",
+      "476",
+      "496",
+      "510",
+      "518",
+      "522",
+      "546",
+      "549",
+      "561",
+      "589",
+      "600",
+      "601",
+      "607",
+      "611",
+      "619",
+      "641",
+      "644",
+      "651",
+      "652",
+      "674",
+      "707",
+      "710",
+      "721",
+      "735",
+      "743",
+      "752",
+      "766",
+      "783",
+      "795",
+      "803",
+      "820",
+      "821"
+    ]
+  },
+  "annotations": {
+    "_meta": {
+      "updated": "2026-09-03",
+      "scored": 107,
+      "accuracy": 0.9065,
+      "full_score_rate": 0.897,
+      "runs": [
+        "frames_20260902_200214",
+        "frames_20260902_232816",
+        "frames_20260903_095215",
+        "frames_recheck_20260903_152634",
+        "frames_recheck_20260903_153153"
+      ],
+      "rule": "level 4=passed / 2=partial / 0=failed；同题多次判分取最后一次（重跑覆盖旧结论），振荡题见 run_history",
+      "weakest_type": "Numerical reasoning（0.819，n=36）",
+      "unstable": [
+        "99",
+        "103",
+        "122",
+        "123",
+        "481",
+        "612"
+      ],
+      "note": "question_notes 记录 level 0 失败题与振荡题；history 为 2026-08-24 旧跑批档案（其题号不在本次 107 题样本内）"
+    },
+    "passed": [
+      "0",
+      "3",
+      "5",
+      "10",
+      "16",
+      "17",
+      "19",
+      "31",
+      "35",
+      "46",
+      "60",
+      "66",
+      "77",
+      "96",
+      "122",
+      "123",
+      "127",
+      "129",
+      "142",
+      "148",
+      "154",
+      "157",
+      "160",
+      "161",
+      "234",
+      "235",
+      "237",
+      "249",
+      "262",
+      "267",
+      "275",
+      "291",
+      "297",
+      "298",
+      "300",
+      "319",
+      "320",
+      "337",
+      "338",
+      "339",
+      "340",
+      "343",
+      "346",
+      "355",
+      "359",
+      "360",
+      "362",
+      "372",
+      "382",
+      "388",
+      "390",
+      "396",
+      "407",
+      "420",
+      "423",
+      "428",
+      "429",
+      "434",
+      "435",
+      "440",
+      "448",
+      "449",
+      "464",
+      "474",
+      "476",
+      "481",
+      "496",
+      "510",
+      "518",
+      "522",
+      "546",
+      "549",
+      "561",
+      "589",
+      "600",
+      "601",
+      "607",
+      "611",
+      "619",
+      "641",
+      "644",
+      "651",
+      "652",
+      "674",
+      "707",
+      "710",
+      "721",
+      "735",
+      "743",
+      "752",
+      "766",
+      "783",
+      "795",
+      "803",
+      "820",
+      "821"
+    ],
+    "partial": [
+      "371",
+      "733"
+    ],
+    "failed": [
+      "99",
+      "103",
+      "132",
+      "612",
+      "617",
+      "629",
+      "646",
+      "667",
+      "819"
+    ],
+    "question_notes": {
+      "819": "【B 类·语料内多口径 knife-edge】level 0（2026-09-07 上帝视角核验，来源文件全读+5 run 推理链核对）：gold \"Seven\"=1847 论文 → 1854 Soho 调查（'make the connection' 作发现行为解读）。agent 5 个 run 全部召回 1854 文件（检索 top1 均命中，非检索失败），但 'make the connection' 被解读为'连接被论证的时间'：语料中 cholera+kidney failure+water supply 三要素同段的唯一位置是 1854_Broad_Street 文件 'Snow\\'s post-outbreak evaluation' 小节，该小节语境挂 1855 二版（'In 1855 he published a second edition, including a more elaborate investigation...'），urea 段落本身无日期；'Investigation by John Snow' 小节反而明说 conclusions 'not predominantly based on the Broad Street outbreak'。agent 的 1855−1847=8 是语料内更硬的解读；gold 7 依赖 'make' 的行为性解读+外部史实（1854 在语料中仅作爆发年份出现，从未与'做出连接'谓词绑定）。knife-edge 措辞歧义题，agent 无责。",
+      "629": "【A 类·语料缺口】level 0（2026-09-07 上帝视角核验，来源文件全读）：语料缺口题 — Devon/Ricardo McDonald 两个来源文件全文读完，infobox Career NFL statistics 只有 Tackles/Sacks/Interceptions，无任何 games-played 字段；gold 56（PFR 外部统计差值）不在语料内。agent 答 63/62/71 均为外推估算，'语料无此数据' 才是语料内正确结论。",
+      "646": "【A 类·gold 漂移】level 0（2026-09-07 上帝视角核验，来源文件全读）：gold 漂移题 — 语料 Wealth_of_Elon_Musk: \"On January 7, 2021, Musk, with a net worth of $285bn\"（FRAMES 构建时为 $185bn 级旧快照）；Economy_of_the_Philippines: Average gross salary 只有 2024（₱21,544/US$376 monthly），无 2022 数据。gold 184,959,440,000 = $185B（旧快照）− 10,000×$4,512（=US$376×12，恰为现语料 2024 年薪）。agent 的 $284,954,880,000 = $285B − 10,000×$4,512，是对当前语料完全忠实的计算，错在 gold 过时。",
+      "667": "【A 类·语料缺口（边界特例：答案名字在语料内，agent 3/5 答对）】振荡题（232816:0/recheck_153153:0 与 203207/recheck_grepbm25/231853:4 交替）。2026-09-07 上帝视角核验（来源文件全读）三方归因：**语料结构缺口为主**——答案 Lake Merritt 无专属文档，仅以名字出现在 6 个来源文件内嵌的 California NHL 导航框列表（与 Lower Klamath 同一名单），无日期无'自然+有水'属性描述；premise（Lower Klamath 1966 入 NRHP）也不在语料；强干扰项 Drakes Bay 与答案同级并列且同样无法验证入榜年份。**理解歧义次之**——Lake Merritt vs Drakes Bay 语料内不可判别，gold 靠语料外史实（Lake Merritt 1966-10-15 首批 NRHP）裁决，agent 两次选 Drakes Bay 属语料内同等合理候选。**检索无责**——navbox 召回成功（232816 明确引用该名单），3/5 run 答对得 4，agent 已在语料允许上限附近工作。最新 run 231853 得 4，failed 已过时。",
+      "132": "【B 类·语料内多口径 knife-edge】level 0（2026-09-07 上帝视角核验，来源文件全读）：knife-edge 日期口径题，非题意理解偏差 — agent 5 个 run 题意解读与 gold 同构（62→79 月间隔 N，floor(至 2013-01-11 总月数/N) 计数，Pompeii 发布 11 January 2013 无误）。数学两边都对：8/24 传统口径 → 间隔 210 月、窗口 23200 月 → 110；gold 用 10 月新考口径 → 212 月、23198 月 → 109。agent 并非未察觉争议：232816 run 显式 grep 'August.*24|October.*24|exact date'，但语料新考日期写的是 October 17（非 24），正则未命中；且 'until approximately 2018...stated August 24' 是叙事主线、检索首选 chunk。题面对两口径完全对称，agent 取传统主线、gold 取新考，均为语料内可辩护选择。judge 0/2 振荡系口径不稳。",
+      "617": "【C 类·语料可解，agent 检索不稳】振荡题（095215/recheck_153153/203207:0 与 recheck_grepbm25/231853:4 交替）。2026-09-07 上帝视角核验：语料完全可解 — Kostritsyn 文件锁定 2008 Aussie Millions + 2010 WCOOP Event 9（$269,284），WCOOP 2010 表原文 'Event 9 | $1,050 NLH | joiso (Alexander Kostritsyn) | $269,284.60 | 1,240 | $1,612,000'。失败全是检索不稳定（3 个 run 误判 '2010 表不在语料'）；另注意 1,240 在 2011/2012 年表还出现 2 次，构成干扰。最新 run 231853 得 4，failed 已过时。",
+      "99": "【A 类·语料缺口】振荡题（232816:2 / recheck_153153:0）+ 2026-09-07 上帝视角核验（本地语料全读）：gold \"14 years younger\" = Crockett 39 岁（1826-08-03 选举日，早于其 8-17 生日）− Frost 25 岁（1997-01-17 生，2022-11-08 当选）。语料不支持两点：① Crockett 的 1826-08-03 选举日——全语料零命中，只有 \"In 1827, he was elected\"/\"for the 1827–1829 term\"/参考文献 \"Credential of election, 09/18/1827\"，按语料只能推出 40 或 41 岁 → agent 得 15/16 years（语料内最优解）；② \"Frost 是最年轻现任众议员\"——List 文档中 \"Youngest members\" 仅是侧边导航残片，无实际名单。Frost 生日/当选日期其实在主表行（chunk 3afcbc2a6ff97d0a），但部分 run 未召回。振荡另一诱因：内容相同的答案，\"Final Answer: 15\" 判 2 分、\"Guessed Answer: 15\"（闸门诚实降级）判 0 分，judge 口径不稳定。",
+      "103": "【A 类·gold 漂移】振荡题（095215:2 / recheck_153153:0）。2026-09-07 上帝视角核验（来源文件全读）：gold 漂移题 — 语料 Central_Atlas_Tamazight infobox: 2.7 million (2024)；Afroasiatic infobox: 630 million、正文: over 500 million。语料只能推出 0.43%（2.7/630）或 0.54%（2.7/500），gold 0.49%（=2.7/550）与语料任何数字组合不符，系 FRAMES 构建时旧版 Wikipedia 数字。agent 两个答案各有语料依据，非 agent 错误。",
+      "612": "【C 类·语料可解，agent 实体选择不稳】振荡题（200214:2 / 203207:4 / recheck_grepbm25:4 / recheck_153153:0 / 231853:2）。2026-09-07 上帝视角核验（来源文件全读）：语料完全可解 — Selayar Islands: 'speak the several Makassaric languages (mainly Selayar and Makassar)'；Selatan 消歧义页: 'word for south; Sulawesi Selatan -> South Sulawesi'。干扰项是同句 'Bugis'（族群混居列表），recheck_153153 选中 Buginese 得 0；部分 run 只答对一半（语言或地名解释）得 2。agent 实体选择不稳定，非语料缺口。gold 简化为 Makassarese，而语料里 Selayar Islands 本地语言实为 Makassaric 族下的 Selayar 语言，略有张力。",
+      "371": "【B 类·语料内多口径（'respective leaders' 歧义，gold 读法有语料设计信号）】稳定 partial 2（三段复合题，200214/203207/recheck_153153/231853 均为 2）。2026-09-07 上帝视角核验（来源文件全读）：①间隔 2 年 agent 全对（infobox 5 May 1789 / 21 August 1791）；②时长差 gold '2 years' 是取整，语料时长串 12y4m1w4d vs 10y6m4d 相减实为 1y9m25d≈1.85 年，agent 答 '1 year 9 months (~2 years)' 实质正确；③决定性失分点 'their respective leaders'——gold 用**路易十六**（法国+殖民地海地两时点的共同君主，34/36 岁，语料内可算：Louis_XVI 文件有生日 1754-08-23）；agent 按字面取革命领袖 Toussaint/Robespierre（语料 Commanders and leaders/雅各宾领袖），但其生日语料没有、只能外推。**语料设计信号：来源文件含 Louis_XVI 文档且是唯一有生日的候选人，暗示 gold 读法**。属理解分歧但有可改进信号：'语料中谁的年龄可算'应作择读依据。",
+      "733": "【B 类·语料自相矛盾（表格 vs 引言两种署名口径）】稳定 partial 2（多 run 一致）。2026-09-07 上帝视角核验（Billboard 文件全读）：**语料自相矛盾**——表格行 '#1 Careless Whisper | George Michael'（个人署名）vs 引言句 'Wham! ...had four songs...including the year's biggest hit, Careless Whisper'。gold 按引言口径把 #1 计入 Wham!（top5 groups = 榜位 #1,3,4,6,7）；agent 按表格署名过滤（George Michael=个人，排除 #1，补入 #8 Dire Straits）→ 4/5 命中。'musical groups' 过滤逻辑与榜单排序双方一致，唯一分歧是署名归属。非 agent 理解错误；可改进方向：表格与引言冲突时引言定性描述可作更高优先级证据（现实署名亦为 'Wham! feat. George Michael'）。"
+    },
+    "question_categories": {
+      "_meta": "2026-09-07 上帝视角归因分类（依据 question_notes 的逐题核验）：A=语料缺口/gold 漂移，agent 无责；B=语料内多口径 knife-edge（语料支持两种可辩护答案，gold 只认其一）；C=语料可解，agent 检索/干扰项不稳。边界说明：667 归 A（判别信息——入榜年份与'自然+有水'属性——全在语料外，gold 靠外部史实裁决），但答案名字在语料内、agent 3/5 run 答对，是 A 中最接近可解的特例；371 归 B（'respective leaders' 君主/革命领袖两种读法语料内均可辩护），但 gold 读法有语料设计信号（Louis_XVI 是唯一有生日的候选）。",
+      "A_语料缺口_gold漂移": [
+        "99",
+        "103",
+        "629",
+        "646",
+        "667"
+      ],
+      "B_语料内多口径_knife-edge": [
+        "132",
+        "819",
+        "371",
+        "733"
+      ],
+      "C_语料可解_agent不稳": [
+        "612",
+        "617"
+      ]
+    },
+    "history": {
+      "_source": "汇总自 outputs/frame_benchmark_20260824_154035、20260824_154123 与 20260902_164017 的 judged_answers.jsonl；同一 id 多次运行取最高 level。",
+      "_rule": "4=passed, 2=partial, 0=failed；judge_error/ragflow_error 的运行不计入。",
+      "159": "level 0（2026-08-24）：答案与 gold 不符，未做根因分析，待复测。",
+      "203": "level 0（2026-08-24）：同上，待复测。",
+      "574": "level 0（2026-08-24）：同上，待复测。",
+      "27": "2026-09-02 串行复测 level 4（Tommy Lawton Chelsea 球衣号码）。",
+      "71": "2026-09-02 串行复测 level 4（EF5 龙卷风评级）。"
+    },
+    "run_history": {
+      "612": {
+        "levels": [
+          2,
+          0
+        ],
+        "runs": [
+          "frames_20260902_200214:2",
+          "frames_recheck_20260903_153153:0"
+        ],
+        "note": "多次运行结论不一致，单次判分不可靠"
+      },
+      "481": {
+        "levels": [
+          0,
+          4
+        ],
+        "runs": [
+          "frames_20260902_232816:0",
+          "frames_recheck_20260903_153153:4"
+        ],
+        "note": "多次运行结论不一致，单次判分不可靠"
+      },
+      "99": {
+        "levels": [
+          2,
+          0
+        ],
+        "runs": [
+          "frames_20260902_232816:2",
+          "frames_recheck_20260903_153153:0"
+        ],
+        "note": "多次运行结论不一致，单次判分不可靠"
+      },
+      "122": {
+        "levels": [
+          0,
+          4
+        ],
+        "runs": [
+          "frames_20260902_232816:0",
+          "frames_20260903_095215:4"
+        ],
+        "note": "多次运行结论不一致，单次判分不可靠"
+      },
+      "123": {
+        "levels": [
+          2,
+          4
+        ],
+        "runs": [
+          "frames_20260902_232816:2",
+          "frames_recheck_20260903_153153:4"
+        ],
+        "note": "多次运行结论不一致，单次判分不可靠"
+      },
+      "103": {
+        "levels": [
+          2,
+          0
+        ],
+        "runs": [
+          "frames_20260903_095215:2",
+          "frames_recheck_20260903_153153:0"
+        ],
+        "note": "多次运行结论不一致，单次判分不可靠"
+      }
+    }
+  }
+}

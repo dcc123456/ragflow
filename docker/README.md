@@ -67,7 +67,7 @@ Verify the deployment with:
 
 ```bash
 docker ps
-docker logs --tail 100 ragflow-cpu
+docker logs --tail 100 web
 curl -f http://localhost/api/v1/system/healthz
 ```
 
@@ -164,6 +164,54 @@ The Go services use NATS JetStream for ingestion, synchronization, memory, and k
 - `RAGFLOW_CONNECTOR_KEY`
   The key that encrypts the credentials of data source connectors in the database. Use 32 random bytes in standard base64, for example the output of `openssl rand -base64 32`. Not set by default, and then credentials are stored as plaintext. When the key is set, the database migration encrypts the credentials that are already stored. If the key is lost, stored credentials cannot be read: enter them again through the connector update API, or delete and re-create the connector.
 
+### Codex app-server (mode 8)
+
+The `reasoning` level 8 is backed by a shared Codex app-server, run as the `codex` service. It uses the published image `infiniflow/codex:<CODEX_VERSION>` (a glibc image around the app-server binary, with python3 for local execution). **The container is mode 8's isolation boundary**: it mounts no corpus and no host filesystem, so Codex reaches datasets only through the API's MCP bridge.
+
+The service is behind the `codex` Compose profile, because it needs that image and a token and must not be forced on every stack. Enable it in `.env`, set `CODEX_WS_TOKEN`, and start the stack:
+
+```bash
+cd ragflow/docker
+# In .env:
+#   COMPOSE_PROFILES=${COMPOSE_PROFILES},codex
+#   CODEX_WS_TOKEN=$(openssl rand -base64 32 | tr -d '\n')
+docker compose -f docker-compose.yml up -d
+```
+
+Without the profile the stack starts normally and level-8 turns fall back to the regular pipeline.
+
+To build the image locally instead (offline), produce the binary host-side first and build under the same tag the compose file expects:
+
+```bash
+cd ragflow/docker
+CODEX_SRC=../codex-app-server-go/codex/codex-rs ./codex/build-local.sh
+docker build -t infiniflow/codex:${CODEX_VERSION} ./codex
+```
+
+`build-local.sh` compiles the pinned source tree with the packaging profile: stable rustc,
+no LTO, no debuginfo, and mold (or lld) for linking.
+
+- `CODEX_VERSION`
+  The codex version / image tag. The published image is `infiniflow/codex:<version>`. When building locally, the version comes from the source tree you pass to `codex/build-local.sh`; keep the two in step.
+- `CODEX_IMAGE`
+  The image to run, `infiniflow/codex:${CODEX_VERSION}`.
+- `CODEX_WS_PORT`
+  Host **loopback** port published for local diagnosis (e.g. a WS client at `ws://127.0.0.1:${CODEX_WS_PORT}`). Defaults to `8790`. The API reaches Codex over the compose network, not this port.
+- `CODEX_WS_TOKEN`
+  **Required** for mode 8, empty by default. A strong random secret (`openssl rand -base64 32 | tr -d '\n'`) that is both the app-server's WS capability token and the API's `RAGFLOW_CODEX_BEARER_TOKEN`. The codex container refuses to start without it, because a non-loopback WS listener requires authentication.
+- `RAGFLOW_CODEX_ENDPOINT`
+  How the API dials Codex: `ws://codex:8790`. Empty disables mode 8 (the engine degrades to the regular pipeline).
+- `RAGFLOW_CODEX_MCP_PUBLIC_BASE`
+  How Codex calls back into the API's MCP bridge: `http://api:9380` (the API service's in-network address). An empty value disables mode 8 entirely.
+- `RAGFLOW_CODEX_SANDBOX_MODE`
+  `danger-full-access` in this stack: the container already bounds what a turn can reach, and an unprivileged container cannot run the read-only sandbox's `bwrap`/`landlock` helper. Keep `read-only` only when the app-server runs directly on a host that holds the corpus.
+- Optional: `RAGFLOW_CODEX_APPROVAL_POLICY`, `RAGFLOW_CODEX_RESPONSES_PROVIDERS`, `RAGFLOW_CODEX_TURN_TIMEOUT` (defaults are shown in `.env`).
+
+Notes:
+- The codex container needs outbound access to the dialog model's **Responses API endpoint** (external network). It carries no model credentials: the model and its key are declared per thread from the dialog configuration.
+- The startup log may report that `bubblewrap` is missing from `PATH`. That is expected: the container is the boundary and `RAGFLOW_CODEX_SANDBOX_MODE=danger-full-access` does not use it. Mode 8 does execute ordinary local commands (e.g. `python3` for arithmetic), which is why the image carries a userland.
+- Because the container is the boundary, do **not** add corpus or host mounts to the `codex` service. Corpus access belongs on the MCP bridge, where the API enforces tenant scope.
+
 ### Local embedding service
 
 The optional `tei-cpu` and `tei-gpu` profiles start a local text-embeddings-inference service. Its memory requirement depends on the model, runtime backend, precision, batch-token limit, and concurrency. The `tei-cpu` profile uses system RAM; the `tei-gpu` profile primarily uses GPU memory and also consumes system RAM. Verify model loading and peak request usage on the target hardware, and leave additional host memory for RAGFlow, the document engine, databases, and operating system.
@@ -192,7 +240,7 @@ In the RAGFlow open-source 1.0 release, DeepDoc uses CPU inference.
 
 ## 🐋 Service configuration
 
-[service_conf.yaml.template](./service_conf.yaml.template) specifies the system-level configuration for the Go API, Admin, Ingestor, and Syncer services. In a dockerized setup, the generated `service_conf.yaml` file is automatically created from this template (replacing all environment variables by their values).
+[service_conf.yaml.template](./service_conf.yaml.template) specifies the system-level configuration for the Go API, Admin, Ingestor, and Syncer services. In a dockerized setup, the generated `service_conf.yaml` file is automatically created from this template by expanding `$NAME`, `${NAME}`, and `${NAME:-default}` placeholders. Other template text, including YAML quotes and comments, is copied verbatim.
 
 - `api`
   - `host`: The API server's IP address inside the Docker container. Defaults to `0.0.0.0`.
@@ -275,10 +323,10 @@ If you want your instance to be available under `https`, follow these steps:
    - Private key: `/etc/letsencrypt/live/your-ragflow-domain.com/privkey.pem`
 
 3. **Update docker-compose.yml**
-   Add the certificate volumes to the `ragflow-cpu` service in `docker-compose.yml`:
+   Add the certificate volumes to the `web` service in `docker-compose.yml`:
    ```yaml
    services:
-     ragflow-cpu:
+     web:
        # ...existing configuration...
        volumes:
          # SSL certificates

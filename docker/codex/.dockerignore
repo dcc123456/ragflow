@@ -1,0 +1,4 @@
+# Only the entrypoint and the pre-downloaded binary belong in the image.
+*.tar.gz
+README.md
+build-local.sh

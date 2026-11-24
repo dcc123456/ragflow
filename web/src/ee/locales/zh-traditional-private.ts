@@ -1,6 +1,9 @@
 export default {
   translation: {
     flow: {
+      removeLowContrastWordText: '忽略 Word 中難以看清的文字',
+      removeLowContrastWordTextDescription:
+        '解析 DOC 和 DOCX 時，略過與背景色過於接近的文字。',
       extractorResumeTitle: '履歷結構化抽取',
       extractorResumeDescription:
         '對文字執行四路 LLM 抽取（基本資訊 / 工作經歷 / 教育經歷 / 專案經歷），產出結構化元資料、關鍵詞與向量摘要。姓名、公司、職位、學校、學位與年資會先與原文比對再入庫。重新解析會覆蓋受管元資料欄位；履歷無需開啟其他抽取組。',
