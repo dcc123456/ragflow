@@ -147,6 +147,18 @@ describe('AddModelToGroupDialog', () => {
     expect(hideModal).not.toHaveBeenCalled();
   });
 
+  it('ignores members without a model id when checking duplicates', () => {
+    render(
+      <AddModelToGroupDialog
+        groupId="group-id"
+        members={[{ model_id: '' } as any]}
+        hideModal={jest.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   it('keeps the selected model after a nonzero result and allows a successful retry', async () => {
     mockRun.mockResolvedValueOnce(1).mockResolvedValueOnce(0);
     const hideModal = jest.fn();

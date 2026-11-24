@@ -36,7 +36,8 @@ export function AddModelToGroupDialog({
   const [modelId, setModelId] = useState('');
   const submittingRef = useRef(false);
   const { loading, run } = useAddModelGroupMember(groupId);
-  const duplicate = members.some((member) => member.model_id === modelId);
+  const duplicate =
+    Boolean(modelId) && members.some((member) => member.model_id === modelId);
 
   const handleModelChange = useCallback((value: string) => {
     setModelId(value);

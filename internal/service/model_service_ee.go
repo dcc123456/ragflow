@@ -272,11 +272,36 @@ func (m *ModelProviderService) ShowModelGroup(ctx context.Context, groupID strin
 	for _, modelID := range readableModelIDs {
 		readableModels[modelID] = struct{}{}
 	}
+	var existingModelIDs []string
+	if len(modelIDs) > 0 {
+		if err := dao.DB.WithContext(ctx).Model(&entity.TenantModel{}).
+			Where("id IN ?", modelIDs).
+			Pluck("id", &existingModelIDs).Error; err != nil {
+			return nil, fmt.Errorf("resolve model group member existence: %w", err)
+		}
+	}
+	existingModels := make(map[string]struct{}, len(existingModelIDs))
+	for _, modelID := range existingModelIDs {
+		existingModels[modelID] = struct{}{}
+	}
 
 	var response []*ShowModelGroupResponse
 
 	for _, modelGroupMap := range modelGroupMaps {
 		if _, canReadModel := readableModels[modelGroupMap.ModelID]; !canReadModel {
+			if _, exists := existingModels[modelGroupMap.ModelID]; !exists {
+				response = append(response, &ShowModelGroupResponse{
+					ID:          modelGroupMap.ID,
+					ModelID:     modelGroupMap.ModelID,
+					Model:       modelGroupMap.ModelID,
+					Position:    modelGroupMap.Position,
+					Status:      modelGroupMap.Status,
+					Unavailable: true,
+					GroupID:     modelGroupMap.GroupID,
+					GroupName:   group.GroupName,
+				})
+				continue
+			}
 			response = append(response, &ShowModelGroupResponse{
 				ID:         modelGroupMap.ID,
 				Position:   modelGroupMap.Position,
