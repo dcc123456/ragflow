@@ -51,6 +51,8 @@ export default {
   tenantRole: (roleId: number) => `${restAPIv1}/tenant/roles/${roleId}`,
   tenantRolePermissions: (roleId: number) =>
     `${restAPIv1}/tenant/roles/${roleId}/permissions`,
+  tenantRoleDefaultModels: (roleId: number) =>
+    `${restAPIv1}/tenant/roles/${roleId}/default-models`,
   tenantRoleResources: `${restAPIv1}/tenant/role-resources`,
   tenantDefaultRole: `${restAPIv1}/tenant/default-role`,
   tenantManagementPermissions: `${restAPIv1}/tenant/management-permissions`,

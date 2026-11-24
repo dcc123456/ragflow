@@ -148,6 +148,9 @@ func (m *ModelProviderService) providersForInstanceList(ctx context.Context, pro
 }
 
 func (m *ModelProviderService) CreateModelGroup(ctx context.Context, userID, groupName string) error {
+	if err := permission.NewDatabaseChecker(dao.DB).CheckFeature(ctx, "model_group", permission.ActionEnable); err != nil {
+		return err
+	}
 	tenantID, err := requireCurrentTenantID(ctx)
 	if err != nil {
 		return err
@@ -358,6 +361,9 @@ type ListModelGroupResponse struct {
 // ListModelGroup returns model groups readable by the caller. When accessUserID
 // is supplied, only groups readable by both users are returned.
 func (m *ModelProviderService) ListModelGroup(ctx context.Context, userID string, accessUserIDs ...string) ([]*ListModelGroupResponse, error) {
+	if err := permission.NewDatabaseChecker(dao.DB).CheckFeature(ctx, "model_group", permission.ActionEnable); err != nil {
+		return nil, err
+	}
 	tenantID, err := requireCurrentTenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -604,6 +610,9 @@ func (m *ModelProviderService) ReorderModelGroupMembers(ctx context.Context, gro
 }
 
 func authorizeModelGroup(ctx context.Context, group *entity.TenantModelGroup, write bool) error {
+	if err := permission.NewDatabaseChecker(dao.DB).CheckFeature(ctx, "model_group", permission.ActionEnable); err != nil {
+		return err
+	}
 	userID := strings.TrimSpace(permission.UserIDFromContext(ctx))
 	if group == nil || userID == "" {
 		return common.NewCodedError(common.CodeUnauthorized, "User and model group are required")

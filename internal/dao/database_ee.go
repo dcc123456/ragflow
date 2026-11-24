@@ -42,6 +42,12 @@ func permissionDataModelsEE() []interface{} {
 	}
 }
 
+// permissionRuntimeModelsEE ensures role permission configuration columns are
+// present before the role-management APIs start handling writes.
+func permissionRuntimeModelsEE() []interface{} {
+	return []interface{}{&entity.RoleResource{}}
+}
+
 // chunkVersionDataModelsEE returns the chunk history table. Only the edition
 // that keeps a per-chunk edit history creates it.
 func chunkVersionDataModelsEE() []interface{} {

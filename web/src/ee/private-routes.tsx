@@ -11,7 +11,7 @@ export enum PrivateRoutes {
   Tickets = '/support',
   TicketCreate = '/support/create',
   TicketDetail = '/support/:id',
-  AdminRoleConfigModelProviders = '/admin/roles/:roleName/model-providers',
+  AdminRoleConfiguration = '/admin/roles/:roleName/configuration',
   AdminModelUsageStatistics = '/admin/model-usage-statistics',
   AdminIngestionTasks = '/admin/ingestion-tasks',
   AdminSettings = '/admin/settings',
@@ -136,10 +136,6 @@ export const privateRoutes: PrivateRoute[] = [
         Component: () => import('@/pages/admin/user-detail'),
       },
       {
-        path: PrivateRoutes.AdminRoleConfigModelProviders,
-        Component: () => import('@/ee/pages/admin/roles/model-providers'),
-      },
-      {
         path: Routes.Admin,
         matchIndex: 2,
         children: [
@@ -167,6 +163,10 @@ export const privateRoutes: PrivateRoute[] = [
                 replace: [Routes.AdminRoles],
                 path: Routes.AdminRoles,
                 Component: () => import('@/ee/pages/admin/roles'),
+              },
+              {
+                path: PrivateRoutes.AdminRoleConfiguration,
+                Component: () => import('@/ee/pages/admin/roles/configuration'),
               },
               {
                 path: PrivateRoutes.AdminModelUsageStatistics,
@@ -233,6 +233,12 @@ export const privateRoutes: PrivateRoute[] = [
             // Use the enterprise member/group/role UI for the sidebar route.
             path: Routes.Team,
             override: () => import('@/ee/pages/user-setting/team'),
+          },
+          {
+            path: `${Routes.Team}/roles/:roleId`,
+            Component: () =>
+              import('@/ee/pages/user-setting/team/role-configuration-page'),
+            errorElement: <FallbackComponent />,
           },
         ],
       },

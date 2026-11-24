@@ -29,6 +29,9 @@ const (
 	RoleResourceTypeModelProvider
 	RoleResourceTypeMCP
 	RoleResourceTypeInvitation
+	RoleResourceTypeModelGroup
+	RoleResourceTypeDataSource
+	RoleResourceTypeChatChannel
 )
 
 const (
@@ -50,10 +53,12 @@ type Role struct {
 func (Role) TableName() string { return "role" }
 
 type RoleResource struct {
-	ID           int32 `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
-	RoleID       int32 `gorm:"column:role_id;not null;index" json:"role_id"`
-	ResourceType int64 `gorm:"column:resource_type;not null" json:"resource_type"`
-	Action       int32 `gorm:"column:action;not null" json:"action"`
+	ID           int32   `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
+	RoleID       int32   `gorm:"column:role_id;not null;index" json:"role_id"`
+	ResourceType int64   `gorm:"column:resource_type;not null" json:"resource_type"`
+	ResourceID   string  `gorm:"column:resource_id;size:128;not null;default:'';index" json:"resource_id"`
+	Action       int32   `gorm:"column:action;not null" json:"action"`
+	Config       JSONMap `gorm:"column:config;type:json" json:"config,omitempty"`
 	BaseModel
 }
 

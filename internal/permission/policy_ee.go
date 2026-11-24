@@ -253,7 +253,52 @@ func (p *enterprisePolicy) ResolveAccess(ctx context.Context, ref ResourceRef) (
 			return Access{}, ErrPermissionDenied
 		}
 		if feature == "model_provider" {
+			providerName, nameErr := p.modelProviderNameForResource(state.ctx, ref)
+			if nameErr != nil {
+				return Access{}, nameErr
+			}
+			providerEnabled, providerErr := p.modelProviderEnabledForRole(state.ctx, state.membership, providerName)
+			if providerErr != nil {
+				return Access{}, providerErr
+			}
+			if !providerEnabled {
+				return Access{}, ErrPermissionDenied
+			}
 			featureMask |= entity.RoleActionRead | entity.RoleActionWrite | entity.RoleActionShare
+		}
+	}
+	var integrationFeature Feature
+	switch ref.Kind {
+	case ResourceKindConnector, ResourceKindSyncTask:
+		integrationFeature = "data_source"
+	case ResourceKindChatChannel:
+		integrationFeature = "chat_channel"
+	}
+	if integrationFeature != "" {
+		integrationMask, featureErr := p.effectiveFeatureMask(
+			state.ctx,
+			UserIDFromContext(state.ctx),
+			state.membership,
+			integrationFeature,
+		)
+		if featureErr != nil {
+			return Access{}, featureErr
+		}
+		if integrationMask&entity.RoleActionEnable == 0 {
+			return Access{}, ErrPermissionDenied
+		}
+		item, itemErr := p.integrationItemForResource(state.ctx, ref)
+		if itemErr != nil {
+			return Access{}, itemErr
+		}
+		if item != "" {
+			itemEnabled, itemErr := p.featureItemEnabledForRole(state.ctx, state.membership, integrationFeature, normalizeFeatureItem(string(integrationFeature), item))
+			if itemErr != nil {
+				return Access{}, itemErr
+			}
+			if !itemEnabled {
+				return Access{}, ErrPermissionDenied
+			}
 		}
 	}
 	operations := operationsForMasks(featureMask, state.mask, hasFeature)
@@ -270,6 +315,35 @@ func (p *enterprisePolicy) ResolveAccess(ctx context.Context, ref ResourceRef) (
 		PermissionMask: state.mask,
 		Operations:     operations,
 	}, nil
+}
+
+func (p *enterprisePolicy) integrationItemForResource(ctx context.Context, ref ResourceRef) (string, error) {
+	var item string
+	var query *gorm.DB
+	switch ref.Kind {
+	case ResourceKindConnector:
+		query = p.db.WithContext(ctx).Model(&entity.Connector{}).Select("source").Where("id = ?", ref.ID)
+	case ResourceKindSyncTask:
+		query = p.db.WithContext(ctx).Model(&entity.SyncLogs{}).
+			Select("connector.source").
+			Joins("JOIN connector ON connector.id = sync_logs.connector_id").
+			Where("sync_logs.id = ?", ref.ID)
+	case ResourceKindChatChannel:
+		query = p.db.WithContext(ctx).Model(&entity.ChatChannel{}).Select("channel").Where("id = ?", ref.ID)
+	default:
+		return "", nil
+	}
+	if err := query.Take(&item).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return "", ErrResourceNotFound
+		}
+		return "", fmt.Errorf("permission: resolve integration item for %s: %w", ref.Kind, err)
+	}
+	item = strings.TrimSpace(item)
+	if item == "" {
+		return "", ErrPermissionDenied
+	}
+	return item, nil
 }
 
 func (p *enterprisePolicy) ResolveAccesses(ctx context.Context, refs []ResourceRef) (map[ResourceRef]Access, error) {
@@ -781,8 +855,13 @@ func (p *enterprisePolicy) modelResourceReadQueryScope(ctx context.Context, quer
 	tenantID := membership.Membership.TenantID
 	userID := UserIDFromContext(ctx)
 	membershipID := membership.Membership.ID
+	disabledProviders, err := p.disabledModelProvidersForRole(ctx, membership)
+	if err != nil {
+		return QueryScope{}, true, err
+	}
 	db := p.db.WithContext(ctx)
 	applyInstanceAccess := func(query *gorm.DB, instanceAlias, providerAlias string) *gorm.DB {
+		query = p.applyModelProviderRoleScope(query, providerAlias, disabledProviders)
 		groupMembership := db.Table("group_member AS model_scope_group_member").
 			Select("1").
 			Joins("JOIN group_info AS model_scope_group ON model_scope_group.id = model_scope_group_member.group_id").
@@ -806,6 +885,7 @@ func (p *enterprisePolicy) modelResourceReadQueryScope(ctx context.Context, quer
 	return QueryScope{apply: func(query *gorm.DB) *gorm.DB {
 		switch kind {
 		case ResourceKindModelProvider:
+			query = p.applyModelProviderRoleScope(query, "tenant_model_provider", disabledProviders)
 			readableInstance := db.Table("tenant_model_instance AS model_scope_instance").
 				Select("1").
 				Joins("JOIN tenant_model_provider AS model_scope_provider ON model_scope_provider.id = model_scope_instance.provider_id").
@@ -838,6 +918,13 @@ func (p *enterprisePolicy) modelResourceReadQueryScope(ctx context.Context, quer
 			return query.Where("1 = 0")
 		}
 	}}, true, nil
+}
+
+func (p *enterprisePolicy) applyModelProviderRoleScope(query *gorm.DB, providerAlias string, disabledProviders []string) *gorm.DB {
+	if len(disabledProviders) == 0 {
+		return query
+	}
+	return query.Where(providerAlias+".provider_name NOT IN ?", disabledProviders)
 }
 
 func (p *enterprisePolicy) mcpServerReadQueryScope(ctx context.Context) (QueryScope, bool, error) {
@@ -923,20 +1010,90 @@ func (p *enterprisePolicy) loadResource(ctx context.Context, ref ResourceRef) (*
 }
 
 func (p *enterprisePolicy) checkFeatureRoles(ctx context.Context, userID string, membership *enterpriseMembership, feature Feature, action Action) error {
-	mask, err := p.effectiveFeatureMask(ctx, userID, membership, feature)
+	featureName, itemName, hasItem := strings.Cut(string(feature), "::")
+	if !hasItem {
+		featureName = string(feature)
+	}
+	mask, err := p.effectiveFeatureMask(ctx, userID, membership, Feature(featureName))
 	if err != nil {
 		return err
 	}
 	if mask&entity.RoleActionEnable == 0 {
 		return ErrPermissionDenied
 	}
-	if feature == "model_provider" {
-		return nil
-	}
 	if action != ActionEnable && mask&featureActionMask(action) == 0 {
 		return ErrPermissionDenied
 	}
+	if hasItem {
+		itemEnabled, itemErr := p.featureItemEnabledForRole(ctx, membership, Feature(featureName), normalizeFeatureItem(featureName, itemName))
+		if itemErr != nil {
+			return itemErr
+		}
+		if !itemEnabled {
+			return ErrPermissionDenied
+		}
+	}
+	if featureName == "model_provider" {
+		return nil
+	}
 	return nil
+}
+
+func normalizeFeatureItem(feature, item string) string {
+	if feature == "data_source" {
+		return strings.ReplaceAll(item, "-", "_")
+	}
+	return item
+}
+
+func (p *enterprisePolicy) featureItemEnabledForRole(ctx context.Context, membership *enterpriseMembership, feature Feature, item string) (bool, error) {
+	if membership == nil || item == "" {
+		return false, nil
+	}
+	resourceType, ok := enterpriseFeatureRoleType(feature)
+	if !ok {
+		return false, ErrInvalidPermission
+	}
+	if membership.SystemRoleID != nil {
+		enabled, err := p.roleFeatureItemEnabled(ctx, *membership.SystemRoleID, resourceType, item)
+		if err != nil || !enabled {
+			return enabled, err
+		}
+	}
+	if membership.RoleValue == "owner" {
+		return true, nil
+	}
+	roleID, err := strconv.ParseInt(membership.RoleValue, 10, 32)
+	if err != nil || roleID <= 0 {
+		return false, ErrPermissionDenied
+	}
+	return p.roleFeatureItemEnabled(ctx, int32(roleID), resourceType, item)
+}
+
+func (p *enterprisePolicy) roleFeatureItemEnabled(ctx context.Context, roleID int32, resourceType int64, item string) (bool, error) {
+	var rows []entity.RoleResource
+	if err := p.db.WithContext(ctx).
+		Where("role_id = ? AND resource_type = ? AND resource_id IN ?", roleID, resourceType, []string{"", item}).
+		Find(&rows).Error; err != nil {
+		return false, fmt.Errorf("permission: load role integration item permission: %w", err)
+	}
+	for _, row := range rows {
+		if row.ResourceID == item && row.Action&entity.RoleActionEnable == 0 {
+			return false, nil
+		}
+		if row.ResourceID != "" {
+			continue
+		}
+		items, ok := row.Config["items"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		enabled, exists := items[item].(bool)
+		if exists && !enabled {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 func (p *enterprisePolicy) effectiveFeatureMask(ctx context.Context, userID string, membership *enterpriseMembership, feature Feature) (int32, error) {
@@ -983,14 +1140,119 @@ func (p *enterprisePolicy) roleResourceMask(ctx context.Context, roleID int32, t
 		return 0, fmt.Errorf("permission: load role %d: %w", roleID, err)
 	}
 	var rows []entity.RoleResource
-	if err := p.db.WithContext(ctx).Where("role_id = ? AND resource_type = ?", roleID, resourceType).Order("id ASC").Find(&rows).Error; err != nil {
+	if err := p.db.WithContext(ctx).Where("role_id = ? AND resource_type = ? AND resource_id = ?", roleID, resourceType, "").Order("id ASC").Find(&rows).Error; err != nil {
 		return 0, fmt.Errorf("permission: load role feature permission: %w", err)
 	}
 	var mask int32
 	for _, row := range rows {
 		mask |= row.Action
 	}
+	if len(rows) == 0 {
+		switch resourceType {
+		case entity.RoleResourceTypeModelProvider,
+			entity.RoleResourceTypeModelGroup,
+			entity.RoleResourceTypeDataSource,
+			entity.RoleResourceTypeChatChannel:
+			return entity.RoleActionEnable, nil
+		}
+	}
 	return mask, nil
+}
+
+func (p *enterprisePolicy) modelProviderNameForResource(ctx context.Context, ref ResourceRef) (string, error) {
+	var providerName string
+	query := p.db.WithContext(ctx)
+	switch ref.Kind {
+	case ResourceKindModelProvider:
+		query = query.Model(&entity.TenantModelProvider{}).Select("provider_name").Where("id = ?", ref.ID)
+	case ResourceKindModelInstance:
+		query = query.Table("tenant_model_instance").
+			Select("tenant_model_provider.provider_name").
+			Joins("JOIN tenant_model_provider ON tenant_model_provider.id = tenant_model_instance.provider_id").
+			Where("tenant_model_instance.id = ?", ref.ID)
+	case ResourceKindModel:
+		query = query.Table("tenant_model").
+			Select("tenant_model_provider.provider_name").
+			Joins("JOIN tenant_model_provider ON tenant_model_provider.id = tenant_model.provider_id").
+			Where("tenant_model.id = ?", ref.ID)
+	default:
+		return "", nil
+	}
+	if err := query.Take(&providerName).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return "", ErrResourceNotFound
+		}
+		return "", fmt.Errorf("permission: resolve model provider for %s: %w", ref.Kind, err)
+	}
+	return providerName, nil
+}
+
+func (p *enterprisePolicy) modelProviderEnabledForRole(ctx context.Context, membership *enterpriseMembership, providerName string) (bool, error) {
+	providerName = strings.TrimSpace(providerName)
+	if providerName == "" || membership == nil {
+		return true, nil
+	}
+	disabledProviders, err := p.disabledModelProvidersForRole(ctx, membership)
+	if err != nil {
+		return false, err
+	}
+	for _, disabledProvider := range disabledProviders {
+		if disabledProvider == providerName {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+func (p *enterprisePolicy) disabledModelProvidersForRole(ctx context.Context, membership *enterpriseMembership) ([]string, error) {
+	if membership == nil || membership.RoleValue == "owner" {
+		if membership == nil || membership.SystemRoleID == nil {
+			return nil, nil
+		}
+	}
+	roleIDs := make([]int32, 0, 2)
+	if membership.SystemRoleID != nil {
+		roleIDs = append(roleIDs, *membership.SystemRoleID)
+	}
+	if membership.RoleValue != "owner" {
+		roleID, err := strconv.ParseInt(membership.RoleValue, 10, 32)
+		if err != nil || roleID <= 0 {
+			return nil, ErrPermissionDenied
+		}
+		roleIDs = append(roleIDs, int32(roleID))
+	}
+	disabled := make(map[string]struct{})
+	for _, roleID := range roleIDs {
+		var rows []entity.RoleResource
+		if err := p.db.WithContext(ctx).
+			Where("role_id = ? AND resource_type = ?", roleID, entity.RoleResourceTypeModelProvider).
+			Find(&rows).Error; err != nil {
+			return nil, fmt.Errorf("permission: load model provider role permission: %w", err)
+		}
+		for _, row := range rows {
+			if row.ResourceID != "" {
+				if row.Action&entity.RoleActionEnable == 0 {
+					disabled[row.ResourceID] = struct{}{}
+				}
+				continue
+			}
+			configuredItems, ok := row.Config["items"].(map[string]interface{})
+			if !ok {
+				continue
+			}
+			for provider, rawEnabled := range configuredItems {
+				enabled, ok := rawEnabled.(bool)
+				if ok && !enabled {
+					disabled[provider] = struct{}{}
+				}
+			}
+		}
+	}
+	disabledProviders := make([]string, 0, len(disabled))
+	for provider := range disabled {
+		disabledProviders = append(disabledProviders, provider)
+	}
+	return disabledProviders, nil
 }
 
 func (p *enterprisePolicy) permissionResourceIDs(ctx context.Context, ref ResourceRef) ([]string, error) {
@@ -1279,6 +1541,12 @@ func enterpriseFeatureRoleType(feature Feature) (int64, bool) {
 		return entity.RoleResourceTypeMemory, true
 	case "model_provider":
 		return entity.RoleResourceTypeModelProvider, true
+	case "model_group":
+		return entity.RoleResourceTypeModelGroup, true
+	case "data_source":
+		return entity.RoleResourceTypeDataSource, true
+	case "chat_channel":
+		return entity.RoleResourceTypeChatChannel, true
 	case "mcp":
 		return entity.RoleResourceTypeMCP, true
 	default:

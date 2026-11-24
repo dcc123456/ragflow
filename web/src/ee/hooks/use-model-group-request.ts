@@ -121,6 +121,10 @@ export function useDeleteModelGroup(groupId: string) {
     'delete',
     async () => (await modelGroupService.remove(groupId)).data.code,
     (queryClient) => {
+      queryClient.setQueriesData<IModelGroup[]>(
+        { queryKey: ModelGroupKeys.list() },
+        (groups) => groups?.filter((group) => group.id !== groupId),
+      );
       queryClient.invalidateQueries({ queryKey: ModelGroupKeys.list() });
       queryClient.removeQueries({
         queryKey: ModelGroupKeys.detail(groupId),

@@ -43,6 +43,9 @@ var roleResourceTypes = map[string]int64{
 	"group":          entity.RoleResourceTypeGroup,
 	"memory":         entity.RoleResourceTypeMemory,
 	"model_provider": entity.RoleResourceTypeModelProvider,
+	"model_group":    entity.RoleResourceTypeModelGroup,
+	"data_source":    entity.RoleResourceTypeDataSource,
+	"chat_channel":   entity.RoleResourceTypeChatChannel,
 	"mcp":            entity.RoleResourceTypeMCP,
 	"invitation":     entity.RoleResourceTypeInvitation,
 }
@@ -56,6 +59,9 @@ var roleResourceNamesByType = map[int64]string{
 	entity.RoleResourceTypeGroup:         "group",
 	entity.RoleResourceTypeMemory:        "memory",
 	entity.RoleResourceTypeModelProvider: "model_provider",
+	entity.RoleResourceTypeModelGroup:    "model_group",
+	entity.RoleResourceTypeDataSource:    "data_source",
+	entity.RoleResourceTypeChatChannel:   "chat_channel",
 	entity.RoleResourceTypeMCP:           "mcp",
 	entity.RoleResourceTypeInvitation:    "invitation",
 }
@@ -69,6 +75,9 @@ var roleResourceNames = []string{
 	"group",
 	"memory",
 	"model_provider",
+	"model_group",
+	"data_source",
+	"chat_channel",
 	"mcp",
 	"invitation",
 }
@@ -81,12 +90,37 @@ var roleActionMasks = map[string]int32{
 }
 
 var roleDefaultModelTypes = map[string]entity.ModelType{
-	"llm":       entity.ModelTypeChat | entity.ModelTypeImage2Text,
+	"chat":      entity.ModelTypeChat,
 	"embedding": entity.ModelTypeEmbedding,
-	"vlm":       entity.ModelTypeImage2Text,
 	"asr":       entity.ModelTypeSpeech2Text,
+	"vision":    entity.ModelTypeImage2Text,
 	"rerank":    entity.ModelTypeRerank,
 	"tts":       entity.ModelTypeTTS,
+	"ocr":       entity.ModelTypeOCR,
+	"decision":  entity.ModelTypeDecision,
+	"scoring":   entity.ModelTypeScoring,
+}
+
+func canonicalRoleDefaultModelType(modelType string) string {
+	switch modelType {
+	case "llm":
+		return "chat"
+	case "vlm":
+		return "vision"
+	default:
+		return modelType
+	}
+}
+
+func roleDefaultModelStorageTypes(modelType string) []string {
+	switch modelType {
+	case "chat":
+		return []string{"chat", "llm"}
+	case "vision":
+		return []string{"vision", "vlm"}
+	default:
+		return []string{modelType}
+	}
 }
 
 // ListRoles returns only system-level roles. Tenant roles are managed in the
@@ -283,6 +317,123 @@ func (s *Service) RevokeRolePermission(ctx context.Context, actorUserID, roleNam
 	return s.changeRolePermission(ctx, actorUserID, roleName, actions, resource, false)
 }
 
+// SetRolePermissionMatrix replaces the complete system role permission matrix.
+func (s *Service) SetRolePermissionMatrix(ctx context.Context, actorUserID, roleName string, requested map[string]map[string]bool, expandedItems []RolePermissionItem) (map[string]interface{}, error) {
+	if strings.TrimSpace(actorUserID) == "" {
+		return nil, common.NewCodedError(common.CodeUnauthorized, "Admin user is required")
+	}
+	if requested == nil {
+		return nil, common.NewCodedError(common.CodeBadRequest, "permissions is required")
+	}
+	permissions := make(map[string]map[string]bool, len(requested))
+	for key, actions := range requested {
+		key = strings.TrimSpace(key)
+		resource := strings.ToLower(key)
+		if _, ok := roleResourceTypes[resource]; !ok {
+			return nil, common.NewCodedError(common.CodeBadRequest, "Unknown role resource: "+resource)
+		}
+		clean := make(map[string]bool, len(actions))
+		for action, enabled := range actions {
+			action = strings.ToLower(strings.TrimSpace(action))
+			_, supported := roleActionMasks[action]
+			if !supported || ((resource == "model_provider" || resource == "invitation" || resource == "model_group" || resource == "data_source" || resource == "chat_channel") && action != "enable") {
+				if !enabled {
+					continue
+				}
+				return nil, common.NewCodedError(common.CodeBadRequest, fmt.Sprintf("Action %q is not supported for resource %q", action, resource))
+			}
+			clean[action] = enabled
+		}
+		permissions[resource] = clean
+	}
+	for _, expanded := range expandedItems {
+		resource := strings.ToLower(strings.TrimSpace(expanded.ResourceType))
+		item := strings.TrimSpace(expanded.Item)
+		if (resource != "model_provider" && resource != "data_source" && resource != "chat_channel") || item == "" {
+			return nil, common.NewCodedError(common.CodeBadRequest, "Invalid expanded role permission item")
+		}
+		if permissions[resource] == nil {
+			permissions[resource] = map[string]bool{}
+		}
+		permissions[resource][item] = expanded.Enabled
+	}
+	for _, resource := range []string{"model_provider", "data_source", "chat_channel"} {
+		for item, enabled := range permissions[resource] {
+			if _, isAction := roleActionMasks[item]; !isAction && enabled {
+				permissions[resource]["enable"] = true
+			}
+		}
+	}
+	for resource, actions := range permissions {
+		if actions["write"] || actions["share"] {
+			actions["enable"] = true
+			actions["read"] = true
+		} else if actions["read"] {
+			actions["enable"] = true
+		} else if enabled, specified := actions["enable"]; specified && !enabled {
+			actions["read"] = false
+			actions["write"] = false
+			actions["share"] = false
+		}
+		permissions[resource] = actions
+	}
+
+	var role *entity.Role
+	err := dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var err error
+		role, err = findSystemRole(tx, roleName, true)
+		if err != nil {
+			return err
+		}
+		rows := make([]entity.RoleResource, 0, len(roleResourceNames))
+		for _, resource := range roleResourceNames {
+			actions := permissions[resource]
+			var mask int32
+			for action, enabled := range actions {
+				if enabled {
+					if bit, ok := roleActionMasks[action]; ok {
+						mask |= bit
+					}
+				}
+			}
+			config := entity.JSONMap{}
+			if resource == "model_provider" || resource == "data_source" || resource == "chat_channel" {
+				items := make(map[string]interface{})
+				for item, enabled := range actions {
+					if _, isAction := roleActionMasks[item]; !isAction {
+						items[item] = enabled
+					}
+				}
+				if len(items) > 0 {
+					config["items"] = items
+				}
+			}
+			if mask != 0 || len(config) > 0 || resource == "model_provider" || resource == "model_group" || resource == "data_source" || resource == "chat_channel" {
+				rows = append(rows, entity.RoleResource{RoleID: role.ID, ResourceType: roleResourceTypes[resource], Action: mask, Config: config})
+			}
+		}
+		if err := tx.Where("role_id = ?", role.ID).Delete(&entity.RoleResource{}).Error; err != nil {
+			return fmt.Errorf("delete system role permissions: %w", err)
+		}
+		if len(rows) > 0 {
+			if err := tx.Create(&rows).Error; err != nil {
+				return fmt.Errorf("save system role permissions: %w", err)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return s.ShowRolePermission(ctx, role.RoleName)
+}
+
+type RolePermissionItem struct {
+	ResourceType string `json:"resource_type"`
+	Item         string `json:"item"`
+	Enabled      bool   `json:"enabled"`
+}
+
 func (s *Service) changeRolePermission(ctx context.Context, actorUserID, roleName string, actions []string, resource string, grant bool) (map[string]interface{}, error) {
 	actorUserID = strings.TrimSpace(actorUserID)
 	if actorUserID == "" {
@@ -318,15 +469,25 @@ func (s *Service) changeRolePermission(ctx context.Context, actorUserID, roleNam
 		}
 		if grant {
 			updatedMask = current | mask
+			if updatedMask&(entity.RoleActionWrite|entity.RoleActionShare) != 0 {
+				updatedMask |= entity.RoleActionRead | entity.RoleActionEnable
+			} else if updatedMask&entity.RoleActionRead != 0 {
+				updatedMask |= entity.RoleActionEnable
+			}
 		} else {
 			updatedMask = current &^ mask
+			if mask&entity.RoleActionEnable != 0 {
+				updatedMask = 0
+			} else if updatedMask&entity.RoleActionRead == 0 {
+				updatedMask &^= entity.RoleActionWrite | entity.RoleActionShare
+			}
 		}
 		if len(rows) == 1 && updatedMask == current {
 			return nil
 		}
 
 		if len(rows) == 0 {
-			if updatedMask != 0 {
+			if updatedMask != 0 || resource == "model_provider" || resource == "model_group" || resource == "data_source" || resource == "chat_channel" {
 				if err := tx.Create(&entity.RoleResource{
 					RoleID:       role.ID,
 					ResourceType: resourceType,
@@ -447,6 +608,22 @@ func (s *Service) ListRolesWithPermission(ctx context.Context) ([]map[string]int
 	if err := db.Where("role_id IN ?", roleIDs).Order("id ASC").Find(&rows).Error; err != nil {
 		return nil, fmt.Errorf("failed to list system role permissions: %w", err)
 	}
+	type tenantRoleCount struct {
+		RoleID int32 `gorm:"column:role_id"`
+		Count  int64 `gorm:"column:count"`
+	}
+	var tenantCounts []tenantRoleCount
+	if err := db.Model(&entity.Tenant{}).
+		Select("role_id, COUNT(*) AS count").
+		Where("role_id IS NOT NULL").
+		Group("role_id").
+		Scan(&tenantCounts).Error; err != nil {
+		return nil, fmt.Errorf("failed to count Tenants by system role: %w", err)
+	}
+	tenantCountByRole := make(map[int32]int64, len(tenantCounts))
+	for _, count := range tenantCounts {
+		tenantCountByRole[count.RoleID] = count.Count
+	}
 
 	rowsByRole := make(map[int32][]entity.RoleResource, len(roles))
 	for _, row := range rows {
@@ -459,6 +636,7 @@ func (s *Service) ListRolesWithPermission(ctx context.Context) ([]map[string]int
 		}
 		roleMap := roleResponse(&role)
 		roleMap["permissions"] = permissions
+		roleMap["tenant_count"] = tenantCountByRole[role.ID]
 		result = append(result, roleMap)
 	}
 	return result, nil
@@ -473,7 +651,7 @@ func roleActionMask(resource string, actions []string) (int32, error) {
 	for _, action := range actions {
 		action = strings.ToLower(strings.TrimSpace(action))
 		bit, ok := roleActionMasks[action]
-		if !ok || ((resource == "model_provider" || resource == "invitation") && action != "enable") {
+		if !ok || ((resource == "model_provider" || resource == "model_group" || resource == "data_source" || resource == "chat_channel" || resource == "invitation") && action != "enable") {
 			return 0, common.NewCodedError(common.CodeBadRequest, fmt.Sprintf("Action %q is not supported for resource %q", action, resource))
 		}
 		mask |= bit
@@ -491,17 +669,36 @@ func permissionMatrix(rows []entity.RoleResource) (map[string]map[string]bool, e
 			"share":  false,
 		}
 	}
-
+	seen := make(map[string]bool, len(roleResourceNames))
 	for _, row := range rows {
 		resource, ok := roleResourceNamesByType[row.ResourceType]
 		if !ok {
 			return nil, fmt.Errorf("unknown role resource type %d for role %d", row.ResourceType, row.RoleID)
 		}
 		actions := permissions[resource]
+		seen[resource] = true
 		actions["enable"] = actions["enable"] || row.Action&entity.RoleActionEnable != 0
 		actions["read"] = actions["read"] || row.Action&entity.RoleActionRead != 0
 		actions["write"] = actions["write"] || row.Action&entity.RoleActionWrite != 0
 		actions["share"] = actions["share"] || row.Action&entity.RoleActionShare != 0
+		if resource == "model_provider" || resource == "data_source" || resource == "chat_channel" {
+			items, ok := row.Config["items"].(map[string]interface{})
+			if ok {
+				prefix := resource + "::"
+				for item, rawEnabled := range items {
+					enabled, ok := rawEnabled.(bool)
+					if !ok {
+						return nil, fmt.Errorf("invalid %s permission config item %q for role %d", resource, item, row.RoleID)
+					}
+					permissions[prefix+item] = map[string]bool{"enable": enabled}
+				}
+			}
+		}
+	}
+	for _, resource := range []string{"model_provider", "model_group", "data_source", "chat_channel"} {
+		if !seen[resource] {
+			permissions[resource]["enable"] = true
+		}
 	}
 	return permissions, nil
 }
@@ -555,13 +752,15 @@ func (s *Service) ShowRoleDefaultModels(ctx context.Context, roleName string) (m
 	items := make([]map[string]interface{}, 0, len(rows))
 	configured := make(map[string]struct{}, len(roleDefaultModelTypes))
 	for _, row := range rows {
-		if _, ok := roleDefaultModelTypes[row.ModelType]; !ok {
+		modelType := canonicalRoleDefaultModelType(row.ModelType)
+		if _, ok := roleDefaultModelTypes[modelType]; !ok {
 			continue
 		}
-		if _, duplicate := configured[row.ModelType]; duplicate {
+		if _, duplicate := configured[modelType]; duplicate {
 			continue
 		}
-		configured[row.ModelType] = struct{}{}
+		configured[modelType] = struct{}{}
+		row.ModelType = modelType
 		items = append(items, roleDefaultModelResponse(&row))
 	}
 
@@ -581,7 +780,7 @@ func (s *Service) ShowRoleDefaultModels(ctx context.Context, roleName string) (m
 // SetRoleDefaultModel sets one model type on a system role. An empty model ID
 // clears that type, matching the optional model controls in the admin UI.
 func (s *Service) SetRoleDefaultModel(ctx context.Context, roleName, modelID, modelType string) (bool, error) {
-	modelType = strings.TrimSpace(modelType)
+	modelType = canonicalRoleDefaultModelType(strings.TrimSpace(modelType))
 	modelTypeBit, ok := roleDefaultModelTypes[modelType]
 	if !ok {
 		return false, common.NewCodedError(common.CodeBadRequest, "Unsupported default model type")
@@ -596,7 +795,7 @@ func (s *Service) SetRoleDefaultModel(ctx context.Context, roleName, modelID, mo
 
 		modelID = strings.TrimSpace(modelID)
 		if modelID == "" {
-			if err := tx.Where("role_id = ? AND model_type = ?", role.ID, modelType).
+			if err := tx.Where("role_id = ? AND model_type IN ?", role.ID, roleDefaultModelStorageTypes(modelType)).
 				Delete(&entity.RoleDefaultModel{}).Error; err != nil {
 				return fmt.Errorf("failed to clear role default model: %w", err)
 			}
@@ -640,7 +839,7 @@ func (s *Service) SetRoleDefaultModel(ctx context.Context, roleName, modelID, mo
 		}
 
 		var existing []entity.RoleDefaultModel
-		if err := tx.Where("role_id = ? AND model_type = ?", role.ID, modelType).
+		if err := tx.Where("role_id = ? AND model_type IN ?", role.ID, roleDefaultModelStorageTypes(modelType)).
 			Order("id ASC").Clauses(clause.Locking{Strength: "UPDATE"}).Find(&existing).Error; err != nil {
 			return fmt.Errorf("failed to find existing role default model: %w", err)
 		}
@@ -651,7 +850,7 @@ func (s *Service) SetRoleDefaultModel(ctx context.Context, roleName, modelID, mo
 		}
 
 		if err := tx.Model(&entity.RoleDefaultModel{}).Where("id = ?", existing[0].ID).
-			Updates(map[string]interface{}{"model_id": model.ID, "tenant_id": ""}).Error; err != nil {
+			Updates(map[string]interface{}{"model_type": modelType, "model_id": model.ID, "tenant_id": ""}).Error; err != nil {
 			return fmt.Errorf("failed to update role default model: %w", err)
 		}
 		if len(existing) > 1 {
@@ -673,7 +872,7 @@ func (s *Service) SetRoleDefaultModel(ctx context.Context, roleName, modelID, mo
 
 // ResetRoleDefaultModel clears one model type from a system role.
 func (s *Service) ResetRoleDefaultModel(ctx context.Context, roleName, modelType string) (bool, error) {
-	modelType = strings.TrimSpace(modelType)
+	modelType = canonicalRoleDefaultModelType(strings.TrimSpace(modelType))
 	if _, ok := roleDefaultModelTypes[modelType]; !ok {
 		return false, common.NewCodedError(common.CodeBadRequest, "Unsupported default model type")
 	}
@@ -683,7 +882,7 @@ func (s *Service) ResetRoleDefaultModel(ctx context.Context, roleName, modelType
 		if err != nil {
 			return err
 		}
-		if err := tx.Where("role_id = ? AND model_type = ?", role.ID, modelType).
+		if err := tx.Where("role_id = ? AND model_type IN ?", role.ID, roleDefaultModelStorageTypes(modelType)).
 			Delete(&entity.RoleDefaultModel{}).Error; err != nil {
 			return fmt.Errorf("failed to reset role default model: %w", err)
 		}

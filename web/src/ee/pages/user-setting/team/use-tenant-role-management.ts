@@ -1,14 +1,18 @@
 import {
+  ITenantRoleDefaultModels,
   ITenantRolePermissionMatrix,
   ITenantRolePermissions,
   ITenantRoleResource,
+  TenantRoleDefaultModelType,
 } from '@/ee/interfaces/database/team';
 import {
   createTenantRole,
   deleteTenantRole,
+  getTenantRoleDefaultModels,
   getTenantRolePermissions,
   listTenantRoleResources,
   setTenantDefaultRole,
+  setTenantRoleDefaultModel,
   setTenantRolePermissions,
   updateTenantRole,
 } from '@/ee/services/tenant-role-service';
@@ -76,7 +80,7 @@ export const useTenantRolePermissions = (
   roleId: number,
   enabled: boolean,
 ) => {
-  const { data, isFetching, isFetched } = useQuery<
+  const { data, isFetching, isFetched, isError } = useQuery<
     ITenantRolePermissions | undefined
   >({
     queryKey: TenantRoleKeys.permissions(tenantId, roleId),
@@ -88,7 +92,52 @@ export const useTenantRolePermissions = (
     },
   });
 
-  return { data, loading: isFetching && !isFetched };
+  return { data, loading: isFetching && !isFetched, isError };
+};
+
+export const useTenantRoleDefaultModels = (
+  tenantId: string,
+  roleId: number,
+  enabled: boolean,
+) => {
+  const { data, isFetching, isFetched, isError } = useQuery<
+    ITenantRoleDefaultModels | undefined
+  >({
+    queryKey: TenantRoleKeys.defaultModels(tenantId, roleId),
+    enabled: enabled && !!tenantId && roleId > 0,
+    queryFn: async () => {
+      const { data } = await getTenantRoleDefaultModels(roleId);
+
+      return data?.data;
+    },
+  });
+
+  return { data, loading: isFetching && !isFetched, isError };
+};
+
+export const useSetTenantRoleDefaultModel = (
+  tenantId: string,
+  roleId: number,
+) => {
+  const queryClient = useQueryClient();
+  const { loading, run } = useRoleMutation(
+    [...TenantRoleKeys.defaultModels(tenantId, roleId), 'update'],
+    async (payload: {
+      model_type: TenantRoleDefaultModelType;
+      model_id: string;
+    }) => {
+      const { data } = await setTenantRoleDefaultModel(roleId, payload);
+
+      return data?.code;
+    },
+    () => {
+      void queryClient.invalidateQueries({
+        queryKey: TenantRoleKeys.defaultModels(tenantId, roleId),
+      });
+    },
+  );
+
+  return { loading, setDefaultModel: run };
 };
 
 export const useCreateTenantRole = (tenantId: string) => {

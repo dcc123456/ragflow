@@ -149,9 +149,14 @@ declare namespace AdminServiceEe {
     | 'agent'
     | 'search'
     | 'file'
-    | 'team'
+    | 'group'
     | 'memory'
-    | 'model_provider';
+    | 'model_provider'
+    | 'model_group'
+    | 'data_source'
+    | 'chat_channel'
+    | 'mcp'
+    | 'invitation';
 
   export type PermissionData = {
     enable: boolean;
@@ -170,6 +175,7 @@ declare namespace AdminServiceEe {
 
   export type ListRoleItemWithPermission = ListRoleItem & {
     permissions: Record<RoleResourceName, PermissionData>;
+    tenant_count: number;
   };
 
   export type RoleDetailWithPermission = {
@@ -461,12 +467,15 @@ declare namespace AdminServiceEe {
   };
 
   export type RoleDefaultModelType =
-    | 'llm'
+    | 'chat'
     | 'embedding'
-    | 'vlm'
+    | 'vision'
     | 'asr'
     | 'rerank'
-    | 'tts';
+    | 'tts'
+    | 'ocr'
+    | 'decision'
+    | 'scoring';
   export type RoleDefaultModelSetupStatus = 'complete' | 'partial' | 'not_set';
 
   export type RoleDefaultModelItem = {

@@ -103,22 +103,25 @@ func ensureDefaultTenantSystemRoleEE(ctx context.Context, db *gorm.DB) error {
 		if err := tx.Create(&role).Error; err != nil {
 			return fmt.Errorf("create default Tenant system role: %w", err)
 		}
-		resources := make([]entity.RoleResource, 0, 10)
-		for _, resourceType := range []int64{
-			entity.RoleResourceTypeDataset,
-			entity.RoleResourceTypeChat,
-			entity.RoleResourceTypeAgent,
-			entity.RoleResourceTypeSearch,
-			entity.RoleResourceTypeFile,
-			entity.RoleResourceTypeGroup,
-			entity.RoleResourceTypeMemory,
-			entity.RoleResourceTypeModelProvider,
-			entity.RoleResourceTypeMCP,
+		resources := make([]entity.RoleResource, 0, 13)
+		for _, permission := range []struct {
+			resourceType int64
+			action       int32
+		}{
+			{entity.RoleResourceTypeDataset, entity.RoleActionAll},
+			{entity.RoleResourceTypeChat, entity.RoleActionAll},
+			{entity.RoleResourceTypeAgent, entity.RoleActionAll},
+			{entity.RoleResourceTypeSearch, entity.RoleActionAll},
+			{entity.RoleResourceTypeFile, entity.RoleActionAll},
+			{entity.RoleResourceTypeGroup, entity.RoleActionAll},
+			{entity.RoleResourceTypeMemory, entity.RoleActionAll},
+			{entity.RoleResourceTypeModelProvider, entity.RoleActionAll},
+			{entity.RoleResourceTypeMCP, entity.RoleActionAll},
 		} {
 			resources = append(resources, entity.RoleResource{
 				RoleID:       role.ID,
-				ResourceType: resourceType,
-				Action:       entity.RoleActionAll,
+				ResourceType: permission.resourceType,
+				Action:       permission.action,
 			})
 		}
 		resources = append(resources, entity.RoleResource{

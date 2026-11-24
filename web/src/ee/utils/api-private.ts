@@ -69,6 +69,8 @@ export default {
   adminListRolesWithPermission: '/api/v1/admin/roles/permission',
   adminGetRolePermissions: (roleName: string) =>
     `${restAPIv1}/admin/roles/${roleName}/permission`,
+  adminSetRolePermissions: (roleName: string) =>
+    `${restAPIv1}/admin/roles/${roleName}/permission`,
   adminRoleDefaultModels: (roleName: string) =>
     `${restAPIv1}/admin/roles/${roleName}/default-models`,
   adminListMyLlm: '/api/v1/admin/llm/my_llms',

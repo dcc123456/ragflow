@@ -314,6 +314,40 @@ export const getRolePermissions = (role: string) =>
     API.adminGetRolePermissions(role),
   );
 
+export const setRolePermissionMatrix = (
+  role: string,
+  permissions: Record<string, Record<string, boolean>>,
+) => {
+  const prefixes = ['model_provider::', 'data_source::', 'chat_channel::'];
+  const basePermissions: typeof permissions = {};
+  const expandedItems: {
+    resource_type: string;
+    item: string;
+    enabled: boolean;
+  }[] = [];
+  Object.entries(permissions).forEach(([rawKey, actions]) => {
+    const key = rawKey.trim();
+    if (!key) return;
+
+    const prefix = prefixes.find((candidate) => key.startsWith(candidate));
+    if (prefix) {
+      const item = key.slice(prefix.length).trim();
+      if (!item) return;
+      expandedItems.push({
+        resource_type: prefix.slice(0, -2),
+        item,
+        enabled: actions.enable === true,
+      });
+    } else {
+      basePermissions[key] = actions;
+    }
+  });
+  return request.put<ResponseData<AdminServiceEe.RoleDetailWithPermission>>(
+    API.adminSetRolePermissions(role),
+    { permissions: basePermissions, expanded_items: expandedItems },
+  );
+};
+
 export const assignRolePermissions = (
   role: string,
   permissions: Partial<AdminServiceEe.AssignRolePermissionsInput>,

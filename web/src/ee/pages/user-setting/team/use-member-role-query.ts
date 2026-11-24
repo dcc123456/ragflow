@@ -37,6 +37,8 @@ export const TenantRoleKeys = {
     [...TenantRoleKeys.all, 'resources', tenantId] as const,
   permissions: (tenantId: string, roleId: number) =>
     [...TenantRoleKeys.all, 'permissions', tenantId, roleId] as const,
+  defaultModels: (tenantId: string, roleId: number) =>
+    [...TenantRoleKeys.all, 'defaultModels', tenantId, roleId] as const,
 };
 
 const firstFetchLoading = (isFetching: boolean, isFetched: boolean) =>
@@ -73,10 +75,12 @@ export const useTenantRoles = (tenantId: string, enabled = true) => {
   return { data, loading: firstFetchLoading(isFetching, isFetched) };
 };
 
-export const useTenantMyPermissions = (tenantId: string) => {
-  const { data } = useQuery<ITenantPermissions | undefined>({
+export const useTenantMyPermissions = (tenantId: string, enabled = true) => {
+  const { data, isFetching, isFetched, isError } = useQuery<
+    ITenantPermissions | undefined
+  >({
     queryKey: MemberRoleKeys.permissions(tenantId),
-    enabled: !!tenantId,
+    enabled: enabled && !!tenantId,
     queryFn: async () => {
       const { data } = await getTenantMyPermissions();
 
@@ -84,7 +88,11 @@ export const useTenantMyPermissions = (tenantId: string) => {
     },
   });
 
-  return { data };
+  return {
+    data,
+    loading: firstFetchLoading(isFetching, isFetched),
+    isError,
+  };
 };
 
 export const useTenantMemberRole = (

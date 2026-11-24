@@ -67,8 +67,15 @@ func TestTenantRoleGroupResourceUsesSharedActions(t *testing.T) {
 	if len(matrix["group"]) != 4 || !matrix["group"]["enable"] || !matrix["group"]["read"] || !matrix["group"]["write"] || !matrix["group"]["share"] {
 		t.Fatalf("group permission matrix = %#v, want enable/read/write/share=true", matrix["group"])
 	}
-	if len(rows) != 1 || rows[0].ResourceType != entity.RoleResourceTypeGroup || rows[0].Action != entity.RoleActionAll {
-		t.Fatalf("group permission rows = %#v, want type=6 with shared action mask", rows)
+	var groupRow *entity.RoleResource
+	for i := range rows {
+		if rows[i].ResourceType == entity.RoleResourceTypeGroup {
+			groupRow = &rows[i]
+			break
+		}
+	}
+	if groupRow == nil || groupRow.Action != entity.RoleActionAll {
+		t.Fatalf("group permission rows = %#v, want group row with shared action mask", rows)
 	}
 	if _, _, err := normalizeTenantRolePermissions(7, map[string]map[string]bool{
 		"team": {"write": true},

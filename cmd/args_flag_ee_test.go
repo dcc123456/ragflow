@@ -33,6 +33,7 @@ func TestParseArgsStandardSyntaxMatrix(t *testing.T) {
 		{"--log-level", "debug"},
 		{"--config", "cfg.yaml"},
 		{"--deepdoc-device", "cpu"},
+		{"--ingestor-tier", "high"},
 	}
 	for _, c := range cases {
 		long := c.flag
@@ -188,10 +189,6 @@ func TestParseArgsUnknownFlagRejected(t *testing.T) {
 		{"--api", "--enable-mcpserver"},
 		{"--api", "--mcp-port=9382"},
 		{"--api", "-p", "9380"},
-		{"--api", "--init-superuser"},
-		{"--ingestor", "--ingestor-tier=low"},
-		{"--ingestor", "--deepdoc-inference-concurrency=4"},
-		{"--ingestor", "--deepdoc-inference-cpu-cores=2"},
 		{"--deepdoc"},
 		{"-api"},
 		{"-config", "cfg.yaml"},
@@ -243,6 +240,7 @@ func TestParseArgsValueEdgeCases(t *testing.T) {
 func TestParseArgsMissingValue(t *testing.T) {
 	valueFlags := []string{
 		"--log-level", "--config", "--deepdoc-device", "--port", "-f",
+		"--ingestor-tier",
 	}
 	for _, flag := range valueFlags {
 		argv := append([]string{"ragflow_server", "--api"}, flag)
@@ -261,6 +259,8 @@ func TestParseArgsDefaults(t *testing.T) {
 		"port":                        args.Port != nil,
 		"deepdocInferenceConcurrency": args.DeepdocInferenceConcurrency != nil,
 		"deepdocInferenceCPUCores":    args.DeepdocInferenceCPUCores != nil,
+		"ingestorTier":                args.IngestorTier != nil,
+		"initSuperUser":               args.InitSuperUser,
 	} {
 		if got {
 			t.Errorf("%s set with no flag on the command line", name)
@@ -397,5 +397,60 @@ func TestParseArgsChatterSelection(t *testing.T) {
 	}
 	if args.Mode == nil || *args.Mode != "chatter" {
 		t.Fatalf("mode = %v, want chatter", args.Mode)
+	}
+}
+
+func TestParseArgsEnterpriseFlags(t *testing.T) {
+	for _, tier := range []string{"low", "medium", "high"} {
+		args, err := parseArgsFrom([]string{"ragflow_server", "--ingestor", "--ingestor-tier=" + tier})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if args.IngestorTier == nil || *args.IngestorTier != tier {
+			t.Errorf("ingestor tier = %v, want %s", args.IngestorTier, tier)
+		}
+	}
+	for _, tc := range []struct {
+		flag string
+		want bool
+	}{
+		{"--init-superuser", true},
+		{"--no-init-superuser", false},
+	} {
+		args, err := parseArgsFrom([]string{"ragflow_server", tc.flag})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if args.InitSuperUser != tc.want {
+			t.Errorf("%s: initSuperUser = %v, want %v", tc.flag, args.InitSuperUser, tc.want)
+		}
+	}
+}
+
+func TestParseArgsInvalidEnterpriseFlags(t *testing.T) {
+	for _, flag := range []string{
+		"--deepdoc-inference-concurrency=4",
+		"--deepdoc-inference-cpu-cores=0",
+		"--ingestor-tier=default",
+		"--ingestor-tier=invalid",
+		"--init-superuser=true",
+	} {
+		t.Run(flag, func(t *testing.T) {
+			if _, err := parseArgsFrom([]string{"ragflow_server", flag}); err == nil {
+				t.Errorf("accepted invalid enterprise flag %s", flag)
+			}
+		})
+	}
+}
+
+func TestParseArgsEnterpriseHelpVersionSkipsValidation(t *testing.T) {
+	for _, flag := range []string{"--help", "--version"} {
+		args, err := parseArgsFrom([]string{"ragflow_server", flag, "--ingestor-tier=invalid"})
+		if err != nil {
+			t.Fatalf("%s: %v", flag, err)
+		}
+		if !*args.HelpFlag && !*args.VersionFlag {
+			t.Fatalf("%s did not select help or version", flag)
+		}
 	}
 }

@@ -221,6 +221,14 @@ const dingtalkFormFields = (t: TFunction) => [
 /** Connector keys that exist only in the enterprise build. */
 export const eeDataSourceKeys: string[] = [feishuWikiKey, dingtalkAITableKey];
 
+/** Backend connector source keys controlled by role-level integration permissions. */
+export const eeDataSourcePermissionKeys: string[] = [
+  feishuWikiKey,
+  dingtalkAITableKey,
+  dingtalkWikiKey,
+  dingtalkDriveKey,
+];
+
 /** Connector cards shown in the data-source grid. */
 export const generateEeDataSourceInfo = (
   t: TFunction,

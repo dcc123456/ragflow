@@ -562,6 +562,9 @@ export default {
       },
       resourceType: {
         model_provider: 'Model provider',
+        model_group: 'Model group',
+        data_source: 'Data source',
+        chat_channel: 'Chat channel',
         group: 'Group',
         mcp: 'MCP',
         invitation: 'Invitations',
@@ -707,16 +710,6 @@ export default {
             url: 'ldaps://ad01.mycompany.com:636',
             dn: 'CN=svc_ldap_app, OU=Service...',
           },
-        },
-      },
-      roleModelProviders: {
-        setDefaultModels: 'Set default models for role "{{role}}"',
-        addedModels: 'Added models',
-        noModelsAdded: 'No models added yet',
-        setupStatus: {
-          not_set: 'No models are configured.',
-          partial: 'Some models are not configured.',
-          complete: 'All models are configured.',
         },
       },
       settingsSubtitle: 'Manage system-wide configurations.',
@@ -935,6 +928,25 @@ export default {
       createRole: 'Create role',
       editRole: 'Edit role',
       rolePermissions: 'Role permissions',
+      roleConfiguration: 'Role configuration',
+      roleManagement: 'Role management',
+      assets: 'Assets',
+      integrations: 'Integrations',
+      organization: 'Organization',
+      modelProviders: 'Model providers',
+      modelProvidersDescription:
+        'Choose which model provider types members with this role can use.',
+      dataSourcesDescription:
+        'Choose which data source types members with this role can use.',
+      chatChannelsDescription:
+        'Choose which chat channel types members with this role can use.',
+      roleConfigurationDenied: 'You do not have permission to manage roles.',
+      roleConfigurationLoadFailed: 'Could not load role configuration.',
+      roleDefaultModels: 'Default models',
+      roleDefaultModelsDescription:
+        'Choose the models members with this role use by default.',
+      roleDefaultModelsLoadFailed: 'Could not load role default models.',
+      roleDefaultModelUpdated: 'Default model updated.',
       resource: 'Resource',
       members: 'Members',
       membersWithRole: '{{count}} members',

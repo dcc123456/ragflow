@@ -139,10 +139,13 @@ func TestMigrateTenantDefaultRolesEE(t *testing.T) {
 		if len(permissions) != len(defaultTenantRoleResourceActions) {
 			t.Fatalf("Tenant %s member permission count = %d, want %d", tenantID, len(permissions), len(defaultTenantRoleResourceActions))
 		}
-		for index, expected := range defaultTenantRoleResourceActions {
-			if permissions[index].ResourceType != expected.resourceType || permissions[index].Action != expected.action {
-				t.Fatalf("Tenant %s member permission[%d] = {resource_type:%d action:%d}, want {resource_type:%d action:%d}",
-					tenantID, index, permissions[index].ResourceType, permissions[index].Action, expected.resourceType, expected.action)
+		gotByType := make(map[int64]int32, len(permissions))
+		for _, permission := range permissions {
+			gotByType[permission.ResourceType] = permission.Action
+		}
+		for _, expected := range defaultTenantRoleResourceActions {
+			if gotByType[expected.resourceType] != expected.action {
+				t.Fatalf("Tenant %s member permission for resource_type %d = %d, want %d", tenantID, expected.resourceType, gotByType[expected.resourceType], expected.action)
 			}
 		}
 	}

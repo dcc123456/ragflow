@@ -3,6 +3,8 @@ import {
   ITenantRolePermissionMatrix,
   ITenantRolePermissions,
   ITenantRoleResource,
+  ITenantRoleDefaultModels,
+  TenantRoleDefaultModelType,
   ITenantManagementGrant,
   ITenantPermissions,
   ITenantRole,
@@ -57,6 +59,25 @@ export const setTenantRolePermissions = (
     api.tenantRolePermissions(roleId),
     { permissions },
   );
+
+export const getTenantRoleDefaultModels = (roleId: number) =>
+  request.get<Result<ITenantRoleDefaultModels>>(
+    api.tenantRoleDefaultModels(roleId),
+  );
+
+export const setTenantRoleDefaultModel = (
+  roleId: number,
+  payload: { model_type: TenantRoleDefaultModelType; model_id: string },
+) =>
+  request.patch<Result<boolean>>(api.tenantRoleDefaultModels(roleId), payload);
+
+export const resetTenantRoleDefaultModel = (
+  roleId: number,
+  modelType: TenantRoleDefaultModelType,
+) =>
+  request.delete<Result<boolean>>(api.tenantRoleDefaultModels(roleId), {
+    data: { model_type: modelType },
+  });
 
 export const setTenantDefaultRole = (roleId: number) =>
   request.put(api.tenantDefaultRole, { default_role_id: roleId });

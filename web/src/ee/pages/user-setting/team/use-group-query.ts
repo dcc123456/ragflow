@@ -157,7 +157,10 @@ export const useMoveTenantGroup = (groupId: string) => {
 };
 
 export const useDeleteTenantGroup = (groupId: string) => {
-  const invalidate = useInvalidateGroupQueries(groupId);
+  // The deleted group's member query may still have mounted observers until the
+  // refreshed group list removes its row. Invalidating it here would refetch a
+  // member list for a group that no longer exists.
+  const invalidate = useInvalidateGroupQueries();
   const { loading, run } = useGroupMutation<void>(
     GroupKeys.action('delete', groupId),
     async () => {

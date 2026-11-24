@@ -11,14 +11,26 @@ export function useVisibleIntegrationChildren(
   const { data: tenantPermissions } = useTenantMyPermissions(
     tenantInfo.tenant_id,
   );
-  const canUseModelGroups =
-    tenantPermissions?.permissions?.model_provider?.enable === true;
+  const permissions = tenantPermissions?.permissions;
 
-  return useMemo(
-    () =>
-      canUseModelGroups
+  return useMemo(() => {
+    if (!permissions) return children;
+
+    const navigation =
+      permissions.model_group?.enable === true
         ? addModelGroupIntegrationNavigation(children)
-        : children,
-    [canUseModelGroups, children],
-  );
+        : children;
+    const featureByNavigationKey: Record<string, string> = {
+      model: 'model_provider',
+      'model-group': 'model_group',
+      'data-source': 'data_source',
+      'chat-channel': 'chat_channel',
+      mcp: 'mcp',
+    };
+
+    return navigation.filter((child) => {
+      const feature = featureByNavigationKey[child.key];
+      return !feature || permissions[feature]?.enable !== false;
+    });
+  }, [children, permissions]);
 }
