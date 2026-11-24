@@ -16,7 +16,7 @@ jest.mock('react-i18next', () => ({
 }));
 
 jest.mock('@/components/model-tree-select', () => ({
-  ModelTypeMap: { img2txt_id: ['vision'] },
+  ModelTypeMap: { img2txt_id: ['vlm'] },
   ModelTreeSelectFormField: ({ name }: { name: string }) => {
     const { Controller, useFormContext } =
       require('react-hook-form') as typeof import('react-hook-form');

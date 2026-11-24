@@ -14,7 +14,7 @@ import { useTranslation } from 'react-i18next';
 
 const ModelGroupMemberModelTypes = [
   'chat',
-  'vision',
+  'vlm',
   'decision',
   'embedding',
   'asr',

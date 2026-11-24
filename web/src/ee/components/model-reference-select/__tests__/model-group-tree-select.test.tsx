@@ -123,13 +123,13 @@ describe('ModelGroupTreeSelect', () => {
 
   it('lists only compatible groups and passes exact compatibility inputs', () => {
     renderSelect({
-      modelTypes: ['chat', 'vision'],
+      modelTypes: ['chat', 'vlm'],
       providers: ['OpenAI'],
       placeholder: 'Pick a group',
     });
 
     expect(mockUseModelGroupOptions).toHaveBeenCalledWith(
-      ['chat', 'vision'],
+      ['chat', 'vlm'],
       [directModel],
       true,
       ['OpenAI'],

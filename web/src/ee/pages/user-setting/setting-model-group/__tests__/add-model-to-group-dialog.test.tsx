@@ -79,7 +79,7 @@ describe('AddModelToGroupDialog', () => {
     expect(props).toMatchObject({
       modelTypes: [
         'chat',
-        'vision',
+        'vlm',
         'decision',
         'embedding',
         'asr',

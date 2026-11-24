@@ -12,8 +12,8 @@ jest.mock('@/ee/services/model-group-service', () => ({
 }));
 describe('ModelGroupKeys', () => {
   it('uses normalized types and stable detail keys', () => {
-    expect(ModelGroupKeys.options(['vision', 'chat', 'chat'])).toEqual(
-      ModelGroupKeys.options(['chat', 'vision']),
+    expect(ModelGroupKeys.options(['vlm', 'chat', 'chat'])).toEqual(
+      ModelGroupKeys.options(['chat', 'vlm']),
     );
     expect(ModelGroupKeys.detail('a/b')).toEqual([
       'modelGroup',

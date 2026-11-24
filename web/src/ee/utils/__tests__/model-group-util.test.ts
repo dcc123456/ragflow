@@ -45,9 +45,9 @@ describe('model group references', () => {
     expect(isModelGroupRef('model-1')).toBe(false);
   });
   it('normalizes model type keys deterministically', () => {
-    expect(normalizeModelTypes(['vision', 'chat', 'chat'])).toEqual([
+    expect(normalizeModelTypes(['vlm', 'chat', 'chat'])).toEqual([
       'chat',
-      'vision',
+      'vlm',
     ]);
   });
 });
