@@ -143,6 +143,29 @@ jobs:
             exit "$status"
           fi
 
+      - name: Check enterprise frontend file changes
+        if: ${{ github.event_name == 'pull_request' && !(contains(github.event.pull_request.labels.*.name, 'merge_oss_ci') || contains(github.event.pull_request.labels.*.name, 'oss_changes_ci')) }}
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          # Disable rename detection so moving a shared frontend file into an allowed path is also rejected.
+          set +e
+          git diff --exit-code --name-only --no-renames --no-ext-diff --no-textconv "${BASE_SHA}...${HEAD_SHA}" -- \
+            ':(top,glob)web/**' \
+            ':(top,glob,exclude)web/src/ee/**' \
+            ':(top,glob,exclude)web/*'
+          status=$?
+          set -e
+          if [ "$status" -eq 1 ]; then
+            echo "::error::Only files under web/src/ee/ or directly under web/ may be changed in the frontend without the merge_oss_ci or oss_changes_ci label."
+            exit 1
+          elif [ "$status" -ne 0 ]; then
+            echo "::error::preflight could not diff ${BASE_SHA}...${HEAD_SHA} (git exit $status); see the log above."
+            exit "$status"
+          fi
+
       - name: Check enterprise implementations and generate missing stubs
         if: ${{ github.event_name == 'pull_request' && (contains(github.event.pull_request.labels.*.name, 'merge_oss_ci') || contains(github.event.pull_request.labels.*.name, 'oss_changes_ci')) }}
         env:
