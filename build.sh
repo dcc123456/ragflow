@@ -49,6 +49,13 @@ STRIP_SYMBOLS=""
 # community edition.
 EXTRA_GO_TAGS="${RAGFLOW_GO_TAGS:-}"
 GO_BUILD_TAGS="cgo,static,sonic"
+# GPU variant links the CUDA-capable ORT static lib (with the
+# SessionGetInitializerOnDevice vendor API). The 'cuda' tag gates binding code
+# that references that API; CPU/minimal builds omit it entirely so they never
+# resolve a symbol absent from the minimal lib.
+if [ "${DEEPDOC_ORT_VARIANT:-cpu}" = "gpu" ] || [ "${DEEPDOC_ORT_VARIANT:-cpu}" = "full" ]; then
+    GO_BUILD_TAGS="$GO_BUILD_TAGS,cuda"
+fi
 [ -n "$EXTRA_GO_TAGS" ] && GO_BUILD_TAGS="$GO_BUILD_TAGS,$EXTRA_GO_TAGS"
 # The go test calls below predate `go build`, so they spell tags both
 # comma-separated ("cgo,static") and space-separated ("cgo static

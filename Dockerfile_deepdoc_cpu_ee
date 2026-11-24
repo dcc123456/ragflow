@@ -78,6 +78,10 @@ COPY build.sh ./
 # build context excluded by .dockerignore, and download_deps.py is no longer
 # read for the ORT pin — so only the Dockerfile is copied here.
 COPY Dockerfile ./
+# build.sh sources native_lib_version.sh / ort_stamp.sh / ort_present.sh from
+# tools/scripts at startup; without them `build.sh --cpp/--go` fails immediately.
+# (The GPU Dockerfile already copies this directory.)
+COPY tools/scripts tools/scripts
 
 # ONNX Runtime static archives are pre-baked in the runner image at
 # /opt/ragflow-native-libs; copy them into build.sh's expected user-cache path.

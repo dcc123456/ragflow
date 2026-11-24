@@ -40,19 +40,15 @@ import "ragflow/internal/common"
 // seams are serving-immutable: the backend is read concurrently, so mutating
 // these after first use would be a data race.
 func InitCPUEE() {
-	modelFileDet = "det.ee.cpu.ort"
-	modelFileLayout = "layout.ee.cpu.ort"
-	modelFileRec = "rec.ee.cpu.ort"
+	modelFileDet = detModel()
+	modelFileLayout = layoutModel()
+	modelFileRec = recModel()
 	detBoxThresh = 0.6
 	dlaPostprocessFn = dlaPostprocessEE
 	// EE ships its own weights (different from the OSS *.ort by design); the
 	// TSR model is served under the EE 2-class name (RunTSREE loads it
 	// directly, so modelFileTsr is left at the OSS default).
 	common.DeepDocModelFiles = []string{
-		"det.ee.cpu.ort",
-		"layout.ee.cpu.ort",
-		"tsr.ee.cpu.ort",
-		"rec.ee.cpu.ort",
-		"ocr.res",
+		detModel(), layoutModel(), tsrModel(), recModel(), "ocr.res",
 	}
 }

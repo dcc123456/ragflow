@@ -1,0 +1,11 @@
+# GPU-safe (Runtime-style, no FusedConv) EE DeepDoc .ort weights
+# These are the *.ee.gpu.ort files staged into deepdoc_ee_models/ before a
+# deepdoc_gpu_ee image build. Content re-exported 2026-11-17 on inf24
+# (RTX 3060), ORT 1.29.0, --optimization_style Runtime (convert_deepdoc_model.py --gpu).
+# Verified: CPU EP + CUDA-only EP both RUN_OK; CUDA speedup 3.4x-10.2x.
+# The hashes are content hashes -- the earlier files were named *.ee.cpu.ort
+# at generation time; renaming to *.ee.gpu.ort does not change the hash.
+68f91d655d9ed63489daefb9361008a58626ae8a96ff01f9196132ed02241eb1  det.ee.gpu.ort
+42ae8a07db3acfa92c9307e487f8ebed48d91bce309ed0c545c9e7ca07018fae  rec.ee.gpu.ort
+eda5fa990e8cb9e5fad5568cf2bc31c869d9f0ad21910a3b1c50a306f294d7ee  layout.ee.gpu.ort
+481d2673df5f558f6a6326aaab99aaae13d8f099e476e32f6abe2a7e494bb156  tsr.ee.gpu.ort

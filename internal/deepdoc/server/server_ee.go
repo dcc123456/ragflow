@@ -471,10 +471,22 @@ func run(ctx context.Context, port int, ready func() error) error {
 	if err := native.InitORT(); err != nil {
 		return fmt.Errorf("InitORT: %w", err)
 	}
+	// Register the device-specific execution provider plugin AFTER ORT init.
+	// On the EE GPU build this dlopens libonnxruntime_providers_cuda.so from the
+	// binary's directory; on the CPU build it is a no-op. Skipping this leaves
+	// every session on CPU even when DEEPDOC_DEVICE=gpu.
+	if err := native.RegisterExecutionProvider(); err != nil {
+		return fmt.Errorf("register execution provider: %w", err)
+	}
 	modelDir := os.Getenv("EE_MODEL_DIR")
 	if err := validateModelDir(modelDir); err != nil {
 		return err
 	}
+	// GPU startup warmup: create one session per model while new requests are
+	// gated, so a post-restart burst finds warm sessions instead of causing 17
+	// concurrent session Initialize() OOMs. Serial creation keeps VRAM bounded.
+	native.WarmupGPU(modelDir)
+
 	h := newDeepDocHandler(modelDir, nil, nil, nil, nil)
 
 	e := newEngine(h)

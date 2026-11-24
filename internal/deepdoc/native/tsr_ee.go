@@ -76,19 +76,20 @@ type TSREEResult struct {
 }
 
 // RunTSREE runs EE table-structure recognition (2-class YOLOv8 separator model)
-// on a cropped table image. It loads tsr.ee.cpu.ort (EE 2-class) and returns boxes in
+// on a cropped table image. It loads the EE 2-class TSR weights (tsrModel(),
+// tsr.ee.gpu.ort on GPU / tsr.ee.cpu.ort on CPU EE) and returns boxes in
 // the EE wire format {"bboxes": [[x0, y0, x1, y1, score, cls], ...]}.
 func RunTSREE(ctx context.Context, modelDir string, img *Image) (TSREEResult, error) {
 	blob, lb := tsrEEPreprocess(img)
 	// EE ships its 2-class YOLOv8 separator model. In EE the OSS 6-class
 	// TableStructureRecognizer (RunTSR) is retired dead code, so the EE 2-class
-	// weights are served under the canonical name tsr.ee.cpu.ort (the EE
+	// weights are served under the EE canonical name (the EE
 	// deployment's own 2-class weights, distinct from the OSS 6-class model). Go
 	// loads the ORT export
 	// directly; the minimal static ORT build consumes .ort only (same contract as
 	// OSS), so the runtime model matches the golden reference source
 	// (tsr_op17.onnx, converted to .ort).
-	sess, release, err := getModelSession(ctx, filepath.Join(modelDir, "tsr.ee.cpu.ort"), "images",
+	sess, release, err := getModelSession(ctx, filepath.Join(modelDir, tsrModel()), "images",
 		[]int64{1, 3, tsrEEInputSize, tsrEEInputSize}, "output0")
 	if err != nil {
 		return TSREEResult{}, err

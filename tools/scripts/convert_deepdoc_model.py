@@ -27,10 +27,25 @@ The .ort FlatBuffer is version-sensitive. You MUST run this with the same
 onnxruntime the Go binary links (currently 1.29.0). The script refuses to
 continue on a different version.
 
+GPU (CUDA EP) WEIGHTS
+---------------------
+The CUDA EP cannot execute the CPU-only `com.microsoft.FusedConv` that the
+default (Fixed) optimization bakes in. Pass --gpu to use ORT's
+`--optimization_style Runtime`, which keeps Conv+HardSigmoid as separate
+primitives. The output is named `<stem>.ee.gpu.ort` (vs `<stem>.ee.cpu.ort`
+for the default CPU path), so both variants can share one staging dir.
+
+Note: the handoff doc once said `--optimization_level disable`; ORT 1.29's
+converter has NO such flag -- `--optimization_style Runtime` is the correct
+equivalent (verified on RTX 3060 + CUDA 12.8, 2026-11-17).
+
 USAGE
 -----
     # EE TSR (opset 11 -> 17): writes tsr.ort next to tsr.onnx
     python convert_deepdoc_model.py --input ee_deepdoc_models/tsr/tsr.onnx
+
+    # GPU-safe (de-fused) weight for CUDA EP: writes tsr.ee.gpu.ort
+    python convert_deepdoc_model.py --input ee_deepdoc_models/tsr/tsr.onnx --gpu
 
     # explicit output dir / opset
     python convert_deepdoc_model.py --input model.onnx --out-dir ./models --opset 17
@@ -84,6 +99,11 @@ def main() -> int:
     ap.add_argument("--out-dir", default=None, help="output directory (default: alongside --input)")
     ap.add_argument("--opset", type=int, default=DEFAULT_TARGET_OPSET, help=f"target opset (default {DEFAULT_TARGET_OPSET})")
     ap.add_argument("--keep-onnx", action="store_true", help="keep the intermediate upgraded .onnx")
+    ap.add_argument(
+        "--gpu",
+        action="store_true",
+        help="GPU-safe de-fused .ort (--optimization_style Runtime), named <stem>.ee.gpu.ort; required for the CUDA EP (default CPU path uses FusedConv, unsupported by CUDA)",
+    )
     args = ap.parse_args()
 
     if not os.path.isfile(args.input):
@@ -101,7 +121,8 @@ def main() -> int:
     stem = os.path.splitext(os.path.basename(args.input))[0]
     out_dir = args.out_dir or os.path.dirname(os.path.abspath(args.input))
     os.makedirs(out_dir, exist_ok=True)
-    final_ort = os.path.join(out_dir, f"{stem}.ort")
+    out_name = f"{stem}.ee.gpu.ort" if args.gpu else f"{stem}.ort"
+    final_ort = os.path.join(out_dir, out_name)
 
     print(f"[1/4] loading {args.input}")
     model = onnx.load(args.input)
@@ -122,19 +143,32 @@ def main() -> int:
         print(f"[3/4] saving upgraded onnx -> {up_onnx}")
         onnx.save(model, up_onnx)
 
-        print(f"      converting to .ort (ORT {ort_ver})")
-        subprocess.run(
-            [sys.executable, "-m", "onnxruntime.tools.convert_onnx_models_to_ort", up_onnx, "--output_dir", work],
-            check=True,
-        )
-        src_ort = os.path.join(work, f"{stem}.ort")
-        if not os.path.isfile(src_ort):
-            # converter may name it differently; pick the single .ort produced
+        conv_cmd = [sys.executable, "-m", "onnxruntime.tools.convert_onnx_models_to_ort", up_onnx, "--output_dir", work]
+        if args.gpu:
+            # Runtime style keeps Conv+HardSigmoid separate (no CPU-only FusedConv),
+            # emitting <stem>.with_runtime_opt.ort.
+            conv_cmd += ["--optimization_style", "Runtime"]
+        print(f"      converting to .ort (ORT {ort_ver}, style={'Runtime' if args.gpu else 'default'})")
+        subprocess.run(conv_cmd, check=True)
+
+        if args.gpu:
             orts = [f for f in os.listdir(work) if f.endswith(".ort")]
-            if len(orts) != 1:
-                print(f"ERROR: expected one .ort in {work}, found {orts}", file=sys.stderr)
+            pick = next((f for f in orts if "with_runtime_opt" in f), None)
+            if pick is None and len(orts) == 1:
+                pick = orts[0]
+            if pick is None:
+                print(f"ERROR: no Runtime-style .ort in {work}, found {orts}", file=sys.stderr)
                 return 1
-            src_ort = os.path.join(work, orts[0])
+            src_ort = os.path.join(work, pick)
+        else:
+            src_ort = os.path.join(work, f"{stem}.ort")
+            if not os.path.isfile(src_ort):
+                # converter may name it differently; pick the single .ort produced
+                orts = [f for f in os.listdir(work) if f.endswith(".ort")]
+                if len(orts) != 1:
+                    print(f"ERROR: expected one .ort in {work}, found {orts}", file=sys.stderr)
+                    return 1
+                src_ort = os.path.join(work, orts[0])
 
         shutil.move(src_ort, final_ort)
     finally:

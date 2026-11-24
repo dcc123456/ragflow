@@ -1,0 +1,155 @@
+# EE DeepDoc (Go) GPU server — same five inference endpoints as deepdoc_cpu_ee,
+# but the in-process backend runs ONNX Runtime's CUDA Execution Provider for
+# DLA/TSR/OCR. The binary itself is identical to the CPU build (device is a
+# runtime config); what differs is the linked ORT static lib and the two CUDA
+# EP provider .so files shipped next to the binary.
+#
+# WHY A SEPARATE IMAGE: ORT 1.29 cannot static-link its CUDA EP into the main
+# binary (provider-bridge global ctor dereferences a null ProviderHost at
+# startup). Instead the Go binary links the FULL CPU static lib (which exposes
+# RegisterExecutionProviderLibrary) and ORT dlopens the CUDA EP as a plugin
+# .so at runtime. Those .so files (plus the CUDA runtime libs) are what this
+# GPU image adds on top of the CPU image.
+#
+# Build (context = worktree root):
+#   docker build -f Dockerfile_deepdoc_gpu_ee -t deepdoc_gpu_ee:latest .
+#   docker build --build-arg NEED_MIRROR=1 -f Dockerfile_deepdoc_gpu_ee -t deepdoc_gpu_ee:latest .
+# Run (needs NVIDIA driver on host + nvidia-container-runtime):
+#   docker run --gpus all -p 8001:8001 -e EE_MODEL_DIR=/ragflow/models deepdoc_gpu_ee
+#   (DEEPDOC_DEVICE=gpu is set by default; override to cpu to run on CPU.)
+# Probe: same endpoints as deepdoc_cpu_ee (/predict/dla, /predict/tsr,
+#   /predict/ocr, /predict/ocr_det, /predict/ocr_rec, /health).
+#
+# WEIGHTS: the GPU image needs the DE-FUSED weight set (det/rec .ort with
+# Conv+HardSigmoid left as separate primitives, i.e. ee_ort_regen/gpu_export/),
+# because the FusedConv baked into the CPU weights is a CPU-only kernel the
+# CUDA EP cannot run. GPU weights are named *.ee.gpu.ort (vs *.ee.cpu.ort for
+# CPU EE); both sets may coexist in the staging dir deepdoc_ee_models/. Stage
+# the GPU variants there: CI stages them from the runner docker; local dev
+# uses the prebuilt go-ee gpu docker. No network download in the build.
+# ocr.res is device-independent and shared.
+
+# ── go-builder stage ──
+# No CUDA toolkit needed here: the CUDA kernel .so is prebuilt by ragflow-build
+# and only LINKED (not compiled) at this stage. We need the FULL CPU static lib
+# and the two provider .so files from the gpu-deploy release package.
+ARG RUNNER_IMAGE=infiniflow/github_action_runner:latest
+FROM ${RUNNER_IMAGE} AS go-builder
+USER root
+SHELL ["/bin/bash", "-c"]
+WORKDIR /ragflow
+
+ENV GOMODCACHE=/root/.cache/gomod GOCACHE=/root/.cache/gobuild
+ENV RAGFLOW_GO_TAGS=ee
+# EE GPU opt-in: build.sh links the full CPU lib and selects the -full dir.
+ENV DEEPDOC_ORT_VARIANT=gpu
+# All native static libs are pre-seeded in the build context (no network at build
+# time). build.sh resolves them under this dir via RAGFLOW_NATIVE_LIBS_DIR.
+ENV RAGFLOW_NATIVE_LIBS_DIR=/opt/ragflow-native-libs
+
+# Cache Go modules BEFORE copying source so `go mod download` and `build.sh --go`
+# share the same cache. build.sh --go sources tools/scripts/{native_lib_version,ort_stamp,ort_present}.sh.
+COPY go.mod go.sum ./
+COPY tools/scripts tools/scripts
+RUN --mount=type=cache,id=ragflow_gomod,target=/root/.cache/gomod \
+    --mount=type=cache,id=ragflow_gobuild,target=/root/.cache/gobuild \
+    GOPROXY=${GOPROXY:-https://goproxy.cn,https://proxy.golang.org,direct} \
+    go mod download
+
+COPY internal internal
+COPY cmd cmd
+COPY build.sh ./
+ARG ORT_VERSION=1.29.0
+ARG TARGETARCH
+COPY Dockerfile ./
+
+# Pre-seed the other native static libs (office_oxide / pdfium-static / pdf_oxide)
+# from the build context so build.sh's _native_libs_present() succeeds and never
+# invokes the network-bound download_dev_deps.py. These are the exact version-
+# pinned dirs the downloader would otherwise fetch.
+COPY native_libs_seed/ /opt/ragflow-native-libs/
+
+# Fetch the GPU deploy package (full CPU .a + providers_cuda.so +
+# providers_shared.so) directly and stage it into build.sh's expected cache.
+# We skip download_dev_deps.py here because it would also fetch models/tokenizer
+# assets that this image COPYs separately, and would need extra scripts in context.
+ARG NEED_MIRROR=0
+# The GPU deploy package is staged in the build context (ort-gpu-deploy.zip)
+# so the build does not need network access to GitHub releases. It contains
+# the full CPU .a + the two CUDA EP provider .so files.
+COPY ort-gpu-deploy.zip ./
+RUN set -eux; \
+    _ort_token="x64"; [ "$TARGETARCH" = "arm64" ] && _ort_token="aarch64"; \
+    _cache="/opt/ragflow-native-libs/onnxruntime/static_lib"; \
+    mkdir -p "${_cache}"; \
+    mkdir -p /tmp/ort-gpu && tar xf /ragflow/ort-gpu-deploy.zip -C /tmp/ort-gpu; \
+    _pkg="$(find /tmp/ort-gpu -maxdepth 1 -type d -name 'onnxruntime-*-gpu-*' | head -1)"; \
+    [ -n "$_pkg" ] || { echo 'GPU deploy package layout unexpected' >&2; exit 1; }; \
+    mv "$_pkg" "${_cache}/onnxruntime-linux-${_ort_token}-static_lib-${ORT_VERSION}-full"; \
+    rm -rf /tmp/ort-gpu; \
+    mkdir -p /ragflow/deps/provider_lib; \
+    cp "${_cache}/onnxruntime-linux-${_ort_token}-static_lib-${ORT_VERSION}-full/lib/"*.so /ragflow/deps/provider_lib/; \
+    echo '=== staged full .a and provider .so ==='; \
+    find "${_cache}" -name 'libonnxruntime.a' -exec ls -lh {} \;; \
+    ls -lh /ragflow/deps/provider_lib/*.so
+
+RUN git config --global safe.directory "*" && \
+    cd /ragflow && ./build.sh --cpp
+
+# Link the EE binary against the full CPU lib. DEEPDOC_ORT_VARIANT=gpu is set
+# above; verify the ee tag as in the CPU image.
+RUN --mount=type=cache,id=ragflow_gomod,target=/root/.cache/gomod \
+    --mount=type=cache,id=ragflow_gobuild,target=/root/.cache/gobuild \
+    git config --global safe.directory "*" && \
+    ./build.sh --go && \
+    if ! go version -m bin/ragflow_server | grep -Eq -- '-tags=([^ ]*,)?ee(,|$)'; then \
+        echo "ERROR: bin/ragflow_server was built without the ee tag" >&2; \
+        exit 1; \
+    fi
+
+# ── production stage ──
+# CUDA 12.8 runtime base image supplies libcudart.so.12 / libcublas.so.12 /
+# libcublasLt.so.12 + cuDNN 9 (NEEDED by providers_cuda.so and dlopen'd by
+# ORT). Ubuntu 24.04 base satisfies the .so's GLIBC_2.38 requirement.
+FROM nvidia/cuda:12.8.0-cudnn-runtime-ubuntu24.04 AS production
+USER root
+SHELL ["/bin/bash", "-c"]
+
+ARG NEED_MIRROR=0
+ENV DEBIAN_FRONTEND=noninteractive
+RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
+    if [ "$NEED_MIRROR" == "1" ]; then \
+        sed -i 's|http://archive.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources; \
+        sed -i 's|http://security.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources; \
+    fi; \
+    rm -f /etc/apt/apt.conf.d/docker-clean && \
+    echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache && \
+    chmod 1777 /tmp && \
+    apt update && \
+    apt --no-install-recommends install -y ca-certificates curl libgomp1 && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /ragflow
+
+# De-fused EE weights (SAME file names as the CPU set; see header comment).
+COPY deepdoc_ee_models/det.ee.gpu.ort /ragflow/models/det.ee.gpu.ort
+COPY deepdoc_ee_models/layout.ee.gpu.ort /ragflow/models/layout.ee.gpu.ort
+COPY deepdoc_ee_models/rec.ee.gpu.ort /ragflow/models/rec.ee.gpu.ort
+COPY deepdoc_ee_models/ocr.res /ragflow/models/ocr.res
+COPY deepdoc_ee_models/tsr.ee.gpu.ort /ragflow/models/tsr.ee.gpu.ort
+
+# The statically-linked ragflow_server + the two CUDA EP provider .so files.
+# ORT dlopens them from the BINARY'S DIRECTORY (GetRuntimePath), so they MUST
+# sit next to ragflow_server — not in a subdirectory or system lib path.
+COPY --from=go-builder --chmod=755 /ragflow/bin/ragflow_server /ragflow/bin/ragflow_server
+COPY --from=go-builder --chmod=755 /ragflow/deps/provider_lib/libonnxruntime_providers_cuda.so /ragflow/bin/libonnxruntime_providers_cuda.so
+COPY --from=go-builder --chmod=755 /ragflow/deps/provider_lib/libonnxruntime_providers_shared.so /ragflow/bin/libonnxruntime_providers_shared.so
+
+ENV EE_MODEL_DIR=/ragflow/models
+ENV DEEPDOC_DEVICE=gpu
+
+EXPOSE 8001
+HEALTHCHECK --interval=10s --timeout=10s --retries=5 \
+    CMD curl -f http://localhost:8001/health || exit 1
+
+ENTRYPOINT ["/ragflow/bin/ragflow_server", "--deepdoc", "--port", "8001"]
