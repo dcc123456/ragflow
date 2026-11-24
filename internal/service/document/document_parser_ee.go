@@ -18,7 +18,11 @@
 
 package document
 
-import "ragflow/internal/utility"
+import (
+	"ragflow/internal/common"
+	"ragflow/internal/parser/parser"
+	"ragflow/internal/utility"
+)
 
 // dedicatedParserExtension binds enterprise drawing formats (CAD and Visio)
 // to their dedicated built-in pipelines.
@@ -37,9 +41,32 @@ func dedicatedParserExtension(_ utility.FileType, filename string) string {
 	return ""
 }
 
-// inheritFallbackParserOptions is the enterprise counterpart of the !ee stub.
-// The enterprise build inherits nothing from the dataset setting here, so the
-// cleaned params keep only what the caller already put in them. Binding the
-// dataset's fallback parser options to the enterprise pipeline's Extractor node
-// is what this seam is for; until then the stub's no-op is the correct answer.
-func inheritFallbackParserOptions(map[string]any, map[string]any, string) {}
+// A document assigned a different Word pipeline keeps the source Parser's
+// explicit filter setting. For multiple source nodes, an opt-in wins.
+func inheritFallbackParserOptions(target, source map[string]any, family string) {
+	if family != "doc" && family != "docx" {
+		return
+	}
+	var enabled, specified bool
+	for id, raw := range source {
+		if !common.IsParserComponentID(id) {
+			continue
+		}
+		params, _ := nodeParams(raw)
+		if sourceEnabled, ok := parser.WordTextFilterSetting(params); ok {
+			specified = true
+			enabled = enabled || sourceEnabled
+		}
+	}
+	if !specified {
+		return
+	}
+	for id, raw := range target {
+		if !common.IsParserComponentID(id) {
+			continue
+		}
+		if params, ok := nodeParams(raw); ok {
+			params[parser.WordTextFilterOption] = enabled
+		}
+	}
+}

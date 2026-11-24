@@ -256,6 +256,9 @@ export default {
       },
     },
     flow: {
+      removeLowContrastWordText: '忽略 Word 中难以看清的文字',
+      removeLowContrastWordTextDescription:
+        '解析 DOC 和 DOCX 时，跳过与背景色过于接近的文字。',
       cADChunkerDescription:
         '按图框和空间布局切分 CAD 图纸，并可使用视觉模型描述图纸区域。',
       cadParserNoConfig:

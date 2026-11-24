@@ -1,29 +1,39 @@
 //go:build ee
 
 //
-// Copyright 2026 The InfiniFlow Authors. All Rights Reserved.
+//  Copyright (c) 2026 InfiniFlow. All rights reserved.
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+//  RAGFlow Enterprise Edition — Proprietary and Confidential.
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+//  This file is part of the RAGFlow Enterprise Edition and is licensed,
+//  not sold, under the RAGFlow Enterprise Commercial License Agreement.
+//  Unauthorized copying, modification, distribution, or disclosure of this
+//  file, via any medium, is strictly prohibited.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+//  Portions of this file may incorporate code from RAGFlow Community Edition,
+//  which is licensed under the Apache License, Version 2.0.
+//
+//  For commercial licensing inquiries: sales@infiniflow.ai
+//
 
 package schema
 
-// ParserGlobalOptions is the enterprise counterpart of the !ee stub. The
-// enterprise build keeps the same behaviour: no parser parameter is promoted to
-// a global option, so the cleaned params carry every key through the normal
-// path. Giving the enterprise build its own global-option set is what this
-// seam is for; until then the stub's answers are the correct ones.
-func ParserGlobalOptions(map[string]any) map[string]bool { return nil }
+import "ragflow/internal/parser/parser"
 
-// ApplyParserGlobalOptions is the enterprise counterpart of the !ee stub and
-// applies nothing, matching ParserGlobalOptions above.
-func ApplyParserGlobalOptions(map[string]any, map[string]ParserSetup) {}
+// ParserGlobalOptions returns the edition's explicitly set parser-wide options
+// for persistence.
+func ParserGlobalOptions(params map[string]any) map[string]bool {
+	if enabled, ok := parser.WordTextFilterSetting(params); ok {
+		return map[string]bool{parser.WordTextFilterOption: enabled}
+	}
+	return nil
+}
+
+// ApplyParserGlobalOptions passes parser-wide settings to the applicable
+// format parsers. The parser-wide value also determines the disabled default.
+func ApplyParserGlobalOptions(params map[string]any, setups map[string]ParserSetup) {
+	enabled, _ := parser.WordTextFilterSetting(params)
+	for _, family := range [...]string{"doc", "docx"} {
+		setups[family][parser.WordTextFilterOption] = enabled
+	}
+}

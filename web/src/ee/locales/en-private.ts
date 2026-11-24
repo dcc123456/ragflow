@@ -463,6 +463,9 @@ export default {
       },
     },
     flow: {
+      removeLowContrastWordText: 'Ignore nearly invisible text in Word',
+      removeLowContrastWordTextDescription:
+        'Skip text that is too close to the background color when parsing DOC and DOCX.',
       cADChunkerDescription:
         'Split CAD drawings by sheet and spatial layout, with optional vision-model descriptions of drawing regions.',
       cadParserNoConfig:
