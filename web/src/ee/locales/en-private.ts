@@ -134,7 +134,6 @@ export default {
         'This restores {{restored}} documents that were deleted after this version',
       restoreConfirmDeleteOnly:
         'This removes {{deleted}} documents that were uploaded after this version',
-      restoreConfirmConfig: 'It also applies {{count}} configuration changes',
       restoreIncompleteTitle: '{{count}} documents could not be fully restored',
       // The body heads the list the notice shows under it: one document per line,
       // each with the reason the server gave for that document.
@@ -191,6 +190,10 @@ export default {
       configChangeLine: '{{field}}: {{before}} → {{after}}',
       configAvatarSet: 'set',
       configAvatarEmpty: 'none',
+      configParseModeBuiltin: 'Built-in',
+      configParseModePipeline: 'Pipeline',
+      configPipelineWithAlias: '{{pipeline}} (alias: {{alias}})',
+      configPipelineLatest: '{{pipeline}} (latest version)',
       changesEmpty: 'This version recorded no change detail.',
       // A change reads as one sentence ("Added document handbook.pdf"), so the
       // entity is a common noun and the order is a sentence's, not a table's.
@@ -223,6 +226,7 @@ export default {
         description: 'Description',
         language: 'Language',
         embd_id: 'Embedding model',
+        parse_type: 'Parse type',
         parser_id: 'Chunk method',
         pipeline_id: 'Data pipeline',
         pipeline_version_id: 'Pipeline version',

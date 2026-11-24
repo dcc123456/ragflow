@@ -362,9 +362,14 @@ func RecordVersionWithChangesAtVersion(ctx context.Context, tx *gorm.DB, dataset
 // history as a gap nothing explains. The caller therefore pins it here, and the
 // history stays contiguous.
 //
-// A pinned number is not reallocated: if the history head or the dataset column
-// has already moved past it, the write is refused rather than jumping ahead,
-// because the number is what the baselines were anchored at.
+// The pin says where the row goes, not when it is written. Runs reserve their
+// numbers before their content is done and close in whatever order that content
+// finishes, so a run can close after a later number was already recorded; it
+// still lands on its own number, because that is the anchor its baselines carry
+// and no other writer can take it. What it inherits then follows the version
+// before it rather than the head (see recordVersionWithChanges). The only
+// refusal left is a number that already carries a row: two versions cannot share
+// one.
 func RecordContentVersionChangesAtVersion(ctx context.Context, tx *gorm.DB, datasetID, kind string, version int64, changes []entity.DatasetVersionChange) (int64, error) {
 	if tx == nil {
 		return 0, errors.New("datasetversion: a content version needs the transaction of the write it describes")
@@ -526,19 +531,39 @@ func recordVersionWithChanges(ctx context.Context, tx *gorm.DB, datasetID, kind,
 		inheritedDocuments = latest.DocumentsHash
 	}
 
-	// Reserved numbers live on the dataset row, not in the history, so the number
-	// is taken past the reservation rather than reused: a chunk history row
-	// already carries it. A pinned number is the opposite case - it *is* the
-	// reservation, and the rows anchored at it need the version row on the same
-	// number - so it is used as given, and refused when something already took
-	// it, which would make the history order and the anchors disagree.
+	// A run that reserved an earlier number can close after one that reserved a
+	// later number: both take their numbers up front and finish in whatever order
+	// their content takes, and a parse of one document does not wait for another
+	// document's parse. Such a run still lands on its own number - that number is
+	// the anchor its chunk history rows carry, and no other writer can take it -
+	// but what it inherits is the state the version *before* it carries, not the
+	// head's: a restore to this number must bring back the configuration and the
+	// document set that applied before it, not those of a version recorded after
+	// it.
+	//
+	// A predecessor always exists: history starts at its baseline (version 0), and
+	// the delete path refuses to remove a baseline. A read that finds none is a
+	// broken history, and this write is refused rather than landing a version whose
+	// configuration nothing can resolve.
+	if pinnedVersion > 0 && latestExisted && latest.Version > pinnedVersion {
+		previous, prevErr := versionDAO.GetPrevious(ctx, tx, datasetID, pinnedVersion)
+		if prevErr != nil {
+			return 0, fmt.Errorf("failed to load the version before %d of dataset %s: %w",
+				pinnedVersion, datasetID, prevErr)
+		}
+		inheritedConfig = previous.ConfigHash
+		inheritedDocuments = previous.DocumentsHash
+	}
+
+	// Reserved numbers live on the dataset row, not in the history, so a writer
+	// that takes the next number skips past the reservation rather than reusing
+	// it. A pinned number is the opposite case - it *is* the reservation, and the
+	// rows anchored at it need the version row on the same number - so it is used
+	// as given. Being reserved is all it has to be: it does not have to still be
+	// the newest number, which is the part the runs that finish out of order
+	// cannot promise. Only a number that already carries a row is refused, and
+	// the insert below is what tells.
 	if pinnedVersion > 0 {
-		if latestExisted && latest.Version >= pinnedVersion {
-			return 0, ErrVersionConflict
-		}
-		if previousVersion > pinnedVersion {
-			return 0, ErrVersionConflict
-		}
 		version = pinnedVersion
 	} else if previousVersion >= version {
 		version = previousVersion + 1
@@ -547,25 +572,34 @@ func recordVersionWithChanges(ctx context.Context, tx *gorm.DB, datasetID, kind,
 	// The dataset's own timestamps move with the version: "updated" on the
 	// dataset list means the last versioned change, and a content change touches
 	// no other column of this row, so nothing else would advance them.
+	//
+	// The column only ever moves forward. It is the high-water mark every later
+	// number is taken past, so a run closing on an older number must leave it
+	// where it is: moving it back would hand the same number out twice.
+	highWater := version
+	if previousVersion > highWater {
+		highWater = previousVersion
+	}
 	updateTime, updateDate := autoTimestamps()
 	if err := tx.WithContext(ctx).
 		Model(&entity.Knowledgebase{}).
 		Where("id = ?", kb.ID).
 		Updates(map[string]interface{}{
-			"version":     version,
+			"version":     highWater,
 			"update_time": updateTime,
 			"update_date": updateDate,
 		}).Error; err != nil {
 		return 0, fmt.Errorf("failed to advance the dataset version: %w", err)
 	}
-	kb.Version = version
+	kb.Version = highWater
 
 	if _, _, err := writeVersion(ctx, tx, &kb, version, kind, actor, restoredFrom, changes, inheritedConfig, inheritedDocuments); err != nil {
 		if errors.Is(err, dao.ErrDatasetVersionExists) {
-			// The number was taken between the lock and the insert, i.e. the
-			// history is out of step with the dataset's version column. Name it as
-			// a conflict so the caller re-reads the head instead of surfacing a
-			// primary-key error.
+			// The number already carries a row. A reserved number cannot be taken
+			// by anyone else, so this is the one conflict left: the caller would be
+			// overwriting a version that is not its own. Name it as a conflict so
+			// the caller re-reads the head instead of surfacing a primary-key
+			// error.
 			return 0, ErrVersionConflict
 		}
 		return 0, fmt.Errorf("failed to record the dataset version: %w", err)

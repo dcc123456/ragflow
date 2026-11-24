@@ -1456,7 +1456,10 @@ func (s *ChunkService) RestoreVersion(ctx context.Context, req *service.ChunkVer
 	}
 	existing, ok := existingRow.(map[string]interface{})
 	if !ok || existing == nil {
-		return nil, fmt.Errorf("chunk not found")
+		// The chunk is no longer in the index: a later parse did not produce it,
+		// so its history survives but the row to rewind does not. Restoring the
+		// document version that held it is what brings it back.
+		return nil, fmt.Errorf("chunk not found: a later parse dropped it; restore the document version that held it instead")
 	}
 	if documentID, _ := existing["doc_id"].(string); documentID != req.DocumentID {
 		return nil, fmt.Errorf("chunk not found")

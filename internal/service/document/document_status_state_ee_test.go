@@ -202,3 +202,42 @@ func TestRecordDocumentStatusChangesRecordsNothingForAnEmptyBatch(t *testing.T) 
 		t.Fatalf("dataset versions = %d, want none", versions)
 	}
 }
+
+// TestRestoreDocumentStatusAtEEReEnablesADocumentWithNoEarlierSwitch pins the
+// "added, then disabled" case: the anchor predates every switch the history
+// recorded, so the document at the anchor was the one the add created - enabled.
+// The disable that came after it has to be undone, not left in place.
+func TestRestoreDocumentStatusAtEEReEnablesADocumentWithNoEarlierSwitch(t *testing.T) {
+	db := setupServiceTestDB(t)
+	pushServiceDB(t, db)
+	insertTestKB(t, "kb-1", "tenant-1", 1, 0, 0)
+	insertTestDoc(t, "doc-1", "kb-1", 0, 0)
+
+	svc := testDocumentService(t)
+	ctx := documentTestActorContext(t.Context(), "user-1", "tenant-1")
+	if _, _, err := svc.BatchUpdateDocumentStatus(ctx, "kb-1", "0", []string{"doc-1"}); err != nil {
+		t.Fatalf("disable the document: %v", err)
+	}
+	versions := loadStatusVersions(t, db, "kb-1")
+	if len(versions) != 1 {
+		t.Fatalf("visibility versions = %d, want 1", len(versions))
+	}
+	// One number before the first switch: the document was added, never disabled.
+	anchor := versions[0].Version - 1
+
+	replayed, err := RestoreDocumentStatusAtEE(ctx, db, "kb-1", anchor)
+	if err != nil {
+		t.Fatalf("RestoreDocumentStatusAtEE() error = %v", err)
+	}
+	if len(replayed) != 1 || replayed[0].DocumentID != "doc-1" ||
+		replayed[0].Status != string(entity.StatusValid) {
+		t.Fatalf("replayed = %#v, want doc-1 enabled", replayed)
+	}
+	var doc entity.Document
+	if err := db.Where("id = ?", "doc-1").First(&doc).Error; err != nil {
+		t.Fatalf("reload the document: %v", err)
+	}
+	if doc.Status == nil || *doc.Status != string(entity.StatusValid) {
+		t.Fatalf("document status = %v, want the enabled state it was created with", doc.Status)
+	}
+}

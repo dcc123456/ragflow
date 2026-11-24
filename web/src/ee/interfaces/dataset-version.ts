@@ -202,16 +202,16 @@ export interface IDatasetConfigChange {
 // pre_version is the head the restore replaced: restoring that version is how the
 // restore is undone.
 //
-// A configuration restore fills `changes`; a content restore fills the document
-// lists instead. `missing_documents` names the documents the version held but
-// whose content could not be put back: their removal row was cleaned up, the version
-// predates the document set, or replaying their chunks failed. Such a document
-// may still exist with no chunks until it is re-parsed.
+// A restore puts the whole recorded state back, so the answer describes the
+// documents that move; the configuration itself is not itemised.
+// `missing_documents` names the documents the version held but whose content
+// could not be put back: their removal row was cleaned up, the version predates
+// the document set, or replaying their chunks failed. Such a document may still
+// exist with no chunks until it is re-parsed.
 export interface IDatasetRestoreResult {
   version: number;
   pre_version: number;
   applied: boolean;
-  changes: IDatasetConfigChange[];
   restored_documents?: string[];
   deleted_documents?: string[];
   missing_documents?: string[];

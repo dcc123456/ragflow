@@ -364,6 +364,63 @@ func TestRecordParseVersionPinsTheReservedAnchor(t *testing.T) {
 	}
 }
 
+// TestRecordParseVersionLandsUnderAConcurrentVersion covers the case a re-parse
+// hits on a busy dataset: the run reserved its anchor before it started writing
+// chunks, and another writer took a later number while it indexed. The run still
+// closes on the number it reserved - that number is what its chunk rows are
+// anchored at - instead of failing a parse whose chunks are already indexed.
+func TestRecordParseVersionLandsUnderAConcurrentVersion(t *testing.T) {
+	db := setupParseVersionDB(t)
+	seedChunkBaseline(t, "chunk-kept")
+
+	anchor, err := datasetversion.ReserveVersion(t.Context(), db, "kb-1")
+	if err != nil {
+		t.Fatalf("reserve the parse anchor: %v", err)
+	}
+	// The window between the reservation and the close: a chunk edit elsewhere in
+	// the dataset records a version on a later number.
+	if _, err := datasetversion.RecordContentVersionChangesOwnTx(t.Context(), "kb-1",
+		entity.DatasetVersionKindChunk, nil); err != nil {
+		t.Fatalf("record the concurrent version: %v", err)
+	}
+
+	dropped, err := recordParseVersion(t.Context(), db, "doc-1", "kb-1", "manual.pdf",
+		[]string{"chunk-kept"}, anchor)
+	if err != nil {
+		t.Fatalf("record the parse version after a later one: %v", err)
+	}
+	if len(dropped) != 0 {
+		t.Fatalf("dropped = %v, want none: the run kept its chunk", dropped)
+	}
+
+	version := latestParseVersion(t)
+	if version.Version != anchor {
+		t.Fatalf("parse version = %d, want the reserved %d", version.Version, anchor)
+	}
+	// The column keeps pointing at the newer number: it is what the next
+	// allocation is taken past.
+	var kb entity.Knowledgebase
+	if err := db.Where("id = ?", "kb-1").Take(&kb).Error; err != nil {
+		t.Fatalf("load dataset: %v", err)
+	}
+	if kb.Version <= anchor {
+		t.Fatalf("dataset version = %d, want it left past the pinned %d", kb.Version, anchor)
+	}
+
+	// The parse's own chunk rows still replay at its number.
+	states, err := chunkversion.StatesAt(t.Context(), db, "doc-1", version.Version)
+	if err != nil {
+		t.Fatalf("replay chunk history: %v", err)
+	}
+	seen := make(map[string]bool, len(states))
+	for _, state := range states {
+		seen[state.ChunkID] = state.Exists
+	}
+	if !seen["chunk-kept"] {
+		t.Fatalf("replay at the pinned version = %+v, want chunk-kept present", states)
+	}
+}
+
 // TestRecordParseVersionSkipsWithoutADataset keeps the best-effort writer quiet on
 // the debug and engine-less paths, where there is no dataset to version.
 func TestRecordParseVersionSkipsWithoutADataset(t *testing.T) {

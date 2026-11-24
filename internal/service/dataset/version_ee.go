@@ -86,11 +86,10 @@ var restorableDatasetConfigFields = []string{
 	"vector_similarity_weight",
 }
 
-// datasetVersionComparedFields is what a diff reports: the restorable columns
-// plus the embedding model, which a restore of this milestone refuses when it
-// would move a dataset that still holds vectors, and the data-source bindings.
-// Showing them is what lets the UI explain a refusal or a relink instead of
-// rendering two versions as identical.
+// datasetVersionComparedFields is what a version diff reports: the columns a
+// restore writes, plus the data-source bindings. A field a restore cannot touch
+// is deliberately not listed, so the page never promises a change it would not
+// apply; the embedding model is listed because a restore may refuse to move it.
 var datasetVersionComparedFields = append(
 	append([]string{}, restorableDatasetConfigFields...),
 	// connectors are not a column: the bindings live in connector2kb, so a
@@ -99,11 +98,6 @@ var datasetVersionComparedFields = append(
 	// change the history has to show.
 	"connectors",
 )
-
-// What a version's read-side diff reports is exactly datasetVersionComparedFields:
-// the fields a restore writes, plus embd_id. A field that a restore cannot touch
-// is deliberately not listed, so the page never promises a change it would not
-// apply.
 
 // restorableDatasetConfigLabels keeps the diff readable: the API answers with
 // the snapshot key and the list renders it as-is, so the key is the label.
@@ -629,14 +623,83 @@ func configVersionChanges(ctx context.Context, datasetID string, row *entity.Dat
 		}
 		return nil
 	}
-	return datasetConfigFieldChanges(previous.Config, row.Config, datasetVersionComparedFields)
+	return datasetConfigDisplayChanges(ctx, previous.Config, row.Config)
+}
+
+// datasetConfigDisplayFields is what the history panel diffs: the restorable
+// fields, plus the mode the dataset parsed under, derived the same way a
+// document's settings state names it. It comes first for the same reason it does
+// there - it is what the rest of the row is read through.
+var datasetConfigDisplayFields = append([]string{"parse_type"}, datasetVersionComparedFields...)
+
+// datasetConfigDisplayChanges compares two configuration snapshots for the panel.
+//
+// On top of the plain diff it names what an id cannot: the pipeline a side binds,
+// the version of it, and the mode each side parsed under, so a switch reads as
+// "General -> Q&A" instead of as an id that changed.
+func datasetConfigDisplayChanges(ctx context.Context, before, after entity.JSONMap) []DatasetConfigChange {
+	diff := datasetConfigFieldChanges(
+		datasetConfigDisplayView(before),
+		datasetConfigDisplayView(after),
+		datasetConfigDisplayFields,
+	)
+	resolvePipeline := pipelineTitleResolver(ctx)
+	resolveVersion := pipelineVersionResolver(ctx)
+	changes := make([]DatasetConfigChange, 0, len(diff))
+	for _, change := range diff {
+		// The blob is never a line of its own: a snapshot without one is a
+		// snapshot without configuration, not a setting that moved.
+		if change.Field == "parser_config" {
+			continue
+		}
+		switch change.Field {
+		case "pipeline_id":
+			change.Before = resolvePipeline(change.Before)
+			change.After = resolvePipeline(change.After)
+		case "pipeline_version_id":
+			change.Before = resolveVersion(change.Before)
+			change.After = resolveVersion(change.After)
+		}
+		changes = append(changes, change)
+	}
+	return changes
+}
+
+// datasetConfigDisplayView is one side of that diff: the stored snapshot plus the
+// mode it parsed under.
+//
+// A dataset keeps the built-in method it last ran under when it is moved to a
+// pipeline, so that column is cleared while the pipeline is the selection - a
+// stale value left in place would both hide the switch and read as current.
+func datasetConfigDisplayView(config entity.JSONMap) entity.JSONMap {
+	if config == nil {
+		return nil
+	}
+	view := make(entity.JSONMap, len(config)+1)
+	for key, value := range config {
+		view[key] = value
+	}
+	id, _ := config["pipeline_id"].(string)
+	if strings.TrimSpace(id) == "" {
+		view["parse_type"] = "builtin"
+		return view
+	}
+	view["parse_type"] = "pipeline"
+	view["parser_id"] = ""
+	return view
 }
 
 // documentConfigComparedFields is what a document-configuration version reports,
-// in the order the panel lists it: the selection the document ran under and the
-// parameters of that selection. parser_config is descended into, so one edited
-// parameter reads as that parameter instead of as the whole blob.
+// in the order the panel lists it: the mode the document ran under, the selection
+// inside that mode, and the parameters of that selection. parser_config is
+// descended into, so one edited parameter reads as that parameter instead of as
+// the whole blob.
+//
+// parse_type comes first because it is what the rest of the row is read through:
+// the same parser_id means a built-in method on one row and nothing at all on a
+// row a pipeline parses.
 var documentConfigComparedFields = []string{
+	"parse_type",
 	"parser_id",
 	"pipeline_id",
 	"pipeline_version_id",
@@ -667,6 +730,9 @@ func documentConfigVersionChanges(ctx context.Context, row *entity.DatasetVersio
 	}
 	groups := make([]DocumentConfigChange, 0, len(details))
 	seen := make(map[string]struct{}, len(details))
+	// The pipeline each grouped document runs under, kept for the version-only
+	// change below: its state row is the only place that names the canvas.
+	pipelines := make(map[string]*string, len(details))
 	for _, detail := range details {
 		// Only a settings edit is described here: the other actions a change set
 		// carries already say everything they have to say on their own line.
@@ -694,6 +760,7 @@ func documentConfigVersionChanges(ctx context.Context, row *entity.DatasetVersio
 		if len(changes) == 0 {
 			continue
 		}
+		pipelines[docID] = after.PipelineID
 		groups = append(groups, DocumentConfigChange{
 			DocID:   docID,
 			DocName: detail.DocName,
@@ -703,19 +770,138 @@ func documentConfigVersionChanges(ctx context.Context, row *entity.DatasetVersio
 	if len(groups) == 0 {
 		return nil
 	}
+	// A pipeline id is not a name: "3f9c..." says nothing about which pipeline the
+	// document moved to, and the panel has no way to resolve one. The document list
+	// reads the title the same way, from the canvas the row points at - and a
+	// version is named by its alias, which the pipeline version list shows beside
+	// the title.
+	resolvePipeline := pipelineTitleResolver(ctx)
+	resolveVersion := pipelineVersionResolver(ctx)
+	for i := range groups {
+		for j := range groups[i].Changes {
+			change := &groups[i].Changes[j]
+			switch change.Field {
+			case "pipeline_id":
+				change.Before = resolvePipeline(change.Before)
+				change.After = resolvePipeline(change.After)
+			case "pipeline_version_id":
+				change.Before = resolveVersion(change.Before)
+				change.After = resolveVersion(change.After)
+			}
+		}
+	}
+	// A version switch that leaves the pipeline alone has no pipeline row of its
+	// own, and "a -> b" on its own does not say which pipeline was switched
+	// inside. Give that line the pipeline it belongs to, so the panel can read the
+	// move as one change ("pip (alias: a) -> pip (alias: b)") instead of a stray
+	// pair of labels. Nothing moved on the pipeline side, so both sides carry the
+	// same name and the version row beside them supplies the two aliases.
+	for i := range groups {
+		hasPipeline, versionAt := false, -1
+		for j := range groups[i].Changes {
+			switch groups[i].Changes[j].Field {
+			case "pipeline_id":
+				hasPipeline = true
+			case "pipeline_version_id":
+				versionAt = j
+			}
+		}
+		if hasPipeline || versionAt < 0 {
+			continue
+		}
+		pipelineID := pipelines[groups[i].DocID]
+		if pipelineID == nil || strings.TrimSpace(*pipelineID) == "" {
+			continue
+		}
+		title := resolvePipeline(*pipelineID)
+		if name, ok := title.(string); !ok || name == "" {
+			continue
+		}
+		changes := groups[i].Changes
+		groups[i].Changes = append(changes, DatasetConfigChange{})
+		copy(groups[i].Changes[versionAt+1:], groups[i].Changes[versionAt:])
+		groups[i].Changes[versionAt] = DatasetConfigChange{
+			Field: "pipeline_id", Before: title, After: title,
+		}
+	}
 	return groups
 }
 
-// documentConfigFieldChanges diffs two settings rows, keeping only the fields
-// whose previous value was actually recorded.
+// pipelineTitleResolver answers a pipeline's title for the panel, keyed by id.
+// An id that no longer resolves - the canvas was deleted - is returned as it is:
+// the id still tells the reader the document was moved to a pipeline, while an
+// empty cell would not.
+func pipelineTitleResolver(ctx context.Context) func(interface{}) interface{} {
+	titles := make(map[string]string)
+	return func(value interface{}) interface{} {
+		id, ok := value.(string)
+		if !ok || id == "" {
+			return value
+		}
+		if title, done := titles[id]; done {
+			if title == "" {
+				return value
+			}
+			return title
+		}
+		canvas, err := dao.NewUserCanvasDAO().GetByCanvasID(ctx, dao.DB, id)
+		if err != nil || canvas == nil || canvas.Title == nil || strings.TrimSpace(*canvas.Title) == "" {
+			titles[id] = ""
+			return value
+		}
+		titles[id] = *canvas.Title
+		return *canvas.Title
+	}
+}
+
+// pipelineVersionResolver answers a pipeline version's label for the panel, keyed
+// by id: the row stores the id, and a hash says nothing about which version was
+// pinned.
 //
-// A save re-derives parser_config from the parser template, so a component the
-// older row left empty arrives filled with its default prompt or its default
-// limits. The panel reads those as "— → <a page of text>", which is not an edit
-// the reader made and buries the parameters that did move. Only a field both
-// rows carried, whose value moved, is reported. Two lines go besides:
-// the whole parser_config blob (one row holds no configuration at all) and a
-// value whose before side is absent.
+// The alias is what a version is labelled by - the pipeline version list shows it
+// beside the title - so it comes first. A version without one still names itself
+// with its title (the pipeline's name when that version was saved), and only then
+// is the id the last thing left.
+func pipelineVersionResolver(ctx context.Context) func(interface{}) interface{} {
+	labels := make(map[string]string)
+	return func(value interface{}) interface{} {
+		id, ok := value.(string)
+		if !ok || id == "" {
+			return value
+		}
+		if label, done := labels[id]; done {
+			if label == "" {
+				return value
+			}
+			return label
+		}
+		label := ""
+		if version, err := dao.NewUserCanvasVersionDAO().GetByID(ctx, dao.DB, id); err == nil && version != nil {
+			switch {
+			case version.Alias != nil && strings.TrimSpace(*version.Alias) != "":
+				label = *version.Alias
+			case version.Title != nil && strings.TrimSpace(*version.Title) != "":
+				label = *version.Title
+			}
+		}
+		labels[id] = label
+		if label == "" {
+			return value
+		}
+		return label
+	}
+}
+
+// documentConfigFieldChanges diffs two settings rows for the panel.
+//
+// A parser_config parameter the newer row carries is reported - the ones a save
+// filled in from the template read as "— → value" - while one it no longer
+// carries is not: the panel lists the configuration as it stands, so the whole
+// blob is never a line of its own.
+//
+// The selection fields are kept as the plain diff gives them: pipeline_id and
+// parser_id are the two whose absence is itself a value ("the built-in method" /
+// "a pipeline"), and a pair empty on both sides says nothing, so it stays out.
 func documentConfigFieldChanges(before, after *entity.DocumentVersion) []DatasetConfigChange {
 	changes := datasetConfigFieldChanges(
 		documentParserSettingsSnapshot(before),
@@ -727,7 +913,11 @@ func documentConfigFieldChanges(before, after *entity.DocumentVersion) []Dataset
 		if change.Field == "parser_config" {
 			continue
 		}
-		if datasetConfigValueUnset(change.Before) {
+		if strings.HasPrefix(change.Field, "parser_config.") {
+			reported = append(reported, change)
+			continue
+		}
+		if datasetConfigValueUnset(change.Before) && datasetConfigValueUnset(change.After) {
 			continue
 		}
 		reported = append(reported, change)
@@ -736,8 +926,7 @@ func documentConfigFieldChanges(before, after *entity.DocumentVersion) []Dataset
 }
 
 // datasetConfigValueUnset reports whether a value reads as "—" on the page: a
-// field the row did not carry, or one it carried empty. Either way there is no
-// previous value to show, so the pair is not a change the reader made.
+// field the row did not carry, or one it carried empty.
 func datasetConfigValueUnset(value interface{}) bool {
 	if value == nil {
 		return true
@@ -752,8 +941,18 @@ func datasetConfigValueUnset(value interface{}) bool {
 // An unset pipeline is left absent rather than recorded as an empty string, so
 // binding one for the first time reads as the change it is.
 func documentParserSettingsSnapshot(row *entity.DocumentVersion) entity.JSONMap {
+	mode := documentParseMode(row)
+	parserID := row.ParserID
+	if mode == "pipeline" {
+		// The row keeps whatever built-in method it last ran under - binding a
+		// pipeline leaves that column alone - but the pipeline is what parses the
+		// document now, so the method is no longer part of the selection. Reading it
+		// as one would hide the switch behind a value that never moves.
+		parserID = ""
+	}
 	snapshot := entity.JSONMap{
-		"parser_id":     row.ParserID,
+		"parse_type":    mode,
+		"parser_id":     parserID,
 		"parser_config": map[string]interface{}(row.ParserConfig),
 	}
 	if row.PipelineID != nil {
@@ -763,6 +962,18 @@ func documentParserSettingsSnapshot(row *entity.DocumentVersion) entity.JSONMap 
 		snapshot["pipeline_version_id"] = *row.PipelineVersionID
 	}
 	return snapshot
+}
+
+// documentParseMode names the mode a settings state ran under. The mode is not a
+// column: a row either carries a pipeline binding or it does not, and a document
+// without one is parsed by its built-in method. The diff reads it as a field of
+// its own, so a switch between the modes is one line of its own rather than only
+// a pipeline binding that appeared.
+func documentParseMode(row *entity.DocumentVersion) string {
+	if row.PipelineID != nil && strings.TrimSpace(*row.PipelineID) != "" {
+		return "pipeline"
+	}
+	return "builtin"
 }
 
 // documentSettingsAt returns the parse settings one document ran under as of a
@@ -1432,13 +1643,12 @@ type RestoreDatasetVersionRequest struct {
 // document named here may still exist (the row came back) with no chunks until it
 // is re-parsed.
 type RestoreDatasetVersionResponse struct {
-	Version           int64                 `json:"version"`
-	PreVersion        int64                 `json:"pre_version"`
-	Applied           bool                  `json:"applied"`
-	Changes           []DatasetConfigChange `json:"changes"`
-	RestoredDocuments []string              `json:"restored_documents,omitempty"`
-	DeletedDocuments  []string              `json:"deleted_documents,omitempty"`
-	MissingDocuments  []string              `json:"missing_documents,omitempty"`
+	Version           int64    `json:"version"`
+	PreVersion        int64    `json:"pre_version"`
+	Applied           bool     `json:"applied"`
+	RestoredDocuments []string `json:"restored_documents,omitempty"`
+	DeletedDocuments  []string `json:"deleted_documents,omitempty"`
+	MissingDocuments  []string `json:"missing_documents,omitempty"`
 	// RestoredChunks is how many chunks the replay put back with the documents.
 	RestoredChunks int `json:"restored_chunks,omitempty"`
 	// BlockedReason is why a restore would be refused right now: the dry run
@@ -1454,11 +1664,9 @@ type RestoreDatasetVersionResponse struct {
 }
 
 // ConfigRestorePlan is what putting a stored configuration back would do: the
-// field-level differences to report, the column updates that realise them, the
-// data-source bindings to reconcile, and the pagerank the chunks have to mirror
-// once the transaction commits.
+// column updates that realise it, the data-source bindings to reconcile, and the
+// pagerank the chunks have to mirror once the transaction commits.
 type ConfigRestorePlan struct {
-	Changes       []DatasetConfigChange
 	Updates       map[string]interface{}
 	PagerankValue *int64
 	// ConnectorBindings are the bindings the version recorded, applied only when
@@ -1511,10 +1719,9 @@ func (d *DatasetService) PlanConfigRestoreTx(
 	if err != nil {
 		return nil, nil, err
 	}
-	changes := datasetConfigRestoreChanges(current, stored)
-	// The columns to write come from comparing whole values, not from the
-	// reported diff: nested keys only one side carries are hidden in the display
-	// but must still be written (see datasetConfigRestoreColumns).
+	// The columns to write come from comparing whole values: a nested key only one
+	// side carries is still part of the configuration a restore puts back, so it
+	// has to be written even though it would not be worth a line on the page.
 	changedFields := datasetConfigRestoreColumns(current, stored)
 	updates, err := datasetConfigRestoreUpdates(stored, changedFields)
 	if err != nil {
@@ -1530,7 +1737,7 @@ func (d *DatasetService) PlanConfigRestoreTx(
 		return nil, nil, err
 	}
 
-	plan := &ConfigRestorePlan{Changes: changes, Updates: updates}
+	plan := &ConfigRestorePlan{Updates: updates}
 	if _, moved := updates["pagerank"]; moved {
 		if value, ok := snapshotInt64(stored["pagerank"]); ok {
 			plan.PagerankValue = &value
@@ -1875,33 +2082,6 @@ func datasetConfigRestoreUpdates(snapshot entity.JSONMap, changed map[string]str
 	return updates, nil
 }
 
-// datasetConfigChanges compares two snapshots over the restorable fields and
-// answers with the fields that differ. Values are normalized through JSON so a
-// snapshot read back from storage (numbers as float64) compares equal to one
-// built in memory (numbers as int64).
-func datasetConfigChanges(before, after entity.JSONMap) []DatasetConfigChange {
-	return datasetConfigFieldChanges(before, after, datasetVersionComparedFields)
-}
-
-// datasetConfigRestoreChanges is the diff a restore reports. A version written
-// before the snapshot recorded data sources has no bindings key, and a restore of
-// it leaves connector2kb alone; reporting the field anyway would promise an
-// unlink the restore does not make, and the dry run would disagree with the write.
-func datasetConfigRestoreChanges(before, stored entity.JSONMap) []DatasetConfigChange {
-	changes := datasetConfigChanges(before, stored)
-	if _, recorded := stored["connectors"]; recorded {
-		return changes
-	}
-	filtered := make([]DatasetConfigChange, 0, len(changes))
-	for _, change := range changes {
-		if change.Field == "connectors" {
-			continue
-		}
-		filtered = append(filtered, change)
-	}
-	return filtered
-}
-
 // datasetConfigRestoreColumns decides which columns a restore writes.
 //
 // It compares whole values instead of reducing the leaf-level diff it reports:
@@ -1937,8 +2117,8 @@ const configDiffMaxDepth = 3
 
 // datasetConfigFieldChanges answers which of the given fields differ between two
 // snapshots, in the order the list gives them. A field that holds an object is
-// descended into, so changing one parser parameter reads as that parameter
-// instead of as the whole parser_config blob.
+// descended into, so one changed parser parameter reads as that parameter instead
+// of as the whole blob; appendConfigValueChanges holds the nested rules.
 func datasetConfigFieldChanges(before, after entity.JSONMap, fields []string) []DatasetConfigChange {
 	changes := make([]DatasetConfigChange, 0)
 	for _, field := range fields {
@@ -1970,38 +2150,42 @@ func datasetConfigSnapshotValue(snapshot entity.JSONMap, field string) interface
 }
 
 // appendConfigValueChanges records one value's difference, or - when both sides
-// are objects - one line per differing key below them.
+// hold an object - one line per key below it.
 //
-// Inside an object, a key only one side carries is not a change. Saving
-// re-derives parser_config from the parser template: BuildParserConfig starts
-// from the DSL defaults of every component and overlays what the request asked
-// for, so a parameter the older row never stored arrives as its default and a
-// parameter the template no longer defines is dropped. Those read as
-// "— → value" and "value → —", and neither is something the user edited. Only a
-// key both snapshots carry, whose value moved, is reported.
-//
-// A top-level field keeps the old behaviour: pipeline_id and
-// pipeline_version_id are absent until they are first set, and that absence is
-// the change. So is a field whose type changed (a scalar against an object):
-// the two sides are not comparable key by key, so it is reported whole.
+// Inside an object a key only one side carries is judged by the newer side: one
+// the newer state no longer carries is silent, the panel listing the
+// configuration as it stands, while one it newly carries reads as "— → value".
+// A top-level field keeps its old reading - one that first appears is a real
+// change (binding a pipeline) - and a field whose type changed is reported whole.
 func appendConfigValueChanges(changes []DatasetConfigChange, path string, before interface{}, beforeOK bool, after interface{}, afterOK bool, depth int) []DatasetConfigChange {
-	// Absent or nil is a template default; "" is a value, so "" → text stays.
-	if depth > 0 && (!beforeOK || !afterOK || before == nil || after == nil) {
+	if depth > 0 && !afterOK {
+		return changes
+	}
+	// Empty reads as "—" on the page, so a pair empty on both sides would say
+	// "— → —"; a value that moved to empty ("text → —") still says something.
+	if depth > 0 && !beforeOK && datasetConfigValueUnset(after) {
 		return changes
 	}
 	beforeObject, beforeIsObject := before.(map[string]interface{})
 	afterObject, afterIsObject := after.(map[string]interface{})
-	if beforeIsObject && afterIsObject && depth < configDiffMaxDepth {
+	if afterIsObject && depth < configDiffMaxDepth && (beforeIsObject || !beforeOK) {
 		nested := make([]DatasetConfigChange, 0, len(beforeObject)+len(afterObject))
 		for _, key := range configDiffKeys(beforeObject, afterObject) {
 			beforeChild, beforeChildOK := beforeObject[key]
 			afterChild, afterChildOK := afterObject[key]
-			nested = appendConfigValueChanges(nested, path+"."+key, beforeChild, beforeChildOK, afterChild, afterChildOK, depth+1)
+			// A key that holds nothing is a key the row did not carry: the same
+			// "—" a missing one reads as.
+			nested = appendConfigValueChanges(nested, path+"."+key,
+				beforeChild, beforeChildOK && beforeChild != nil,
+				afterChild, afterChildOK && afterChild != nil,
+				depth+1)
 		}
-		// A key the diff suppressed (or a key both sides agree on) leaves this
-		// object unreportable as a whole: its *contents* did not move, so naming
-		// it would show an object the reader cannot act on.
 		return append(changes, nested...)
+	}
+	if afterIsObject && depth < configDiffMaxDepth {
+		// The value changed type: a scalar became an object, so the two sides are
+		// not comparable key by key. Report the field as it stands.
+		return append(changes, DatasetConfigChange{Field: path, Before: before, After: after})
 	}
 	if beforeOK == afterOK && datasetJSONEqual(before, after) {
 		return changes

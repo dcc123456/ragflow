@@ -173,21 +173,19 @@ func Restore(ctx context.Context, req *dataset.RestoreDatasetVersionRequest) (*d
 
 	datasetSvc := dataset.NewDatasetService()
 	if req.DryRun {
-		// A preview has to answer "would this be refused", not only "what would it
-		// write": the plan is what validates the recorded name, embedding model and
-		// pipeline, and a preview that skipped it would show a change set for a
-		// restore the commit then rejects. The plan reads under the dataset's row
-		// lock, so the preview needs a transaction - and one that is rolled back,
-		// because a preview applies nothing.
-		changes, planErr := previewConfigRestore(ctx, datasetSvc, datasetID, target.Config)
-		if planErr != nil {
+		// A preview has to answer "would this be refused": the plan is what
+		// validates the recorded name, embedding model and pipeline, and a preview
+		// that skipped it would promise a document set for a restore the commit then
+		// rejects. The plan reads under the dataset's row lock, so the preview needs
+		// a transaction - and one that is rolled back, because a preview applies
+		// nothing.
+		if planErr := previewConfigRestore(ctx, datasetSvc, datasetID, target.Config); planErr != nil {
 			return nil, planErr
 		}
 		return &dataset.RestoreDatasetVersionResponse{
 			Version:           dataset.NoDatasetVersion,
 			PreVersion:        kb.Version,
 			Applied:           false,
-			Changes:           changes,
 			RestoredDocuments: toRestore,
 			DeletedDocuments:  toDelete,
 		}, nil
@@ -436,7 +434,6 @@ func Restore(ctx context.Context, req *dataset.RestoreDatasetVersionRequest) (*d
 
 	var (
 		newVersion int64
-		changes    []dataset.DatasetConfigChange
 		pagerank   *int64
 		restoredKB *entity.Knowledgebase
 	)
@@ -454,7 +451,6 @@ func Restore(ctx context.Context, req *dataset.RestoreDatasetVersionRequest) (*d
 			if planErr != nil {
 				return planErr
 			}
-			changes = plan.Changes
 			pagerank = plan.PagerankValue
 			restoredKB = lockedKB
 
@@ -477,19 +473,6 @@ func Restore(ctx context.Context, req *dataset.RestoreDatasetVersionRequest) (*d
 		})
 	}
 	err = commitRestore(restoreVersion)
-	if err != nil && restoreVersion > 0 && errors.Is(err, datasetversion.ErrVersionConflict) {
-		// Another writer recorded a version while the replay ran, and the replay can
-		// take long on a large dataset. Failing here would throw away a restore whose
-		// content is already in place, so the version is recorded on the next free
-		// number instead: the chunk history rows stay anchored at the reserved one,
-		// which is what a restore of this version replays, and that number simply
-		// carries no row of its own.
-		common.Warn("Content restore: the dataset moved during the replay, recording the restore on the next free version",
-			zap.String("dataset_id", datasetID),
-			zap.Int64("reserved_version", restoreVersion),
-			zap.Error(err))
-		err = commitRestore(0)
-	}
 	if err != nil {
 		revertEmbeddingSwitch(ctx, datasetSvc, datasetID, embeddingChange)
 		return nil, err
@@ -538,18 +521,10 @@ func Restore(ctx context.Context, req *dataset.RestoreDatasetVersionRequest) (*d
 		}
 	}
 
-	// The switch happened before the content work, so the configuration plan no
-	// longer sees the column move; it is reported here to keep the answer equal to
-	// what the dry run previewed.
-	if embeddingChange != nil {
-		changes = append(changes, *embeddingChange)
-	}
-
 	resp := &dataset.RestoreDatasetVersionResponse{
 		Version:          newVersion,
 		PreVersion:       preVersion,
 		Applied:          true,
-		Changes:          changes,
 		DeletedDocuments: deleted,
 	}
 	if contentRestore {
@@ -565,8 +540,7 @@ func Restore(ctx context.Context, req *dataset.RestoreDatasetVersionRequest) (*d
 // has been read. It never reaches a caller.
 var errPreviewRollback = errors.New("content restore: dry run")
 
-// previewConfigRestore returns the configuration changes a restore would write,
-// and the error it would be refused with.
+// previewConfigRestore returns the error a restore would be refused with.
 //
 // The plan is the same one the commit runs, so the preview validates the recorded
 // name, the embedding model and the pipeline - a restore whose configuration
@@ -574,20 +548,17 @@ var errPreviewRollback = errors.New("content restore: dry run")
 // reads under the dataset's row lock, so it needs a transaction; the transaction
 // is rolled back because a preview writes nothing, and the rollback is also what
 // releases the lock.
-func previewConfigRestore(ctx context.Context, svc *dataset.DatasetService, datasetID string, stored entity.JSONMap) ([]dataset.DatasetConfigChange, error) {
-	var changes []dataset.DatasetConfigChange
+func previewConfigRestore(ctx context.Context, svc *dataset.DatasetService, datasetID string, stored entity.JSONMap) error {
 	err := dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		plan, _, planErr := svc.PlanConfigRestoreTx(ctx, tx, datasetID, nil, stored)
-		if planErr != nil {
+		if _, _, planErr := svc.PlanConfigRestoreTx(ctx, tx, datasetID, nil, stored); planErr != nil {
 			return planErr
 		}
-		changes = plan.Changes
 		return errPreviewRollback
 	})
 	if err != nil && !errors.Is(err, errPreviewRollback) {
-		return nil, err
+		return err
 	}
-	return changes, nil
+	return nil
 }
 
 // revertEmbeddingSwitch puts the dataset's embedding model back after a content

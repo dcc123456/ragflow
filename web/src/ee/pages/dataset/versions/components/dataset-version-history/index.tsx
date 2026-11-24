@@ -35,6 +35,7 @@ import {
   IDatasetVersionChange,
 } from '@/ee/interfaces/dataset-version';
 import { versionActorLabel } from '@/ee/utils/version-actor';
+import { useSelectParserList } from '@/hooks/use-user-setting-request';
 import { cn } from '@/lib/utils';
 import { formatDate } from '@/utils/date';
 import type { TFunction } from 'i18next';
@@ -384,7 +385,34 @@ const configFieldLabel = (field: string, t: TFunction) => {
 
 // An avatar is a base64 data URI: printing it would flood the panel, so the line
 // says whether one is set instead of showing its bytes.
-const configValueLabel = (field: string, value: unknown, t: TFunction) => {
+const configValueLabel = (
+  field: string,
+  value: unknown,
+  t: TFunction,
+  parserLabel?: (parserId: string) => string | undefined,
+) => {
+  // The parse mode is a derived name ("builtin" / "pipeline"), not a stored
+  // value, so it reads as the word the rest of the UI uses for it. A side with no
+  // snapshot at all has no mode: it keeps the dash.
+  if (field === 'parse_type') {
+    if (value === 'pipeline') {
+      return t('datasetVersion.configParseModePipeline');
+    }
+    if (value === 'builtin') {
+      return t('datasetVersion.configParseModeBuiltin');
+    }
+    return formatValue(value);
+  }
+  // A chunk method is stored as an id ("naive", "general", "paper"): the panel
+  // names it with the label the settings page shows, then with the catalogue's own
+  // translation (an alias such as "general" is not in the fetched list), and keeps
+  // the id for one the build no longer offers.
+  if (field === 'parser_id' && typeof value === 'string' && value !== '') {
+    return (
+      parserLabel?.(value) ??
+      t(`knowledgeConfiguration.parserLabel.${value}`, { defaultValue: value })
+    );
+  }
   if (field !== 'avatar') {
     return formatValue(value);
   }
@@ -392,6 +420,76 @@ const configValueLabel = (field: string, value: unknown, t: TFunction) => {
     ? t('datasetVersion.configAvatarSet')
     : t('datasetVersion.configAvatarEmpty');
 };
+
+// mergePipelineAlias folds the alias of the pipeline version a change pins into
+// the pipeline's own line ("pip (alias: a)"): the version's id names nothing to a
+// reader, and the alias on a line of its own says nothing either - it is a label
+// for that pipeline. It is applied to one change group at a time - a single
+// document's settings - so a bulk apply cannot pair one document's pipeline with
+// another document's version. A version pinned while the pipeline stayed put has
+// no line to join and keeps its own.
+//
+// A pipeline line with no version line beside it is a binding that follows the
+// canvas's latest version: no version was ever pinned, so there is no alias to
+// show. Saying which case it is matters - without it the line reads as a pipeline
+// whose alias went missing, when the truth is that it has no version at all.
+export function mergePipelineAlias(
+  changes: IDatasetConfigChange[],
+  t: TFunction,
+): IDatasetConfigChange[] {
+  const pipeline = changes.find((change) => change.field === 'pipeline_id');
+  if (!pipeline) {
+    return changes;
+  }
+  const version = changes.find(
+    (change) => change.field === 'pipeline_version_id',
+  );
+  const compose = (pipelineSide: unknown, aliasSide: unknown) => {
+    if (typeof pipelineSide !== 'string' || pipelineSide === '') {
+      return pipelineSide;
+    }
+    // The version label falls back to its title when no alias was given, and to
+    // the id when nothing resolves; anything but a string is left off. A label
+    // that only repeats the pipeline's own name says nothing, so it is left off
+    // too rather than printed as "pip (alias: pip)".
+    if (
+      typeof aliasSide !== 'string' ||
+      aliasSide === '' ||
+      aliasSide === pipelineSide
+    ) {
+      return pipelineSide;
+    }
+    return t('datasetVersion.configPipelineWithAlias', {
+      pipeline: pipelineSide,
+      alias: aliasSide,
+    });
+  };
+  if (!version) {
+    const composeLatest = (pipelineSide: unknown) =>
+      typeof pipelineSide === 'string' && pipelineSide !== ''
+        ? t('datasetVersion.configPipelineLatest', {
+            pipeline: pipelineSide,
+          })
+        : pipelineSide;
+    return changes.map((change) =>
+      change.field === 'pipeline_id'
+        ? {
+            ...change,
+            before: composeLatest(change.before),
+            after: composeLatest(change.after),
+          }
+        : change,
+    );
+  }
+  const merged: IDatasetConfigChange = {
+    field: 'pipeline_id',
+    before: compose(pipeline.before, version.before),
+    after: compose(pipeline.after, version.after),
+  };
+  return changes
+    .filter((change) => change.field !== 'pipeline_version_id')
+    .map((change) => (change.field === 'pipeline_id' ? merged : change));
+}
 
 // A restore moves documents in two directions, and usually only one of them has
 // anything in it: undoing an upload restores nothing, and a version whose
@@ -492,14 +590,24 @@ function ConfigChangeList({
   className?: string;
 }) {
   const { t } = useTranslation();
+  const parserList = useSelectParserList();
+  const parserLabel = (parserId: string) =>
+    parserList.find((item) => item.value === parserId)?.label;
   return (
     <>
-      {changes.map((change) => (
-        <p key={change.field} className={className}>
+      {changes.map((change, index) => (
+        // One field can be listed twice: two documents may have moved the same
+        // parameter to different values.
+        <p key={`${change.field}:${index}`} className={className}>
           {t('datasetVersion.configChangeLine', {
             field: configFieldLabel(change.field, t),
-            before: configValueLabel(change.field, change.before, t),
-            after: configValueLabel(change.field, change.after, t),
+            before: configValueLabel(
+              change.field,
+              change.before,
+              t,
+              parserLabel,
+            ),
+            after: configValueLabel(change.field, change.after, t, parserLabel),
           })}
         </p>
       ))}
@@ -514,11 +622,16 @@ function ConfigChangeList({
  * document only hides the settings that differ. The order is the groups' own, so
  * a parameter keeps the place the first document gave it.
  */
-function documentConfigChanges(groups: IDatasetDocumentConfigChange[]) {
+function documentConfigChanges(
+  groups: IDatasetDocumentConfigChange[],
+  t: TFunction,
+) {
   const seen = new Set<string>();
   const changes: IDatasetConfigChange[] = [];
   for (const group of groups) {
-    for (const change of group.changes ?? []) {
+    // Folding happens per group, before the groups are flattened: a document's
+    // pipeline only pairs with the version that document moved to.
+    for (const change of mergePipelineAlias(group.changes ?? [], t)) {
       const key = JSON.stringify([change.field, change.before, change.after]);
       if (seen.has(key)) {
         continue;
@@ -546,10 +659,11 @@ function DocumentConfigChangeList({
 }: {
   groups?: IDatasetDocumentConfigChange[];
 }) {
+  const { t } = useTranslation();
   if (!groups?.length) {
     return null;
   }
-  const changes = documentConfigChanges(groups);
+  const changes = documentConfigChanges(groups, t);
   if (!changes.length) {
     return null;
   }
@@ -1077,13 +1191,6 @@ function DatasetVersionHistory({
                       </AlertDialogDescription>
                     )}
                   </AlertDialogHeader>
-                  {!!restorePlan?.changes?.length && (
-                    <p className="text-sm text-text-secondary">
-                      {t('datasetVersion.restoreConfirmConfig', {
-                        count: restorePlan.changes.length,
-                      })}
-                    </p>
-                  )}
                   <AlertDialogFooter>
                     <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
                     <AlertDialogAction
@@ -1284,7 +1391,7 @@ function DatasetVersionHistory({
                         )}
                         {configChanges.length > 0 && (
                           <ConfigChangeList
-                            changes={configChanges}
+                            changes={mergePipelineAlias(configChanges, t)}
                             className="break-all pl-6 text-sm"
                           />
                         )}

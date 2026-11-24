@@ -917,9 +917,9 @@ func TestPinnedVersionLandsOnTheReservedNumber(t *testing.T) {
 	}
 }
 
-// TestPinnedVersionAlreadyTakenIsRefused covers the other side of pinning: the
-// number is what a chunk history row was anchored at, so it cannot be written
-// twice. A head that already moved past it is a conflict, not a reallocation.
+// TestPinnedVersionAlreadyTakenIsRefused covers the one conflict a pin still has:
+// the number it names already carries a row. Two versions cannot share a number,
+// and the row that is there is not this run's to overwrite.
 func TestPinnedVersionAlreadyTakenIsRefused(t *testing.T) {
 	db := setupVersionTestDB(t)
 	insertVersionTestDataset(t, db, "kb-1")
@@ -938,5 +938,107 @@ func TestPinnedVersionAlreadyTakenIsRefused(t *testing.T) {
 	}
 	if after := len(listVersionRows(t, db, "kb-1")); after != before {
 		t.Fatalf("history rows = %d, want the refusal to write nothing (was %d)", after, before)
+	}
+}
+
+// TestPinnedVersionLandsAfterALaterOne covers the order runs actually finish in:
+// both reserve their numbers before their content is done, and the one that
+// reserved the later number closes first. The earlier run still closes on its own
+// number - that is the anchor its chunk history rows carry - instead of failing a
+// parse whose chunks are already indexed, and the dataset column stays at the
+// newer number so no later allocation hands that number out twice.
+func TestPinnedVersionLandsAfterALaterOne(t *testing.T) {
+	db := setupVersionTestDB(t)
+	insertVersionTestDataset(t, db, "kb-1")
+
+	if _, err := RecordVersionWithChanges(t.Context(), db, "kb-1",
+		entity.DatasetVersionKindChunk, "user-1", 0, nil, nil); err != nil {
+		t.Fatalf("record the first version: %v", err)
+	}
+	before, err := dao.NewDatasetVersionDAO().GetLatestForUpdate(t.Context(), db, "kb-1")
+	if err != nil {
+		t.Fatalf("load the head: %v", err)
+	}
+
+	first, err := ReserveVersion(t.Context(), db, "kb-1")
+	if err != nil {
+		t.Fatalf("reserve the earlier number: %v", err)
+	}
+	second, err := ReserveVersion(t.Context(), db, "kb-1")
+	if err != nil {
+		t.Fatalf("reserve the later number: %v", err)
+	}
+	if second <= first {
+		t.Fatalf("reserved numbers = %d then %d, want increasing", first, second)
+	}
+
+	// The dataset's settings move while both runs are in flight, and the run that
+	// closes on the newer number records them: the configuration the earlier run
+	// inherits must not be this one.
+	if err := db.Model(&entity.Knowledgebase{}).Where("id = ?", "kb-1").
+		Update("parser_config", entity.JSONMap{"chunk_token_num": float64(256)}).Error; err != nil {
+		t.Fatalf("change the parser configuration: %v", err)
+	}
+	if _, err := RecordVersionWithChangesAtVersion(t.Context(), db, "kb-1",
+		entity.DatasetVersionKindDatasetConfig, "user-1", 0, second, nil); err != nil {
+		t.Fatalf("close the later run: %v", err)
+	}
+
+	got, err := RecordVersionWithChangesAtVersion(t.Context(), db, "kb-1",
+		entity.DatasetVersionKindParse, "user-1", 0, first, nil)
+	if err != nil {
+		t.Fatalf("close the earlier run after the later one: %v", err)
+	}
+	if got != first {
+		t.Fatalf("earlier run recorded on %d, want its reserved %d", got, first)
+	}
+
+	rows := listVersionRows(t, db, "kb-1")
+	versions := make([]int64, 0, len(rows))
+	byVersion := make(map[int64]*entity.DatasetVersion, len(rows))
+	for _, row := range rows {
+		versions = append(versions, row.Version)
+		byVersion[row.Version] = row
+	}
+	early, ok := byVersion[first]
+	if !ok {
+		t.Fatalf("history versions = %v, want %d", versions, first)
+	}
+	late, ok := byVersion[second]
+	if !ok {
+		t.Fatalf("history versions = %v, want %d", versions, second)
+	}
+
+	// The run closing on the earlier number inherits the state of the version
+	// before it: a restore to this number must not bring back settings made after
+	// it.
+	if early.ConfigHash == nil || before.ConfigHash == nil {
+		t.Fatalf("config hashes = %v / %v, want both recorded", early.ConfigHash, before.ConfigHash)
+	}
+	if *early.ConfigHash != *before.ConfigHash {
+		t.Fatalf("earlier run inherited config %q, want the version before it %q",
+			*early.ConfigHash, *before.ConfigHash)
+	}
+	if late.ConfigHash != nil && *late.ConfigHash == *early.ConfigHash {
+		t.Fatalf("later run recorded the same config %q, want the changed one", *late.ConfigHash)
+	}
+
+	// The column is the high-water mark: a run closing on an older number leaves
+	// it where the newer one put it.
+	var kb entity.Knowledgebase
+	if err := db.Where("id = ?", "kb-1").Take(&kb).Error; err != nil {
+		t.Fatalf("reload the dataset: %v", err)
+	}
+	if kb.Version != second {
+		t.Fatalf("dataset version = %d, want the newer %d", kb.Version, second)
+	}
+
+	next, err := RecordVersionWithChanges(t.Context(), db, "kb-1",
+		entity.DatasetVersionKindChunk, "user-1", 0, nil, nil)
+	if err != nil {
+		t.Fatalf("record the version after both runs: %v", err)
+	}
+	if next != second+1 {
+		t.Fatalf("next version = %d, want %d", next, second+1)
 	}
 }

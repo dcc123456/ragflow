@@ -23,7 +23,7 @@ import {
   within,
 } from '@testing-library/react';
 import { toast } from '@/components/hooks/use-toast';
-import DatasetVersionHistory from '.';
+import DatasetVersionHistory, { mergePipelineAlias } from '.';
 
 // The restore answer is the only place the documents it could not fill are named,
 // so the toast is what carries that news: swap it for a spy.
@@ -33,6 +33,16 @@ jest.mock('@/components/hooks/use-toast', () => ({
 }));
 
 const mockToast = toast as unknown as jest.Mock;
+
+// The panel names a chunk method with the label the settings page shows, so the
+// catalogue is stubbed instead of fetched.
+jest.mock('@/hooks/use-user-setting-request', () => ({
+  ...jest.requireActual('@/hooks/use-user-setting-request'),
+  useSelectParserList: () => [
+    { value: 'naive', label: 'General' },
+    { value: 'paper', label: 'Paper' },
+  ],
+}));
 
 jest.mock('react-i18next', () => {
   // The real module is kept so the app wide i18n instance still initialises
@@ -400,6 +410,89 @@ describe('dataset version history list', () => {
     expect(screen.getAllByText('datasetVersion.configChangeLine')).toHaveLength(
       1,
     );
+  });
+
+  it('reads a pipeline version as part of the pipeline line', () => {
+    // A version is a version of *that* pipeline, so the two read as one line
+    // ("pip (version: a)") instead of a name and a stray letter underneath it.
+    mockVersions.current = [];
+    mockDetail.current = {
+      version: 7,
+      kind: 'dataset_config',
+      changes: [],
+      config: {},
+      config_changes: [
+        { field: 'parse_type', before: 'builtin', after: 'pipeline' },
+        { field: 'pipeline_id', before: null, after: 'pip' },
+        { field: 'pipeline_version_id', before: null, after: 'a' },
+      ],
+    };
+
+    render(<DatasetVersionHistory datasetId="ds-1" />);
+
+    expect(screen.getAllByText('datasetVersion.configChangeLine')).toHaveLength(
+      2,
+    );
+  });
+
+  it('keeps the version on its own line when only the version moved', () => {
+    // The pipeline did not move, so there is no pipeline line for the version to
+    // join: dropping it would hide the whole change.
+    mockVersions.current = [];
+    mockDetail.current = {
+      version: 8,
+      kind: 'dataset_config',
+      changes: [],
+      config: {},
+      config_changes: [
+        { field: 'pipeline_version_id', before: 'v1', after: 'v2' },
+      ],
+    };
+
+    render(<DatasetVersionHistory datasetId="ds-1" />);
+
+    expect(screen.getAllByText('datasetVersion.configChangeLine')).toHaveLength(
+      1,
+    );
+  });
+
+  it('renders the parse mode switch a document version reports', () => {
+    // A document moving from its built-in method to a pipeline changes no
+    // parameter the panel can print: only pipeline_id appears, and a field whose
+    // before side is absent is dropped. The server reports the derived mode, and
+    // the line has to survive the flattening like any other.
+    mockVersions.current = [];
+    mockDetail.current = {
+      version: 5,
+      kind: 'document_config',
+      changes: [
+        {
+          entity: 'document',
+          action: 'update',
+          doc_id: 'doc-1',
+          name: '012.txt',
+        },
+      ],
+      config: {},
+      document_config_changes: [
+        {
+          doc_id: 'doc-1',
+          doc_name: '012.txt',
+          changes: [
+            { field: 'parse_type', before: 'builtin', after: 'pipeline' },
+          ],
+        },
+      ],
+    };
+
+    render(<DatasetVersionHistory datasetId="ds-1" />);
+
+    expect(screen.getAllByText('datasetVersion.configChangeLine')).toHaveLength(
+      1,
+    );
+    expect(
+      screen.getByText('datasetVersion.changesDocumentConfigurationFor'),
+    ).toBeInTheDocument();
   });
 
   it('lists a wiki page edit as a version of its own', () => {
@@ -1502,5 +1595,66 @@ describe('dataset version history list', () => {
 
     expect(screen.queryByText('file-6.pdf')).not.toBeInTheDocument();
     expect(screen.getByText('file-1.pdf')).toBeInTheDocument();
+  });
+});
+
+describe('pipeline alias on a configuration line', () => {
+  // A stub translator keeps the key and the values it was handed, so a test can
+  // read which sentence the merge chose without rendering the whole panel.
+  const t = (key: string, options?: Record<string, unknown>) =>
+    `${key}:${JSON.stringify(options ?? {})}`;
+  type Change = { field: string; before: unknown; after: unknown };
+  // The imported binding may not appear in a type annotation in this file (see
+  // the note on esbuild-jest above), so the signature is restated locally.
+  const merge = mergePipelineAlias as unknown as (
+    changes: Change[],
+    translate: typeof t,
+  ) => Change[];
+
+  const line = (field: string, before: unknown, after: unknown): Change => ({
+    field,
+    before,
+    after,
+  });
+
+  it('folds a pinned version alias into the pipeline line', () => {
+    const merged = merge(
+      [
+        line('pipeline_id', null, 'pip'),
+        line('pipeline_version_id', null, 'release-1'),
+      ],
+      t,
+    );
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0].after).toBe(
+      'datasetVersion.configPipelineWithAlias:{"pipeline":"pip","alias":"release-1"}',
+    );
+  });
+
+  it('names a pipeline with no version as following the latest version', () => {
+    // No version line means nothing was pinned, so there is no alias to fold in.
+    // The line has to say that instead of looking like a lost alias.
+    const merged = merge([line('pipeline_id', null, 'pip')], t);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0].after).toBe(
+      'datasetVersion.configPipelineLatest:{"pipeline":"pip"}',
+    );
+  });
+
+  it('leaves the pipeline bare when the version label only repeats it', () => {
+    // A version without an alias falls back to its title, which is the pipeline
+    // name: printing it again would read as "pip (alias: pip)".
+    const merged = merge(
+      [
+        line('pipeline_id', null, 'pip'),
+        line('pipeline_version_id', null, 'pip'),
+      ],
+      t,
+    );
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0].after).toBe('pip');
   });
 });

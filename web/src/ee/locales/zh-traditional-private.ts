@@ -108,7 +108,6 @@ export default {
       restoreConfirmRestoreOnly:
         '將放回 {{restored}} 個在該版本之後被刪除的文件',
       restoreConfirmDeleteOnly: '將移除該版本之後上傳的 {{deleted}} 個文件',
-      restoreConfirmConfig: '同時套用 {{count}} 項設定變更',
       restoreIncompleteTitle: '{{count}} 個文件未能完整恢復',
       // 這句話引出下面的列表：每行一個文件，行尾是伺服器給該文件的原因。
       restoreIncompleteBody: '這些文件記錄已放回，但內容沒有，需要重新解析：',
@@ -158,6 +157,10 @@ export default {
       configChangeLine: '{{field}}：{{before}} → {{after}}',
       configAvatarSet: '已設定',
       configAvatarEmpty: '未設定',
+      configParseModeBuiltin: '內建',
+      configParseModePipeline: '資料管道',
+      configPipelineWithAlias: '{{pipeline}}（別名：{{alias}}）',
+      configPipelineLatest: '{{pipeline}}（最新版本）',
       changesEmpty: '該版本沒有記錄變更明細。',
       changesLine: '{{action}}{{entity}} {{name}}',
       changesRenameLine: '{{action}}{{entity}} {{before}} 為 {{after}}',
@@ -185,6 +188,7 @@ export default {
         description: '描述',
         language: '語言',
         embd_id: '嵌入模型',
+        parse_type: '解析類型',
         parser_id: '分塊方法',
         pipeline_id: '資料管道',
         pipeline_version_id: '管道版本',

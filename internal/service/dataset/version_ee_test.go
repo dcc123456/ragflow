@@ -533,8 +533,8 @@ func TestDocumentConfigVersionReportsPerDocumentSettingsDiff(t *testing.T) {
 	// a millisecond and still be two states.
 	//
 	// The newer row also carries what the parser template fills in on save: the
-	// prompts an older row left empty, and a pipeline binding it did not have.
-	// Neither is an edit, so neither may reach the panel.
+	// prompt an older row left empty. The panel lists the configuration as it
+	// stands, so that one is reported too.
 	emptyPipeline := ""
 	settings := []entity.DocumentVersion{
 		{DocumentID: "doc-1", DatasetVersion: 0, DatasetID: "kb-1",
@@ -595,16 +595,17 @@ func TestDocumentConfigVersionReportsPerDocumentSettingsDiff(t *testing.T) {
 	if group.DocID != "doc-1" || group.DocName != "handbook.pdf" {
 		t.Fatalf("group = %#v, want the document the version touched", group)
 	}
-	// Only the parameters that moved between two recorded values, never the whole
-	// parser_config blob. The prompt the template filled in for an empty one and
-	// the pipeline binding the older row never had read as "— → value" on the page,
-	// so they stay out.
+	// The parameters as the newer row carries them, never the whole parser_config
+	// blob. The prompt the template filled in for an empty one reads as
+	// "— → value" on the page, and the panel lists the configuration as it stands;
+	// the pipeline binding the newer row carries empty stays out.
 	byField := make(map[string]DatasetConfigChange, len(group.Changes))
 	for _, change := range group.Changes {
 		byField[change.Field] = change
 	}
 	want := []string{
 		"parser_config.Extractor:AutoExtractDefault.keywords.enabled",
+		"parser_config.Extractor:AutoExtractDefault.keywords.system_prompt",
 		"parser_config.Extractor:AutoExtractDefault.keywords.top_n",
 		"parser_config.chunk_token_num",
 	}
@@ -640,6 +641,541 @@ func TestDocumentConfigVersionReportsPerDocumentSettingsDiff(t *testing.T) {
 		t.Fatalf("get config version: %v", err)
 	} else if len(got.DocumentConfigChanges) != 0 {
 		t.Fatalf("config version groups = %#v, want none", got.DocumentConfigChanges)
+	}
+}
+
+// TestDocumentConfigVersionReportsAParseModeSwitch pins the switch from a built-in
+// method to a pipeline: the mode line names it, parser_id is cleared because the
+// method is no longer part of the selection, and the pipeline binding arrives as a
+// line of its own.
+func TestDocumentConfigVersionReportsAParseModeSwitch(t *testing.T) {
+	db := setupDatasetUpdateTestDB(t)
+	pushServiceDB(t, db)
+	insertDatasetUpdateKB(t, "kb-1", "tenant-1", "Dataset")
+
+	anchor := int64(1762764000000)
+	name := "012.txt"
+	if err := db.Create(&entity.Document{
+		ID: "doc-1", KbID: "kb-1", Name: &name, ParserConfig: entity.JSONMap{},
+	}).Error; err != nil {
+		t.Fatalf("seed document: %v", err)
+	}
+	canvas, canvasVersion := "canvas-7f3c", "canvas-version-7f3c"
+	alias := "v3"
+	seedCanvasVersion(t, db, canvas, canvasVersion, 0)
+	if err := db.Model(&entity.UserCanvasVersion{}).Where("id = ?", canvasVersion).
+		Update("alias", alias).Error; err != nil {
+		t.Fatalf("name the canvas version: %v", err)
+	}
+	settings := []entity.DocumentVersion{
+		{DocumentID: "doc-1", DatasetVersion: 0, DatasetID: "kb-1",
+			Kind: entity.DatasetVersionKindDocumentConfig, ParserID: "general",
+			ParserConfig: entity.JSONMap{"chunk_token_num": 512}},
+		// The save that bound the pipeline: parser_id is left as it was, which is
+		// what the update writes, and the configuration is unchanged.
+		{DocumentID: "doc-1", DatasetVersion: 1, DatasetID: "kb-1",
+			Kind: entity.DatasetVersionKindDocumentConfig, ParserID: "general",
+			PipelineID:        &canvas,
+			PipelineVersionID: &canvasVersion,
+			ParserConfig:      entity.JSONMap{"chunk_token_num": 512}},
+	}
+	if err := db.Create(&settings).Error; err != nil {
+		t.Fatalf("seed settings states: %v", err)
+	}
+	version := &entity.DatasetVersion{
+		DatasetID: "kb-1", Version: 1, Kind: entity.DatasetVersionKindDocumentConfig,
+		CreatedBy: "tenant-1", CreateTime: &anchor,
+		Changes: entity.DatasetVersionChanges{
+			{DocID: "doc-1", Entity: entity.DatasetVersionChangeEntityDocument,
+				Action: entity.DatasetVersionChangeActionUpdate, Name: name},
+		},
+	}
+	if err := db.Create(version).Error; err != nil {
+		t.Fatalf("seed version: %v", err)
+	}
+
+	ctx := withDatasetTestContext(t.Context(), "tenant-1", "tenant-1")
+	detail, err := testDatasetUpdateService(t).GetDatasetVersion(
+		ctx, &DatasetVersionRequest{DatasetID: "kb-1", Version: 1})
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if len(detail.DocumentConfigChanges) != 1 {
+		t.Fatalf("groups = %#v, want the document the version touched", detail.DocumentConfigChanges)
+	}
+	group := detail.DocumentConfigChanges[0]
+	byField := make(map[string]DatasetConfigChange, len(group.Changes))
+	fields := make([]string, 0, len(group.Changes))
+	for _, change := range group.Changes {
+		byField[change.Field] = change
+		fields = append(fields, change.Field)
+	}
+	// The mode says what happened, the method says what the document came from, and
+	// the pipeline and its version say where it went.
+	want := []string{"parse_type", "parser_id", "pipeline_id", "pipeline_version_id"}
+	if strings.Join(fields, ",") != strings.Join(want, ",") {
+		t.Fatalf("fields = %v, want %v", fields, want)
+	}
+	if mode := byField["parse_type"]; mode.Before != "builtin" || mode.After != "pipeline" {
+		t.Fatalf("parse_type = %#v, want the switch from the built-in method to a pipeline", mode)
+	}
+	if method := byField["parser_id"]; method.Before != "general" || method.After != "" {
+		t.Fatalf("parser_id = %#v, want the built-in method cleared", method)
+	}
+	// No canvas row backs the id in this database, so it stays a name the reader can
+	// still act on rather than an empty cell.
+	if pipeline := byField["pipeline_id"]; pipeline.Before != nil || pipeline.After != canvas {
+		t.Fatalf("pipeline_id = %#v, want the pipeline the document moved to", pipeline)
+	}
+	if version := byField["pipeline_version_id"]; version.Before != nil || version.After != alias {
+		t.Fatalf("pipeline_version_id = %#v, want the version's alias", version)
+	}
+}
+
+// TestDocumentConfigVersionNamesThePipelineWhenOnlyTheVersionMoved covers a
+// version switch inside the pipeline the document already ran: no pipeline row
+// moves, and "a -> b" alone would not say which pipeline those aliases belong to.
+// The group carries the pipeline on both sides so the panel can print
+// "pip (alias: a) -> pip (alias: b)".
+func TestDocumentConfigVersionNamesThePipelineWhenOnlyTheVersionMoved(t *testing.T) {
+	db := setupDatasetUpdateTestDB(t)
+	pushServiceDB(t, db)
+	insertDatasetUpdateKB(t, "kb-1", "tenant-1", "Dataset")
+
+	anchor := int64(1762764000000)
+	name := "012.txt"
+	if err := db.Create(&entity.Document{
+		ID: "doc-1", KbID: "kb-1", Name: &name, ParserConfig: entity.JSONMap{},
+	}).Error; err != nil {
+		t.Fatalf("seed document: %v", err)
+	}
+	canvas := "canvas-7f3c"
+	seedDatasetUpdateCanvas(t, canvas, "tenant-1", datasetUpdateCanvasDSL("Parser:Shared", "chunk_token_num"))
+	if err := db.Model(&entity.UserCanvas{}).Where("id = ?", canvas).
+		Update("title", "pip").Error; err != nil {
+		t.Fatalf("name the canvas: %v", err)
+	}
+	versionA, versionB := "canvas-version-a", "canvas-version-b"
+	seedCanvasVersion(t, db, canvas, versionA, 0)
+	seedCanvasVersion(t, db, canvas, versionB, 1000)
+	if err := db.Model(&entity.UserCanvasVersion{}).Where("id = ?", versionA).
+		Update("alias", "a").Error; err != nil {
+		t.Fatalf("name the first version: %v", err)
+	}
+	if err := db.Model(&entity.UserCanvasVersion{}).Where("id = ?", versionB).
+		Update("alias", "b").Error; err != nil {
+		t.Fatalf("name the second version: %v", err)
+	}
+	settings := []entity.DocumentVersion{
+		{DocumentID: "doc-1", DatasetVersion: 0, DatasetID: "kb-1",
+			Kind: entity.DatasetVersionKindDocumentConfig, ParserID: "general",
+			PipelineID:        &canvas,
+			PipelineVersionID: &versionA,
+			ParserConfig:      entity.JSONMap{"chunk_token_num": 512}},
+		{DocumentID: "doc-1", DatasetVersion: 1, DatasetID: "kb-1",
+			Kind: entity.DatasetVersionKindDocumentConfig, ParserID: "general",
+			PipelineID:        &canvas,
+			PipelineVersionID: &versionB,
+			ParserConfig:      entity.JSONMap{"chunk_token_num": 512}},
+	}
+	if err := db.Create(&settings).Error; err != nil {
+		t.Fatalf("seed settings states: %v", err)
+	}
+	version := &entity.DatasetVersion{
+		DatasetID: "kb-1", Version: 1, Kind: entity.DatasetVersionKindDocumentConfig,
+		CreatedBy: "tenant-1", CreateTime: &anchor,
+		Changes: entity.DatasetVersionChanges{
+			{DocID: "doc-1", Entity: entity.DatasetVersionChangeEntityDocument,
+				Action: entity.DatasetVersionChangeActionUpdate, Name: name},
+		},
+	}
+	if err := db.Create(version).Error; err != nil {
+		t.Fatalf("seed version: %v", err)
+	}
+
+	ctx := withDatasetTestContext(t.Context(), "tenant-1", "tenant-1")
+	detail, err := testDatasetUpdateService(t).GetDatasetVersion(
+		ctx, &DatasetVersionRequest{DatasetID: "kb-1", Version: 1})
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if len(detail.DocumentConfigChanges) != 1 {
+		t.Fatalf("groups = %#v, want the document the version touched", detail.DocumentConfigChanges)
+	}
+	group := detail.DocumentConfigChanges[0]
+	byField := make(map[string]DatasetConfigChange, len(group.Changes))
+	fields := make([]string, 0, len(group.Changes))
+	for _, change := range group.Changes {
+		byField[change.Field] = change
+		fields = append(fields, change.Field)
+	}
+	// The pipeline row comes before the version row it labels, so the panel folds
+	// the alias into the pipeline it belongs to.
+	want := []string{"pipeline_id", "pipeline_version_id"}
+	if strings.Join(fields, ",") != strings.Join(want, ",") {
+		t.Fatalf("fields = %v, want %v", fields, want)
+	}
+	if pipeline := byField["pipeline_id"]; pipeline.Before != "pip" || pipeline.After != "pip" {
+		t.Fatalf("pipeline_id = %#v, want the pipeline the version belongs to on both sides", pipeline)
+	}
+	if version := byField["pipeline_version_id"]; version.Before != "a" || version.After != "b" {
+		t.Fatalf("pipeline_version_id = %#v, want the aliases of both versions", version)
+	}
+}
+
+// TestDocumentConfigVersionReportsAParameterWithNoPreviousValue pins the reading
+// of a parameter the newer state carries and the older one did not: the panel
+// lists the configuration as it stands, so it is reported, with its missing older
+// side left empty.
+func TestDocumentConfigVersionReportsAParameterWithNoPreviousValue(t *testing.T) {
+	db := setupDatasetUpdateTestDB(t)
+	pushServiceDB(t, db)
+	insertDatasetUpdateKB(t, "kb-1", "tenant-1", "Dataset")
+
+	anchor := int64(1762764000000)
+	name := "012.txt"
+	if err := db.Create(&entity.Document{
+		ID: "doc-1", KbID: "kb-1", Name: &name, ParserConfig: entity.JSONMap{},
+	}).Error; err != nil {
+		t.Fatalf("seed document: %v", err)
+	}
+	settings := []entity.DocumentVersion{
+		{DocumentID: "doc-1", DatasetVersion: 0, DatasetID: "kb-1",
+			Kind: entity.DatasetVersionKindDocumentConfig, ParserID: "general",
+			ParserConfig: entity.JSONMap{
+				"Parser:Shared": map[string]interface{}{"order_index": 1},
+			}},
+		{DocumentID: "doc-1", DatasetVersion: 1, DatasetID: "kb-1",
+			Kind: entity.DatasetVersionKindDocumentConfig, ParserID: "general",
+			ParserConfig: entity.JSONMap{
+				"Parser:Shared": map[string]interface{}{
+					"order_index": 1,
+					"pages":       []interface{}{[]interface{}{1, 100000}},
+				},
+			}},
+	}
+	if err := db.Create(&settings).Error; err != nil {
+		t.Fatalf("seed settings states: %v", err)
+	}
+	version := &entity.DatasetVersion{
+		DatasetID: "kb-1", Version: 1, Kind: entity.DatasetVersionKindDocumentConfig,
+		CreatedBy: "tenant-1", CreateTime: &anchor,
+		Changes: entity.DatasetVersionChanges{
+			{DocID: "doc-1", Entity: entity.DatasetVersionChangeEntityDocument,
+				Action: entity.DatasetVersionChangeActionUpdate, Name: name},
+		},
+	}
+	if err := db.Create(version).Error; err != nil {
+		t.Fatalf("seed version: %v", err)
+	}
+
+	ctx := withDatasetTestContext(t.Context(), "tenant-1", "tenant-1")
+	detail, err := testDatasetUpdateService(t).GetDatasetVersion(
+		ctx, &DatasetVersionRequest{DatasetID: "kb-1", Version: 1})
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if len(detail.DocumentConfigChanges) != 1 {
+		t.Fatalf("groups = %#v, want the document the version touched", detail.DocumentConfigChanges)
+	}
+	byField := make(map[string]DatasetConfigChange)
+	for _, change := range detail.DocumentConfigChanges[0].Changes {
+		byField[change.Field] = change
+	}
+	pages, ok := byField["parser_config.Parser:Shared.pages"]
+	if !ok {
+		t.Fatalf("changes = %#v, want the parameter the newer state carries", detail.DocumentConfigChanges[0].Changes)
+	}
+	if pages.Before != nil {
+		t.Fatalf("pages before = %#v, want the missing side left empty", pages.Before)
+	}
+	if pages.After == nil {
+		t.Fatalf("pages after = %#v, want the value the newer state carries", pages.After)
+	}
+}
+
+// TestDocumentConfigVersionDropsAParameterTheNewerStateLost is the other half: a
+// parameter only the older state carries is not listed, because the panel reads
+// the configuration as it stands now.
+func TestDocumentConfigVersionDropsAParameterTheNewerStateLost(t *testing.T) {
+	db := setupDatasetUpdateTestDB(t)
+	pushServiceDB(t, db)
+	insertDatasetUpdateKB(t, "kb-1", "tenant-1", "Dataset")
+
+	anchor := int64(1762764000000)
+	name := "012.txt"
+	if err := db.Create(&entity.Document{
+		ID: "doc-1", KbID: "kb-1", Name: &name, ParserConfig: entity.JSONMap{},
+	}).Error; err != nil {
+		t.Fatalf("seed document: %v", err)
+	}
+	settings := []entity.DocumentVersion{
+		{DocumentID: "doc-1", DatasetVersion: 0, DatasetID: "kb-1",
+			Kind: entity.DatasetVersionKindDocumentConfig, ParserID: "general",
+			ParserConfig: entity.JSONMap{
+				"Parser:Shared": map[string]interface{}{
+					"order_index": 1,
+					"pages":       []interface{}{[]interface{}{1, 100000}},
+				},
+			}},
+		{DocumentID: "doc-1", DatasetVersion: 1, DatasetID: "kb-1",
+			Kind: entity.DatasetVersionKindDocumentConfig, ParserID: "general",
+			ParserConfig: entity.JSONMap{
+				"Parser:Shared": map[string]interface{}{"order_index": 1},
+			}},
+	}
+	if err := db.Create(&settings).Error; err != nil {
+		t.Fatalf("seed settings states: %v", err)
+	}
+	version := &entity.DatasetVersion{
+		DatasetID: "kb-1", Version: 1, Kind: entity.DatasetVersionKindDocumentConfig,
+		CreatedBy: "tenant-1", CreateTime: &anchor,
+		Changes: entity.DatasetVersionChanges{
+			{DocID: "doc-1", Entity: entity.DatasetVersionChangeEntityDocument,
+				Action: entity.DatasetVersionChangeActionUpdate, Name: name},
+		},
+	}
+	if err := db.Create(version).Error; err != nil {
+		t.Fatalf("seed version: %v", err)
+	}
+
+	ctx := withDatasetTestContext(t.Context(), "tenant-1", "tenant-1")
+	detail, err := testDatasetUpdateService(t).GetDatasetVersion(
+		ctx, &DatasetVersionRequest{DatasetID: "kb-1", Version: 1})
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	// The only difference between the two states is a key the newer one lost:
+	// the panel reads the configuration as it stands, so it is not listed.
+	if len(detail.DocumentConfigChanges) != 0 {
+		t.Fatalf("groups = %#v, want a parameter the newer state lost left out", detail.DocumentConfigChanges)
+	}
+}
+
+// TestDocumentConfigVersionReportsAParserSwitchAndItsParameters pins the
+// "switched to Q&A" case: the method line names the switch, and the parameters
+// the newer state carries are listed as they stand - the one the old template had
+// and the new one emptied reads as "value → []".
+func TestDocumentConfigVersionReportsAParserSwitchAndItsParameters(t *testing.T) {
+	db := setupDatasetUpdateTestDB(t)
+	pushServiceDB(t, db)
+	insertDatasetUpdateKB(t, "kb-1", "tenant-1", "Dataset")
+
+	anchor := int64(1762764000000)
+	name := "012.txt"
+	if err := db.Create(&entity.Document{
+		ID: "doc-1", KbID: "kb-1", Name: &name, ParserConfig: entity.JSONMap{},
+	}).Error; err != nil {
+		t.Fatalf("seed document: %v", err)
+	}
+	settings := []entity.DocumentVersion{
+		{DocumentID: "doc-1", DatasetVersion: 0, DatasetID: "kb-1",
+			Kind: entity.DatasetVersionKindDocumentConfig, ParserID: "general",
+			ParserConfig: entity.JSONMap{
+				"Parser:HipSignsRhyme": map[string]interface{}{
+					"pdf": map[string]interface{}{
+						"pages": []interface{}{[]interface{}{1, 100000}},
+					},
+				},
+			}},
+		{DocumentID: "doc-1", DatasetVersion: 1, DatasetID: "kb-1",
+			Kind: entity.DatasetVersionKindDocumentConfig, ParserID: "qa",
+			ParserConfig: entity.JSONMap{
+				"Parser:HipSignsRhyme": map[string]interface{}{
+					"pdf": map[string]interface{}{"pages": []interface{}{}},
+				},
+			}},
+	}
+	if err := db.Create(&settings).Error; err != nil {
+		t.Fatalf("seed settings states: %v", err)
+	}
+	version := &entity.DatasetVersion{
+		DatasetID: "kb-1", Version: 1, Kind: entity.DatasetVersionKindDocumentConfig,
+		CreatedBy: "tenant-1", CreateTime: &anchor,
+		Changes: entity.DatasetVersionChanges{
+			{DocID: "doc-1", Entity: entity.DatasetVersionChangeEntityDocument,
+				Action: entity.DatasetVersionChangeActionUpdate, Name: name},
+		},
+	}
+	if err := db.Create(version).Error; err != nil {
+		t.Fatalf("seed version: %v", err)
+	}
+
+	ctx := withDatasetTestContext(t.Context(), "tenant-1", "tenant-1")
+	detail, err := testDatasetUpdateService(t).GetDatasetVersion(
+		ctx, &DatasetVersionRequest{DatasetID: "kb-1", Version: 1})
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if len(detail.DocumentConfigChanges) != 1 {
+		t.Fatalf("groups = %#v, want the document the version touched", detail.DocumentConfigChanges)
+	}
+	fields := make([]string, 0, len(detail.DocumentConfigChanges[0].Changes))
+	for _, change := range detail.DocumentConfigChanges[0].Changes {
+		fields = append(fields, change.Field)
+	}
+	want := []string{"parser_id", "parser_config.Parser:HipSignsRhyme.pdf.pages"}
+	if strings.Join(fields, ",") != strings.Join(want, ",") {
+		t.Fatalf("fields = %v, want %v", fields, want)
+	}
+	if change := detail.DocumentConfigChanges[0].Changes[0]; change.Before != "general" || change.After != "qa" {
+		t.Fatalf("parser_id = %#v, want general -> qa", change)
+	}
+}
+
+// TestDocumentConfigVersionReportsEveryParameterOfAParserSwitch pins the other
+// half: the switch line names the method, and every parameter the newer state
+// carries is listed as it stands, whether or not the old template declared it.
+func TestDocumentConfigVersionReportsEveryParameterOfAParserSwitch(t *testing.T) {
+	db := setupDatasetUpdateTestDB(t)
+	pushServiceDB(t, db)
+	insertDatasetUpdateKB(t, "kb-1", "tenant-1", "Dataset")
+
+	anchor := int64(1762764000000)
+	name := "012.txt"
+	if err := db.Create(&entity.Document{
+		ID: "doc-1", KbID: "kb-1", Name: &name, ParserConfig: entity.JSONMap{},
+	}).Error; err != nil {
+		t.Fatalf("seed document: %v", err)
+	}
+	settings := []entity.DocumentVersion{
+		{DocumentID: "doc-1", DatasetVersion: 0, DatasetID: "kb-1",
+			Kind: entity.DatasetVersionKindDocumentConfig, ParserID: "general",
+			ParserConfig: entity.JSONMap{
+				"Parser:HipSignsRhyme": map[string]interface{}{
+					"pdf": map[string]interface{}{
+						"parse_method": "DeepDOC",
+						"pages":        []interface{}{[]interface{}{1, 100000}},
+					},
+				},
+			}},
+		{DocumentID: "doc-1", DatasetVersion: 1, DatasetID: "kb-1",
+			Kind: entity.DatasetVersionKindDocumentConfig, ParserID: "qa",
+			ParserConfig: entity.JSONMap{
+				"Parser:HipSignsRhyme": map[string]interface{}{
+					"pdf": map[string]interface{}{
+						"parse_method": "VLM",
+						"pages":        []interface{}{},
+					},
+				},
+			}},
+	}
+	if err := db.Create(&settings).Error; err != nil {
+		t.Fatalf("seed settings states: %v", err)
+	}
+	version := &entity.DatasetVersion{
+		DatasetID: "kb-1", Version: 1, Kind: entity.DatasetVersionKindDocumentConfig,
+		CreatedBy: "tenant-1", CreateTime: &anchor,
+		Changes: entity.DatasetVersionChanges{
+			{DocID: "doc-1", Entity: entity.DatasetVersionChangeEntityDocument,
+				Action: entity.DatasetVersionChangeActionUpdate, Name: name},
+		},
+	}
+	if err := db.Create(version).Error; err != nil {
+		t.Fatalf("seed version: %v", err)
+	}
+
+	ctx := withDatasetTestContext(t.Context(), "tenant-1", "tenant-1")
+	detail, err := testDatasetUpdateService(t).GetDatasetVersion(
+		ctx, &DatasetVersionRequest{DatasetID: "kb-1", Version: 1})
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if len(detail.DocumentConfigChanges) != 1 {
+		t.Fatalf("groups = %#v, want the document the version touched", detail.DocumentConfigChanges)
+	}
+	byField := make(map[string]DatasetConfigChange)
+	for _, change := range detail.DocumentConfigChanges[0].Changes {
+		byField[change.Field] = change
+	}
+	// Both parameters are carried by the newer state, so both are listed: the one
+	// that moved, and the one the switch emptied.
+	method, ok := byField["parser_config.Parser:HipSignsRhyme.pdf.parse_method"]
+	if !ok {
+		t.Fatalf("changes = %#v, want the parameter the switch moved",
+			detail.DocumentConfigChanges[0].Changes)
+	}
+	if method.Before != "DeepDOC" || method.After != "VLM" {
+		t.Fatalf("parse_method = %#v, want DeepDOC -> VLM", method)
+	}
+	if _, ok := byField["parser_config.Parser:HipSignsRhyme.pdf.pages"]; !ok {
+		t.Fatalf("changes = %#v, want the parameter the newer state carries emptied",
+			detail.DocumentConfigChanges[0].Changes)
+	}
+}
+
+// TestDocumentConfigVersionReportsAPipelineToBuiltInSwitch covers the direction
+// that comes back: the document ran a pipeline and is put back on a built-in
+// method. A pipeline row carries no method of its own, so that side of the pair is
+// absent - and it still has to be reported, or the panel would show the pipeline
+// disappearing without saying what replaced it.
+func TestDocumentConfigVersionReportsAPipelineToBuiltInSwitch(t *testing.T) {
+	db := setupDatasetUpdateTestDB(t)
+	pushServiceDB(t, db)
+	insertDatasetUpdateKB(t, "kb-1", "tenant-1", "Dataset")
+
+	anchor := int64(1762764000000)
+	name := "012.txt"
+	if err := db.Create(&entity.Document{
+		ID: "doc-1", KbID: "kb-1", Name: &name, ParserConfig: entity.JSONMap{},
+	}).Error; err != nil {
+		t.Fatalf("seed document: %v", err)
+	}
+	canvas := "canvas-7f3c"
+	emptyPipeline := ""
+	settings := []entity.DocumentVersion{
+		// The row still carries the method the document last ran under, which is not
+		// part of its selection while a pipeline parses it.
+		{DocumentID: "doc-1", DatasetVersion: 0, DatasetID: "kb-1",
+			Kind: entity.DatasetVersionKindDocumentConfig, ParserID: "naive",
+			PipelineID:   &canvas,
+			ParserConfig: entity.JSONMap{"chunk_token_num": 512}},
+		{DocumentID: "doc-1", DatasetVersion: 1, DatasetID: "kb-1",
+			Kind: entity.DatasetVersionKindDocumentConfig, ParserID: "paper",
+			PipelineID:   &emptyPipeline,
+			ParserConfig: entity.JSONMap{"chunk_token_num": 512}},
+	}
+	if err := db.Create(&settings).Error; err != nil {
+		t.Fatalf("seed settings states: %v", err)
+	}
+	version := &entity.DatasetVersion{
+		DatasetID: "kb-1", Version: 1, Kind: entity.DatasetVersionKindDocumentConfig,
+		CreatedBy: "tenant-1", CreateTime: &anchor,
+		Changes: entity.DatasetVersionChanges{
+			{DocID: "doc-1", Entity: entity.DatasetVersionChangeEntityDocument,
+				Action: entity.DatasetVersionChangeActionUpdate, Name: name},
+		},
+	}
+	if err := db.Create(version).Error; err != nil {
+		t.Fatalf("seed version: %v", err)
+	}
+
+	ctx := withDatasetTestContext(t.Context(), "tenant-1", "tenant-1")
+	detail, err := testDatasetUpdateService(t).GetDatasetVersion(
+		ctx, &DatasetVersionRequest{DatasetID: "kb-1", Version: 1})
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if len(detail.DocumentConfigChanges) != 1 {
+		t.Fatalf("groups = %#v, want the document the version touched", detail.DocumentConfigChanges)
+	}
+	byField := make(map[string]DatasetConfigChange)
+	fields := make([]string, 0, len(detail.DocumentConfigChanges[0].Changes))
+	for _, change := range detail.DocumentConfigChanges[0].Changes {
+		byField[change.Field] = change
+		fields = append(fields, change.Field)
+	}
+	if want := []string{"parse_type", "parser_id", "pipeline_id"}; strings.Join(fields, ",") != strings.Join(want, ",") {
+		t.Fatalf("fields = %v, want %v", fields, want)
+	}
+	if mode := byField["parse_type"]; mode.Before != "pipeline" || mode.After != "builtin" {
+		t.Fatalf("parse_type = %#v, want the switch back to the built-in method", mode)
+	}
+	if method := byField["parser_id"]; method.Before != "" || method.After != "paper" {
+		t.Fatalf("parser_id = %#v, want the method the document was put back on", method)
+	}
+	if pipeline := byField["pipeline_id"]; pipeline.Before != canvas || pipeline.After != "" {
+		t.Fatalf("pipeline_id = %#v, want the pipeline the document left", pipeline)
 	}
 }
 
@@ -738,14 +1274,13 @@ func TestDatasetConfigChangesReportsOneNestedParameter(t *testing.T) {
 	}
 }
 
-// TestDatasetConfigChangesIgnoresKeysOnlyOneSideCarries pins the noise rule.
-// Saving re-derives parser_config from the parser template, so parameters the
-// older row never stored arrive as defaults ("— → value") and parameters the
-// template no longer defines are dropped ("value → —"). Neither is an edit, and
-// an object whose whole difference is of that kind must not be reported whole
-// either. A top-level field that first appears (a pipeline binding) is a real
-// change, and so is a field whose type changed.
-func TestDatasetConfigChangesIgnoresKeysOnlyOneSideCarries(t *testing.T) {
+// TestDatasetConfigChangesReadsTheNewerSnapshot pins the display rule. Saving
+// re-derives parser_config from the parser template, so a parameter the newer row
+// carries is listed ("— → value" when the older row had none), while a parameter
+// it no longer carries is silent ("value → —"). A top-level field that first
+// appears (a pipeline binding) is a real change, and so is a field whose type
+// changed.
+func TestDatasetConfigChangesReadsTheNewerSnapshot(t *testing.T) {
 	before := entity.JSONMap{
 		"parser_config": map[string]interface{}{
 			"Extractor:AutoExtractDefault": map[string]interface{}{
@@ -792,12 +1327,19 @@ func TestDatasetConfigChangesIgnoresKeysOnlyOneSideCarries(t *testing.T) {
 	for _, change := range changes {
 		got = append(got, change.Field)
 	}
-	// Only the parameter that moved is left: the defaults the older row never
-	// carried, the keys the template dropped, the components it added and the
-	// objects whose entire difference is default material are all silent.
+	// What the newer snapshot carries: the parameters the older one never stored
+	// arrive as "— → value", the one that moved keeps its values, the component the
+	// template added is listed parameter by parameter - and the keys only the older
+	// snapshot has (the template dropped them) are silent.
 	want := []string{
 		"pipeline_id",
+		"parser_config.Extractor:AutoExtractDefault.frequencyPenaltyEnabled",
+		"parser_config.Extractor:AutoExtractDefault.keywords.enabled",
 		"parser_config.Extractor:AutoExtractDefault.keywords.top_n",
+		"parser_config.Extractor:AutoExtractDefault.questions.enabled",
+		"parser_config.Extractor:AutoExtractDefault.questions.system_prompt",
+		"parser_config.Extractor:AutoExtractDefault.summary.system_prompt",
+		"parser_config.Parser:HipSignsRhyme.doc.order_index",
 	}
 	if len(got) != len(want) {
 		t.Fatalf("changes = %v, want %v", got, want)
@@ -820,9 +1362,10 @@ func TestDatasetConfigChangesIgnoresKeysOnlyOneSideCarries(t *testing.T) {
 	}
 }
 
-// TestDatasetConfigChangesSkipsAbsentNestedValues: absent/nil is a filled-in
-// default; "" is a value, so "" → text is reported.
-func TestDatasetConfigChangesSkipsAbsentNestedValues(t *testing.T) {
+// TestDatasetConfigChangesReportsEveryValueTheNewerRowCarries: absent/nil is a
+// filled-in default and "" is a value the row carried - both are reported when
+// the newer row carries them.
+func TestDatasetConfigChangesReportsEveryValueTheNewerRowCarries(t *testing.T) {
 	before := entity.JSONMap{
 		"parser_config": map[string]interface{}{
 			"Extractor:AutoExtractDefault": map[string]interface{}{
@@ -866,7 +1409,9 @@ func TestDatasetConfigChangesSkipsAbsentNestedValues(t *testing.T) {
 	}
 	want := []string{
 		"parser_config.Extractor:AutoExtractDefault.keywords.enabled",
+		"parser_config.Extractor:AutoExtractDefault.keywords.system_prompt",
 		"parser_config.Extractor:AutoExtractDefault.keywords.top_n",
+		"parser_config.Extractor:AutoExtractDefault.questions.system_prompt",
 		"parser_config.Extractor:AutoExtractDefault.summary.system_prompt",
 	}
 	if len(got) != len(want) {
@@ -877,8 +1422,13 @@ func TestDatasetConfigChangesSkipsAbsentNestedValues(t *testing.T) {
 			t.Fatalf("changes = %v, want %v", got, want)
 		}
 	}
-	if before, _ := changes[2].Before.(string); before != "" {
-		t.Fatalf("summary before = %#v, want the empty string the row carried", changes[2].Before)
+	// The prompt the older row held with nothing in it is still a value it
+	// carried: the line shows "" → text rather than "— → text".
+	if before, _ := changes[4].Before.(string); before != "" {
+		t.Fatalf("summary before = %#v, want the empty string the row carried", changes[4].Before)
+	}
+	if before := changes[1].Before; before != nil {
+		t.Fatalf("keywords before = %#v, want the nil the older row carried", before)
 	}
 }
 
@@ -921,15 +1471,12 @@ func restoreConfigVersion(ctx context.Context, svc *DatasetService, req *Restore
 	if req.DryRun {
 		// The preview runs the plan the commit runs, in a transaction that is rolled
 		// back: the plan is what validates the recorded name, embedding model and
-		// pipeline, and a preview that skipped it would show a plan for a restore
-		// the commit then refuses.
-		var changes []DatasetConfigChange
+		// pipeline, and a preview that skipped it would promise a restore the commit
+		// then refuses.
 		previewErr := dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-			plan, _, planErr := svc.PlanConfigRestoreTx(ctx, tx, datasetID, req.ExpectedVersion, target.Config)
-			if planErr != nil {
+			if _, _, planErr := svc.PlanConfigRestoreTx(ctx, tx, datasetID, req.ExpectedVersion, target.Config); planErr != nil {
 				return planErr
 			}
-			changes = plan.Changes
 			return errDryRunPreview
 		})
 		if previewErr != nil && !errors.Is(previewErr, errDryRunPreview) {
@@ -939,14 +1486,12 @@ func restoreConfigVersion(ctx context.Context, svc *DatasetService, req *Restore
 			Version:    NoDatasetVersion,
 			PreVersion: kb.Version,
 			Applied:    false,
-			Changes:    changes,
 		}, nil
 	}
 
 	actor := permission.UserIDFromContext(ctx)
 	var (
 		preVersion, newVersion int64
-		changes                []DatasetConfigChange
 		pagerank               *int64
 		restoredKB             *entity.Knowledgebase
 	)
@@ -955,7 +1500,6 @@ func restoreConfigVersion(ctx context.Context, svc *DatasetService, req *Restore
 		if planErr != nil {
 			return planErr
 		}
-		changes = plan.Changes
 		pagerank = plan.PagerankValue
 		restoredKB = lockedKB
 		if lockedKB != nil {
@@ -984,7 +1528,6 @@ func restoreConfigVersion(ctx context.Context, svc *DatasetService, req *Restore
 		Version:    newVersion,
 		PreVersion: preVersion,
 		Applied:    true,
-		Changes:    changes,
 	}, nil
 }
 
@@ -1012,9 +1555,6 @@ func TestRestoreDatasetVersionAppliesConfig(t *testing.T) {
 	}
 	if !resp.Applied || resp.Version != 2 || resp.PreVersion != 1 {
 		t.Fatalf("restore response = %+v, want applied v2 from pre v1", resp)
-	}
-	if len(resp.Changes) != 1 || resp.Changes[0].Field != "description" {
-		t.Fatalf("restore changes = %#v, want the description", resp.Changes)
 	}
 
 	var kb entity.Knowledgebase
@@ -1200,20 +1740,12 @@ func TestRestoreDatasetVersionRestoresNestedParserConfig(t *testing.T) {
 		t.Fatalf("chunk_token_size = %v after update, want 1024", got)
 	}
 
-	resp, err := restoreConfigVersion(ctx, svc, &RestoreDatasetVersionRequest{
+	if _, err := restoreConfigVersion(ctx, svc, &RestoreDatasetVersionRequest{
 		DatasetID: "kb-1",
 		Version:   0,
-	})
-	if err != nil {
+	}); err != nil {
 		t.Fatalf("restore: %v", err)
 	}
-	// Only the parameter that moved is reported: the components the update's
-	// rebuilt config gained are keys one side carries, and those are not a change
-	// the user made.
-	if len(resp.Changes) != 1 || resp.Changes[0].Field != "parser_config.GeneralChunker:SixApplesFall.chunk_token_size" {
-		t.Fatalf("restore changes = %#v, want the parameter that moved", resp.Changes)
-	}
-
 	var restored entity.Knowledgebase
 	if err := db.Where("id = ?", "kb-1").Take(&restored).Error; err != nil {
 		t.Fatalf("reload restored dataset: %v", err)
@@ -1266,18 +1798,8 @@ func TestRestoreDatasetVersionRestoresParserMethod(t *testing.T) {
 		t.Fatalf("parser_config still holds the general template's chunker: %#v", switched.ParserConfig)
 	}
 
-	resp, err := restoreConfigVersion(ctx, svc, &RestoreDatasetVersionRequest{DatasetID: "kb-1", Version: 0})
-	if err != nil {
+	if _, err := restoreConfigVersion(ctx, svc, &RestoreDatasetVersionRequest{DatasetID: "kb-1", Version: 0}); err != nil {
 		t.Fatalf("restore: %v", err)
-	}
-	named := false
-	for _, change := range resp.Changes {
-		if change.Field == "parser_id" {
-			named = true
-		}
-	}
-	if !named {
-		t.Fatalf("restore changes = %#v, want the parser method named", resp.Changes)
 	}
 
 	var restored entity.Knowledgebase
@@ -1312,19 +1834,8 @@ func TestRestoreDatasetVersionRestoresNameAndAvatar(t *testing.T) {
 		t.Fatalf("update: code=%d err=%v", code, err)
 	}
 
-	resp, err := restoreConfigVersion(ctx, svc, &RestoreDatasetVersionRequest{DatasetID: "kb-1", Version: 0})
-	if err != nil {
+	if _, err := restoreConfigVersion(ctx, svc, &RestoreDatasetVersionRequest{DatasetID: "kb-1", Version: 0}); err != nil {
 		t.Fatalf("restore: %v", err)
-	}
-	fields := make(map[string]struct{}, len(resp.Changes))
-	for _, change := range resp.Changes {
-		fields[change.Field] = struct{}{}
-	}
-	if _, ok := fields["name"]; !ok {
-		t.Fatalf("restore changes = %#v, want the name", resp.Changes)
-	}
-	if _, ok := fields["avatar"]; !ok {
-		t.Fatalf("restore changes = %#v, want the avatar", resp.Changes)
 	}
 
 	var kb entity.Knowledgebase
@@ -1361,12 +1872,8 @@ func TestRestoreDatasetVersionClearsAvatarMissingFromOldSnapshot(t *testing.T) {
 		delete(snapshot, "avatar")
 	})
 
-	resp, err := restoreConfigVersion(ctx, svc, &RestoreDatasetVersionRequest{DatasetID: "kb-1", Version: 0})
-	if err != nil {
+	if _, err := restoreConfigVersion(ctx, svc, &RestoreDatasetVersionRequest{DatasetID: "kb-1", Version: 0}); err != nil {
 		t.Fatalf("restore: %v", err)
-	}
-	if len(resp.Changes) != 1 || resp.Changes[0].Field != "avatar" {
-		t.Fatalf("restore changes = %#v, want the avatar", resp.Changes)
 	}
 
 	var kb entity.Knowledgebase
@@ -1553,9 +2060,6 @@ func TestRestoreDatasetVersionDryRunWritesNothing(t *testing.T) {
 	}
 	if resp.Applied {
 		t.Fatal("dry run must not report an applied restore")
-	}
-	if len(resp.Changes) != 1 {
-		t.Fatalf("dry run changes = %#v, want the description", resp.Changes)
 	}
 	if rows := listDatasetVersions(t, "kb-1"); len(rows) != 2 {
 		t.Fatalf("versions = %d, want 2 (no writes from a dry run)", len(rows))
@@ -1867,7 +2371,8 @@ func TestLanguageOnlyUpdateRecordsOnlyLanguage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get head: %v", err)
 	}
-	changes := datasetConfigChanges(entity.JSONMap(baseline.Config), entity.JSONMap(head.Config))
+	changes := datasetConfigFieldChanges(
+		entity.JSONMap(baseline.Config), entity.JSONMap(head.Config), datasetVersionComparedFields)
 	if len(changes) != 1 || changes[0].Field != "language" {
 		t.Fatalf("changes = %#v, want the language alone", changes)
 	}
@@ -2330,20 +2835,11 @@ func TestRestoreDatasetVersionRestoresConnectorBindings(t *testing.T) {
 		t.Fatalf("unlink: code=%d err=%v", code, err)
 	}
 
-	preview, err := restoreConfigVersion(ctx, svc, &RestoreDatasetVersionRequest{DatasetID: "kb-1", Version: 1, DryRun: true})
-	if err != nil {
+	if _, err := restoreConfigVersion(ctx, svc, &RestoreDatasetVersionRequest{DatasetID: "kb-1", Version: 1, DryRun: true}); err != nil {
 		t.Fatalf("dry run: %v", err)
 	}
-	if len(preview.Changes) != 1 || preview.Changes[0].Field != "connectors" {
-		t.Fatalf("dry run changes = %#v, want the relink alone", preview.Changes)
-	}
-
-	resp, err := restoreConfigVersion(ctx, svc, &RestoreDatasetVersionRequest{DatasetID: "kb-1", Version: 1})
-	if err != nil {
+	if _, err := restoreConfigVersion(ctx, svc, &RestoreDatasetVersionRequest{DatasetID: "kb-1", Version: 1}); err != nil {
 		t.Fatalf("restore: %v", err)
-	}
-	if len(resp.Changes) != 1 || resp.Changes[0].Field != "connectors" {
-		t.Fatalf("restore changes = %#v, want the relink alone", resp.Changes)
 	}
 
 	var links []entity.Connector2Kb
@@ -2446,4 +2942,178 @@ func TestReadOfAVersionNamingAnEmptySetSucceeds(t *testing.T) {
 	if len(row.Documents) != 0 {
 		t.Fatalf("document set = %q, want it unrecorded", row.Documents)
 	}
+}
+
+// TestDatasetConfigVersionNamesThePipelineAndItsVersion pins the display of a
+// dataset moving from its built-in method to a pipeline: the panel names the
+// pipeline and the version of it, and clears the built-in method the dataset left
+// behind, instead of printing three opaque ids.
+func TestDatasetConfigVersionNamesThePipelineAndItsVersion(t *testing.T) {
+	db := setupDatasetUpdateTestDB(t)
+	pushServiceDB(t, db)
+	insertDatasetUpdateKB(t, "kb-1", "tenant-1", "Dataset")
+
+	pipelineID := "abcdef0123456789abcdef0123456789"
+	versionID := "version0000000000000000000000aa"
+	seedDatasetUpdateCanvas(t, pipelineID, "tenant-1",
+		datasetUpdateCanvasDSL("Parser:Shared", "chunk_token_num"))
+	seedCanvasVersion(t, db, pipelineID, versionID, 0)
+	// The two things a reader needs to tell one pipeline from another, and one
+	// version of it from another.
+	title, alias := "Contract parser", "v3"
+	if err := db.Model(&entity.UserCanvas{}).Where("id = ?", pipelineID).
+		Update("title", title).Error; err != nil {
+		t.Fatalf("name the canvas: %v", err)
+	}
+	if err := db.Model(&entity.UserCanvasVersion{}).Where("id = ?", versionID).
+		Update("alias", alias).Error; err != nil {
+		t.Fatalf("name the canvas version: %v", err)
+	}
+
+	ctx := withDatasetTestContext(t.Context(), "tenant-1", "tenant-1")
+	parseType := 2
+	if _, code, err := testDatasetUpdateService(t).UpdateDataset(ctx, "kb-1", service.UpdateDatasetRequest{
+		PipelineID:        &pipelineID,
+		ParseType:         &parseType,
+		PipelineVersionID: &versionID,
+	}); err != nil || code != common.CodeSuccess {
+		t.Fatalf("switch to the pipeline: code=%d err=%v", code, err)
+	}
+
+	detail, err := testDatasetUpdateService(t).GetDatasetVersion(
+		ctx, &DatasetVersionRequest{DatasetID: "kb-1", Version: 1})
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	fields := make([]string, 0, len(detail.ConfigChanges))
+	byField := make(map[string]DatasetConfigChange, len(detail.ConfigChanges))
+	for _, change := range detail.ConfigChanges {
+		fields = append(fields, change.Field)
+		byField[change.Field] = change
+	}
+	// The selection comes before the parameters it produced: the switch re-derives
+	// parser_config from the canvas, and those lines follow.
+	want := []string{"parse_type", "parser_id", "pipeline_id", "pipeline_version_id"}
+	if len(fields) < len(want) || strings.Join(fields[:len(want)], ",") != strings.Join(want, ",") {
+		t.Fatalf("fields = %v, want them to start with %v", fields, want)
+	}
+	if mode := byField["parse_type"]; mode.Before != "builtin" || mode.After != "pipeline" {
+		t.Fatalf("parse_type = %#v, want the switch to a pipeline", mode)
+	}
+	// The dataset row keeps the built-in method it last ran under; it is cleared in
+	// the panel because the pipeline is what parses the dataset now.
+	if method := byField["parser_id"]; method.After != "" {
+		t.Fatalf("parser_id = %#v, want the built-in method cleared", method)
+	}
+	if pipeline := byField["pipeline_id"]; pipeline.Before != nil || pipeline.After != title {
+		t.Fatalf("pipeline_id = %#v, want the pipeline's title", pipeline)
+	}
+	if version := byField["pipeline_version_id"]; version.Before != nil || version.After != alias {
+		t.Fatalf("pipeline_version_id = %#v, want the version's alias", version)
+	}
+
+	// An alias is a label the user may never have given the version. Without one it
+	// still names itself with its title rather than falling back to the id.
+	if err := db.Model(&entity.UserCanvasVersion{}).Where("id = ?", versionID).
+		Updates(map[string]any{"alias": "", "title": "Contract parser v3"}).Error; err != nil {
+		t.Fatalf("retitle the canvas version: %v", err)
+	}
+	detail, err = testDatasetUpdateService(t).GetDatasetVersion(
+		ctx, &DatasetVersionRequest{DatasetID: "kb-1", Version: 1})
+	if err != nil {
+		t.Fatalf("get after the retitle: %v", err)
+	}
+	for _, change := range detail.ConfigChanges {
+		if change.Field == "pipeline_version_id" && change.After != "Contract parser v3" {
+			t.Fatalf("pipeline_version_id after = %v, want the version title", change.After)
+		}
+	}
+}
+
+// TestDatasetConfigDisplayChangesReadsTheNewerSnapshot is the dataset half of the
+// document rule: a parameter the newer snapshot carries is listed - including the
+// ones a save re-derived from the template, which read as "— → value" - while one
+// only the older snapshot carries is not.
+func TestDatasetConfigDisplayChangesReadsTheNewerSnapshot(t *testing.T) {
+	t.Run("added parameter", func(t *testing.T) {
+		before := entity.JSONMap{"parser_config": map[string]interface{}{
+			"Parser:Shared": map[string]interface{}{"order_index": 1},
+		}}
+		after := entity.JSONMap{"parser_config": map[string]interface{}{
+			"Parser:Shared": map[string]interface{}{
+				"order_index": 1,
+				"pages":       []interface{}{[]interface{}{1, 100000}},
+			},
+		}}
+
+		changes := datasetConfigDisplayChanges(context.Background(), before, after)
+		var page *DatasetConfigChange
+		for i := range changes {
+			if changes[i].Field == "parser_config.Parser:Shared.pages" {
+				page = &changes[i]
+			}
+		}
+		if page == nil {
+			t.Fatalf("changes = %#v, want the parameter the newer snapshot carries", changes)
+		}
+		if page.Before != nil || page.After == nil {
+			t.Fatalf("pages = %#v, want an empty before side and the value set", *page)
+		}
+	})
+
+	t.Run("empty parameter with no older value", func(t *testing.T) {
+		// The page prints an empty string and an absent value the same way, so the
+		// pair would read "— → —": a parameter the save defaulted to "" is not a
+		// change a reader can act on.
+		before := entity.JSONMap{"parser_config": map[string]interface{}{
+			"Parser:Shared": map[string]interface{}{"order_index": 1},
+		}}
+		after := entity.JSONMap{"parser_config": map[string]interface{}{
+			"Parser:Shared": map[string]interface{}{
+				"order_index": 1,
+				"vlm":         map[string]interface{}{"system_prompt": ""},
+			},
+		}}
+
+		changes := datasetConfigDisplayChanges(context.Background(), before, after)
+		if len(changes) != 0 {
+			t.Fatalf("changes = %#v, want the empty pair left out", changes)
+		}
+	})
+
+	t.Run("parameter cleared to empty", func(t *testing.T) {
+		// The value it moved away from is worth a line: the reader cleared it.
+		before := entity.JSONMap{"parser_config": map[string]interface{}{
+			"Parser:Shared": map[string]interface{}{
+				"vlm": map[string]interface{}{"system_prompt": "Describe the page."},
+			},
+		}}
+		after := entity.JSONMap{"parser_config": map[string]interface{}{
+			"Parser:Shared": map[string]interface{}{
+				"vlm": map[string]interface{}{"system_prompt": ""},
+			},
+		}}
+
+		changes := datasetConfigDisplayChanges(context.Background(), before, after)
+		if len(changes) != 1 || changes[0].Field != "parser_config.Parser:Shared.vlm.system_prompt" {
+			t.Fatalf("changes = %#v, want the cleared parameter reported", changes)
+		}
+	})
+
+	t.Run("dropped parameter", func(t *testing.T) {
+		before := entity.JSONMap{"parser_config": map[string]interface{}{
+			"Parser:Shared": map[string]interface{}{
+				"order_index": 1,
+				"pages":       []interface{}{[]interface{}{1, 100000}},
+			},
+		}}
+		after := entity.JSONMap{"parser_config": map[string]interface{}{
+			"Parser:Shared": map[string]interface{}{"order_index": 1},
+		}}
+
+		changes := datasetConfigDisplayChanges(context.Background(), before, after)
+		if len(changes) != 0 {
+			t.Fatalf("changes = %#v, want a parameter the newer snapshot lost left out", changes)
+		}
+	})
 }

@@ -176,8 +176,7 @@ func TestAppendParseBaselineRevivesATombstonedChunk(t *testing.T) {
 		t.Fatalf("open chunks = %v, want the chunk back", ids)
 	}
 
-	// A chunk whose newest row is a content version keeps starting at 0: its
-	// timeline already says it exists.
+	// A chunk the history has never seen starts at 0.
 	if err := AppendParseBaseline(t.Context(), db, "kb-1", 1, SnapshotMeta{}, []map[string]interface{}{{
 		"id": "chunk-2", "doc_id": "doc-1", "content_with_weight": "fresh",
 	}}); err != nil {
@@ -189,6 +188,67 @@ func TestAppendParseBaselineRevivesATombstonedChunk(t *testing.T) {
 	}
 	if fresh.Version != 0 || fresh.Kind != entity.ChunkVersionKindParse {
 		t.Fatalf("fresh = v%d/%s, want v0/parse", fresh.Version, fresh.Kind)
+	}
+}
+
+// TestAppendParseBaselineAppendsPastAnEditedChunk pins that a re-parse which
+// keeps a chunk's id records a new version when the history holds edits or a
+// restore: the parser replaces text the history recorded, so the row that stands
+// must describe the version a reader can restore to.
+func TestAppendParseBaselineAppendsPastAnEditedChunk(t *testing.T) {
+	db := setupChunkHistoryDB(t)
+
+	for _, row := range []*entity.ChunkVersion{
+		{ChunkID: "chunk-1", Version: 0, DocID: "doc-1", DatasetID: "kb-1", DatasetVersion: 1,
+			Kind: entity.ChunkVersionKindParse, Snapshot: entity.JSONMap{"content_with_weight": "v0"}},
+		{ChunkID: "chunk-1", Version: 10, DocID: "doc-1", DatasetID: "kb-1", DatasetVersion: 2,
+			Kind: entity.ChunkVersionKindEdit, CreatedBy: "user-1", Snapshot: entity.JSONMap{"content_with_weight": "v10"}},
+	} {
+		if err := db.Create(row).Error; err != nil {
+			t.Fatalf("seed the history: %v", err)
+		}
+	}
+
+	if err := AppendParseBaseline(t.Context(), db, "kb-1", 3, SnapshotMeta{}, []map[string]interface{}{{
+		"id": "chunk-1", "doc_id": "doc-1", "content_with_weight": "re-parsed",
+	}}); err != nil {
+		t.Fatalf("AppendParseBaseline() error = %v", err)
+	}
+
+	latest, err := dao.NewChunkVersionDAO().GetLatest(t.Context(), db, "chunk-1")
+	if err != nil {
+		t.Fatalf("load the latest row: %v", err)
+	}
+	if latest.Version != 11 || latest.Kind != entity.ChunkVersionKindParse {
+		t.Fatalf("latest = v%d/%s, want v11/parse", latest.Version, latest.Kind)
+	}
+}
+
+// TestAppendParseBaselineSkipsAnUnchangedReParse pins the other half: a chunk
+// whose newest row is itself a parse keeps that row, because the text - and the
+// id derived from it - did not change.
+func TestAppendParseBaselineSkipsAnUnchangedReParse(t *testing.T) {
+	db := setupChunkHistoryDB(t)
+
+	if err := db.Create(&entity.ChunkVersion{
+		ChunkID: "chunk-1", Version: 0, DocID: "doc-1", DatasetID: "kb-1", DatasetVersion: 1,
+		Kind: entity.ChunkVersionKindParse, Snapshot: entity.JSONMap{"content_with_weight": "same"},
+	}).Error; err != nil {
+		t.Fatalf("seed the history: %v", err)
+	}
+
+	if err := AppendParseBaseline(t.Context(), db, "kb-1", 2, SnapshotMeta{}, []map[string]interface{}{{
+		"id": "chunk-1", "doc_id": "doc-1", "content_with_weight": "same",
+	}}); err != nil {
+		t.Fatalf("AppendParseBaseline() error = %v", err)
+	}
+
+	var count int64
+	if err := db.Model(&entity.ChunkVersion{}).Where("chunk_id = ?", "chunk-1").Count(&count).Error; err != nil {
+		t.Fatalf("count the history: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("history rows = %d, want 1", count)
 	}
 }
 

@@ -52,17 +52,18 @@ const baselineBatch = 200
 // model and could not reproduce them after the model changed. `meta` names the
 // producer of those fields.
 //
-// A chunk that already carries a version 0 (a re-parse that kept the chunk id)
-// is left alone: the history of that chunk already starts there.
+// A chunk that is new to the history starts at version 0. A chunk the history
+// already holds is written one past its newest row: the parser is replacing text
+// the history recorded, so the row that stands describes what a restore should
+// bring back. Only a chunk whose newest row is itself a parse keeps its version 0
+// attempt - its text did not change, so the existing row already describes it.
 //
-// A chunk whose newest row is a tombstone is the one exception. Chunk ids are
-// derived from the text, so a chunk that was removed - by a bulk delete, by a
-// re-parse that dropped it, or by a failed index write that was compensated -
-// comes back under the same id when it is parsed again. Writing version 0 for it
-// would conflict with the row the first parse left behind and be a no-op, so the
-// history would keep calling a live chunk removed and a content restore would
-// drop it. Those chunks are recorded one past their latest row instead, the same
-// way a re-added chunk starts (AppendAddBaseline).
+// Chunk ids are derived from the text, so a chunk that was removed - by a bulk
+// delete, by a re-parse that dropped it, or by a failed index write that was
+// compensated - comes back under the same id when it is parsed again. That is why
+// the version follows the tombstone instead of staying at 0: writing 0 would
+// conflict and be a no-op, and the history would keep calling a live chunk
+// removed.
 func AppendParseBaseline(ctx context.Context, database *gorm.DB, datasetID string, datasetVersion int64, meta SnapshotMeta, rows []map[string]interface{}) error {
 	if database == nil || datasetID == "" || len(rows) == 0 {
 		return nil
@@ -106,18 +107,34 @@ func AppendParseBaseline(ctx context.Context, database *gorm.DB, datasetID strin
 		return nil
 	}
 	// The chunks the history already recorded as removed are written one past
-	// their tombstone; see the doc comment. A failed read falls back to the plain
-	// version 0 rows: a conflict there is a no-op, and a stale tombstone only
-	// narrows what a replay brings back.
-	if tombstones, err := latestTombstoneVersions(ctx, database, chunkIDs); err != nil {
+	// their tombstone, and a chunk carrying edits or a restore is written one past
+	// its newest row, because the parser is rewriting content the history holds
+	// (see the doc comment). Only a chunk whose newest row is itself a parse keeps
+	// the version 0 attempt: its text did not change. A failed read falls back to
+	// the plain version 0 rows: a conflict there is a no-op, and a stale tombstone
+	// only narrows what a replay brings back.
+	if latest, err := latestChunkVersions(ctx, database, chunkIDs); err != nil {
 		common.Warn("Chunk parse: failed to read the chunk history of a parse batch",
 			zap.String("dataset_id", datasetID), zap.Error(err))
 	} else {
+		kept := versions[:0]
 		for _, version := range versions {
-			if tombstone, ok := tombstones[version.ChunkID]; ok {
-				version.Version = tombstone + 1
+			row, ok := latest[version.ChunkID]
+			switch {
+			case !ok:
+				// A chunk the history has never seen starts at 0.
+			case row.Kind == entity.ChunkVersionKindParse:
+				// Same text, same id: the row that already describes it stands.
+				continue
+			default:
+				version.Version = row.Version + 1
 			}
+			kept = append(kept, version)
 		}
+		versions = kept
+	}
+	if len(versions) == 0 {
+		return nil
 	}
 
 	// The batch goes to the document engine in one request, so a parse costs one
@@ -317,14 +334,14 @@ func AppendTombstones(ctx context.Context, database *gorm.DB, datasetID, documen
 	}
 }
 
-// latestTombstoneVersions reports, for the chunks whose newest history row is a
-// tombstone, the version of that tombstone. A chunk with no row, or with a row
-// that says it exists, is absent from the map. It is what lets a parse baseline
-// land past a removal instead of behind it; see AppendParseBaseline.
-func latestTombstoneVersions(ctx context.Context, database *gorm.DB, chunkIDs []string) (map[string]int, error) {
-	tombstones := make(map[string]int, len(chunkIDs))
+// latestChunkVersions reports the newest history row of each named chunk. A
+// chunk with no row is absent from the map. It is what lets a parse baseline land
+// past a removal, or past the edits a re-parse is rewriting; see
+// AppendParseBaseline.
+func latestChunkVersions(ctx context.Context, database *gorm.DB, chunkIDs []string) (map[string]*entity.ChunkVersion, error) {
+	latest := make(map[string]*entity.ChunkVersion, len(chunkIDs))
 	if database == nil || len(chunkIDs) == 0 {
-		return tombstones, nil
+		return latest, nil
 	}
 	versionDAO := dao.NewChunkVersionDAO()
 	for start := 0; start < len(chunkIDs); start += baselineBatch {
@@ -334,15 +351,15 @@ func latestTombstoneVersions(ctx context.Context, database *gorm.DB, chunkIDs []
 		}
 		newest, err := versionDAO.LatestVersionRows(ctx, database, chunkIDs[start:end])
 		if err != nil {
-			return tombstones, err
+			return latest, err
 		}
 		for chunkID, row := range newest {
-			if row != nil && row.Kind == entity.ChunkVersionKindDelete {
-				tombstones[chunkID] = row.Version
+			if row != nil {
+				latest[chunkID] = row
 			}
 		}
 	}
-	return tombstones, nil
+	return latest, nil
 }
 
 // AppendDocumentTombstones records the removal of every chunk the document's

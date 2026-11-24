@@ -178,8 +178,9 @@ func RecordReplayedDocumentStatusAtVersionEE(ctx context.Context, db *gorm.DB, d
 //
 // Only the documents whose switch moved after the version are touched: one that
 // nobody toggled still holds the status it held then, so writing it would be a
-// no-op with a write. A document with no state that early predates the history,
-// and is left alone rather than guessed at.
+// no-op with a write. A document with no switch recorded at or before the version
+// was still enabled then - every add path creates one that way - so it is put back
+// to enabled rather than left at whatever a later toggle made it.
 //
 // The chunk replay reads the status from the document row, so this has to run
 // before it: a disabled document's chunks must come back hidden.
@@ -211,9 +212,13 @@ func RestoreDocumentStatusAtEE(ctx context.Context, db *gorm.DB, datasetID strin
 			return replayed, fmt.Errorf("read the status of document %s: %w", documentID, err)
 		}
 		if !found {
-			// The document predates this history: the status it carries is the one
-			// it was created with.
-			continue
+			// No switch was recorded at or before the anchor, so at the anchor the
+			// document still carried the status it was created with - and every add
+			// path creates a document enabled. Keeping the value it holds now would
+			// keep a switch made after the anchor, which is exactly what this replay
+			// is undoing: restore a version from before a disable and the document
+			// has to be usable again.
+			status = string(entity.StatusValid)
 		}
 		current, err := currentDocumentStatus(ctx, db, documentID)
 		if err != nil {

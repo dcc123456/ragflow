@@ -69,7 +69,7 @@ describe('dataset version service', () => {
     mockedRequest.post.mockResolvedValue({
       data: {
         code: 0,
-        data: { version: 5, pre_version: 4, applied: true, changes: [] },
+        data: { version: 5, pre_version: 4, applied: true },
       },
     });
 
