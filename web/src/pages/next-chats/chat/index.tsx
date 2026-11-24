@@ -102,9 +102,9 @@ export default function Chat() {
               <header className="flex shrink-0 justify-end p-5">
                 <ChatEvaluationButton />
                 <Button
-                    variant="ghost"
-                    onClick={showEmbedModal}
-                    data-testid="chat-detail-embed-open"
+                  variant="ghost"
+                  onClick={showEmbedModal}
+                  data-testid="chat-detail-embed-open"
                 >
                   <LucideSend />
                   {t('common.embedIntoSite')}
@@ -112,35 +112,35 @@ export default function Chat() {
               </header>
 
               <div
-                  className="flex min-h-0 min-w-0 flex-1 flex-col"
-                  data-testid="chat-detail-content-frame"
+                className="flex min-h-0 min-w-0 flex-1 flex-col"
+                data-testid="chat-detail-content-frame"
               >
                 {isDebugMode ? (
-                    <section
-                        className="pt-5 pb-14 h-full flex flex-col"
-                        data-testid="chat-detail-multimodel-root"
-                    >
-                      <header className="px-10 pb-5">
+                  <section
+                    className="pt-5 pb-14 h-full flex flex-col"
+                    data-testid="chat-detail-multimodel-root"
+                  >
+                    <header className="px-10 pb-5">
                       <span className="text-2xl">
                         {t('chat.multipleModels')} ({chatBoxIds.length}/3)
                       </span>
-                      </header>
+                    </header>
 
-                      <MultipleChatBox
-                          chatBoxIds={chatBoxIds}
-                          controller={controller}
-                          removeChatBox={removeChatBox}
-                          addChatBox={addChatBox}
-                          stopOutputMessage={stopOutputMessage}
-                          conversation={currentConversation}
-                      ></MultipleChatBox>
-                    </section>
+                    <MultipleChatBox
+                      chatBoxIds={chatBoxIds}
+                      controller={controller}
+                      removeChatBox={removeChatBox}
+                      addChatBox={addChatBox}
+                      stopOutputMessage={stopOutputMessage}
+                      conversation={currentConversation}
+                    ></MultipleChatBox>
+                  </section>
                 ) : settingsVisible ? (
-                    <ChatSettings />
+                  <ChatSettings />
                 ) : (
-                    <CardContent className="flex-1 p-0 min-h-0">
-                      <SingleChatBox conversation={currentConversation} />
-                    </CardContent>
+                  <CardContent className="flex-1 p-0 min-h-0">
+                    <SingleChatBox conversation={currentConversation} />
+                  </CardContent>
                 )}
               </div>
             </PageFrame>
