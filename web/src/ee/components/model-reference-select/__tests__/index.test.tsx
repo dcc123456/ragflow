@@ -104,108 +104,52 @@ describe('ModelReferenceSelect', () => {
     expect(lastGroupProps().renderSelected).toBeUndefined();
   });
 
-  it('clears the value only when the mode actually changes', () => {
+  it('keeps the selected model across a mode round trip without emitting', () => {
     const onChange = jest.fn();
     render(selector({ value: 'model-1', onChange }));
 
-    let directRadio = screen.getByRole('radio', {
-      name: 'setting.modelGroupSelector.direct',
-    });
-    let groupRadio = screen.getByRole('radio', {
-      name: 'setting.modelGroupSelector.group',
-    });
-
-    fireEvent.click(directRadio);
+    fireEvent.click(
+      screen.getByRole('radio', { name: 'setting.modelGroupSelector.group' }),
+    );
     expect(onChange).not.toHaveBeenCalled();
-
-    fireEvent.click(groupRadio);
-    expect(onChange).toHaveBeenCalledTimes(1);
-    expect(onChange).toHaveBeenLastCalledWith('');
     expect(screen.getByTestId('group-select')).toBeInTheDocument();
-
-    directRadio = screen.getByRole('radio', {
-      name: 'setting.modelGroupSelector.direct',
-    });
-    groupRadio = screen.getByRole('radio', {
-      name: 'setting.modelGroupSelector.group',
-    });
-    fireEvent.click(groupRadio);
-    expect(onChange).toHaveBeenCalledTimes(1);
-
-    fireEvent.click(directRadio);
-    expect(onChange).toHaveBeenCalledTimes(2);
-    expect(onChange).toHaveBeenLastCalledWith('');
-    expect(screen.getByTestId('direct-select')).toBeInTheDocument();
-  });
-
-  it('masks a stale group value until the parent confirms the direct-mode clear', () => {
-    const onChange = jest.fn();
-    const { rerender } = render(selector({ value: GroupRef, onChange }));
-    let directRadio = screen.getByRole('radio', {
-      name: 'setting.modelGroupSelector.direct',
-    });
-    let groupRadio = screen.getByRole('radio', {
-      name: 'setting.modelGroupSelector.group',
+    // The group selector keeps showing the persisted model (echoed as a
+    // non-selectable entry) and stays usable so a group can be picked.
+    expect(lastGroupProps()).toMatchObject({
+      value: 'model-1',
+      disabled: false,
     });
 
-    fireEvent.click(directRadio);
-
-    directRadio = screen.getByRole('radio', {
-      name: 'setting.modelGroupSelector.direct',
-    });
-    groupRadio = screen.getByRole('radio', {
-      name: 'setting.modelGroupSelector.group',
-    });
-    expect(onChange).toHaveBeenCalledTimes(1);
-    expect(onChange).toHaveBeenLastCalledWith('');
-    expect(directRadio).toBeChecked();
-    expect(directRadio).not.toBeDisabled();
-    expect(groupRadio).not.toBeDisabled();
-    expect(lastDirectProps()).toMatchObject({ value: '', disabled: true });
-
-    rerender(selector({ value: GroupRef, onChange }));
-    expect(directRadio).toBeChecked();
-    expect(lastDirectProps()).toMatchObject({ value: '', disabled: true });
-
-    rerender(selector({ value: '', onChange }));
-    expect(directRadio).toBeChecked();
-    expect(lastDirectProps().value).toBe('');
+    fireEvent.click(
+      screen.getByRole('radio', {
+        name: 'setting.modelGroupSelector.direct',
+      }),
+    );
+    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.getByTestId('direct-select')).toHaveTextContent('model-1');
+    expect(lastDirectProps()).toMatchObject({ value: 'model-1' });
     expect(lastDirectProps().disabled).toBeFalsy();
   });
 
-  it('masks a stale direct value until the parent confirms the group-mode clear', () => {
+  it('keeps the selected group across a mode round trip without emitting', () => {
     const onChange = jest.fn();
-    const { rerender } = render(selector({ value: 'model-1', onChange }));
-    let directRadio = screen.getByRole('radio', {
-      name: 'setting.modelGroupSelector.direct',
-    });
-    let groupRadio = screen.getByRole('radio', {
-      name: 'setting.modelGroupSelector.group',
-    });
+    render(selector({ value: GroupRef, onChange }));
 
-    fireEvent.click(groupRadio);
+    fireEvent.click(
+      screen.getByRole('radio', {
+        name: 'setting.modelGroupSelector.direct',
+      }),
+    );
+    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.getByTestId('direct-select')).toBeInTheDocument();
+    expect(lastDirectProps()).toMatchObject({ value: '', disabled: false });
 
-    directRadio = screen.getByRole('radio', {
-      name: 'setting.modelGroupSelector.direct',
-    });
-    groupRadio = screen.getByRole('radio', {
-      name: 'setting.modelGroupSelector.group',
-    });
-    expect(onChange).toHaveBeenCalledTimes(1);
-    expect(onChange).toHaveBeenLastCalledWith('');
-    expect(groupRadio).toBeChecked();
-    expect(directRadio).not.toBeDisabled();
-    expect(groupRadio).not.toBeDisabled();
-    expect(lastGroupProps()).toMatchObject({ value: '', disabled: true });
-
-    rerender(selector({ value: 'model-1', onChange }));
-    expect(groupRadio).toBeChecked();
-    expect(lastGroupProps()).toMatchObject({ value: '', disabled: true });
-
-    rerender(selector({ value: '', onChange }));
-    expect(groupRadio).toBeChecked();
-    expect(lastGroupProps().value).toBe('');
-    expect(lastGroupProps().disabled).toBeFalsy();
+    fireEvent.click(
+      screen.getByRole('radio', { name: 'setting.modelGroupSelector.group' }),
+    );
+    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.getByTestId('group-select')).toBeInTheDocument();
+    expect(lastGroupProps()).toMatchObject({ value: GroupRef, disabled: false });
   });
 
   it('switches from an empty value without emitting a redundant clear', () => {

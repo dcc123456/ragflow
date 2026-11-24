@@ -133,6 +133,7 @@ describe('ModelGroupTreeSelect', () => {
       [directModel],
       true,
       ['OpenAI'],
+      undefined,
     );
     expect(trigger()).toHaveTextContent('Pick a group');
 
@@ -197,6 +198,25 @@ describe('ModelGroupTreeSelect', () => {
     expect(option.closest('.pointer-events-none')).not.toBeNull();
     fireEvent.click(option);
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('echoes a persisted direct-model value instead of hiding it', () => {
+    const { onChange } = renderSelect({ value: 'model-1' });
+
+    expect(trigger()).toHaveTextContent('gpt-4');
+    expect(trigger()).not.toHaveTextContent('model-1');
+    expect(trigger().querySelector('.lucide-triangle-alert')).toBeNull();
+    // The provider icon stays in front of the echoed model, as in direct mode.
+    expect(trigger().querySelector('[class*="size-[22px]"]')).not.toBeNull();
+
+    fireEvent.click(trigger());
+    const echoed = screen.getAllByText('gpt-4').at(-1);
+    const echoedRow = echoed?.closest('.pointer-events-none');
+    expect(echoedRow).not.toBeNull();
+    expect(echoedRow?.querySelector('[class*="size-[22px]"]')).not.toBeNull();
+    fireEvent.click(echoed!);
+    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.getByText('Alpha group')).toBeInTheDocument();
   });
 
   it('uses the raw gp value when an unavailable group has no loaded name', () => {

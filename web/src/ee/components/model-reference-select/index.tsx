@@ -70,15 +70,18 @@ export const ModelReferenceSelect = forwardRef<
   const groupAccessSettled = allowModelGroups || tenantAccessSettled;
   const directOnly = !canUseGroups;
   const groupValue = isModelGroupRef(value);
-  const awaitingModeValueClear =
-    !directOnly &&
-    Boolean(value) &&
-    (mode === SelectionMode.Group) !== groupValue;
+  // Switching the mode radio is a pure view change: the value is never cleared,
+  // so a selection survives a round trip between the two modes. A group
+  // reference stays hidden from the direct selector (it would render as a
+  // missing model), but the group selector echoes a persisted direct model so
+  // the current selection remains visible while group mode is active. Choosing
+  // an option afterwards overwrites it.
+  const hideGroupValueInDirectMode =
+    !directOnly && groupValue && mode === SelectionMode.Direct;
   const awaitingTenantAccess = !groupAccessSettled && groupValue;
   const selectorValue =
-    awaitingModeValueClear || awaitingTenantAccess ? '' : value;
-  const selectorDisabled =
-    disabled || awaitingModeValueClear || awaitingTenantAccess;
+    hideGroupValueInDirectMode || awaitingTenantAccess ? '' : value;
+  const selectorDisabled = disabled || awaitingTenantAccess;
 
   useEffect(() => {
     if (value)
@@ -106,9 +109,8 @@ export const ModelReferenceSelect = forwardRef<
         return;
       }
       setMode(nextMode);
-      if (value) onChange?.('');
     },
-    [mode, onChange, value],
+    [mode],
   );
 
   const dropdownHeader = directOnly ? undefined : (
