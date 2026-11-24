@@ -20,6 +20,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"ragflow/internal/common"
 	"ragflow/internal/server/local"
 	"ragflow/internal/utility"
@@ -46,4 +47,16 @@ func (s *SystemService) CheckLicense(ctx context.Context) (map[string]interface{
 	}
 
 	return map[string]interface{}{"status": "invalid"}, nil
+}
+
+// GetDeploymentType get system deployment type
+func (s *SystemService) GetDeploymentType(ctx context.Context) (string, error) {
+	if local.IsAdminAvailable() {
+		apiServiceQuota := utility.GetAPIServiceQuota()
+		if apiServiceQuota == nil {
+			return "", common.ErrNotFound
+		}
+		return string(apiServiceQuota.LicenseType), nil
+	}
+	return "", errors.New("admin is unavailable")
 }

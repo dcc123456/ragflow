@@ -118,3 +118,16 @@ func (h *SystemHandler) CheckLicense(c *gin.Context) {
 
 	common.RespondSuccess(c, license, "SUCCESS")
 }
+
+// GetDeploymentType /api/v1/system/deployment-type [GET]
+func (h *SystemHandler) GetDeploymentType(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	deploymentType, err := h.systemService.GetDeploymentType(ctx)
+	if err != nil {
+		common.RespondError(c, common.CodeServerError, err.Error())
+		return
+	}
+
+	common.RespondSuccess(c, gin.H{"type": deploymentType}, "SUCCESS")
+}

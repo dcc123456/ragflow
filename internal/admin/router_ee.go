@@ -98,6 +98,8 @@ func RegisterEERouter(protected *gin.RouterGroup, r *Router) {
 	// Features
 	protected.GET("/system/features", r.handler.ListFeatures)
 
+	protected.GET("/system/deployment-type", r.handler.GetDeploymentType)
+
 	// Token statistics
 	protected.GET("/stats/token", r.handler.GetTokenStats)
 	protected.GET("/stats/token/users", r.handler.GetTokenUsersStats)

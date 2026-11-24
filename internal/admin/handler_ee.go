@@ -2247,3 +2247,14 @@ func (h *Handler) ListLogs(c *gin.Context) {
 
 	common.RespondSuccess(c, stats, "success")
 }
+
+func (h *Handler) GetDeploymentType(c *gin.Context) {
+	ctx := c.Request.Context()
+	deploymentType, err := h.service.GetDeploymentType(ctx)
+	if err != nil {
+		common.RespondError(c, common.CodeDataError, err.Error())
+		return
+	}
+
+	common.RespondSuccess(c, gin.H{"type": deploymentType}, "success")
+}

@@ -2198,3 +2198,11 @@ func (s *Service) ListLogs(ctx context.Context, userName string, days int) ([]ma
 func (s *Service) GetEEServicesStatus(ctx context.Context) []ServiceStatus {
 	return []ServiceStatus{}
 }
+
+func (s *Service) GetDeploymentType(ctx context.Context) (string, error) {
+	currentLicense := GlobalServerStatusStore.GetLicense()
+	if currentLicense == nil {
+		return "", errors.New("license not found")
+	}
+	return string(currentLicense.Type), nil
+}
