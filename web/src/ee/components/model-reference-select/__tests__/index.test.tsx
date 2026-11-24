@@ -149,7 +149,10 @@ describe('ModelReferenceSelect', () => {
     );
     expect(onChange).not.toHaveBeenCalled();
     expect(screen.getByTestId('group-select')).toBeInTheDocument();
-    expect(lastGroupProps()).toMatchObject({ value: GroupRef, disabled: false });
+    expect(lastGroupProps()).toMatchObject({
+      value: GroupRef,
+      disabled: false,
+    });
   });
 
   it('switches from an empty value without emitting a redundant clear', () => {
