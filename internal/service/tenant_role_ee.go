@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -52,6 +53,9 @@ var tenantRoleResourceTypes = map[string]int64{
 	"memory":         entity.RoleResourceTypeMemory,
 	"model_provider": entity.RoleResourceTypeModelProvider,
 	"mcp":            entity.RoleResourceTypeMCP,
+	"model_group":    entity.RoleResourceTypeModelGroup,
+	"data_source":    entity.RoleResourceTypeDataSource,
+	"chat_channel":   entity.RoleResourceTypeChatChannel,
 }
 
 var tenantRoleResourceNames = []string{
@@ -63,6 +67,9 @@ var tenantRoleResourceNames = []string{
 	"group",
 	"memory",
 	"model_provider",
+	"model_group",
+	"data_source",
+	"chat_channel",
 	"mcp",
 }
 
@@ -71,6 +78,44 @@ var tenantRoleActionMasks = map[string]int32{
 	"read":   entity.RoleActionRead,
 	"write":  entity.RoleActionWrite,
 	"share":  entity.RoleActionShare,
+}
+
+const tenantRoleProviderPermissionPrefix = "model_provider::"
+const tenantRoleDataSourcePermissionPrefix = "data_source::"
+const tenantRoleChatChannelPermissionPrefix = "chat_channel::"
+
+func tenantRoleProviderPermissionKey(providerName string) string {
+	return tenantRoleProviderPermissionPrefix + providerName
+}
+
+func parseTenantRoleProviderPermissionKey(key string) (string, bool) {
+	providerName, ok := strings.CutPrefix(strings.TrimSpace(key), tenantRoleProviderPermissionPrefix)
+	return strings.TrimSpace(providerName), ok && strings.TrimSpace(providerName) != ""
+}
+
+func tenantRoleExpandedPermissionKey(resource, item string) string {
+	prefix := map[string]string{
+		"model_provider": tenantRoleProviderPermissionPrefix,
+		"data_source":    tenantRoleDataSourcePermissionPrefix,
+		"chat_channel":   tenantRoleChatChannelPermissionPrefix,
+	}[resource]
+	if prefix == "" {
+		return ""
+	}
+	return prefix + item
+}
+
+func parseTenantRoleExpandedPermissionKey(key string) (string, string, bool) {
+	for resource, prefix := range map[string]string{
+		"data_source":  tenantRoleDataSourcePermissionPrefix,
+		"chat_channel": tenantRoleChatChannelPermissionPrefix,
+	} {
+		item, ok := strings.CutPrefix(strings.TrimSpace(key), prefix)
+		if ok && strings.TrimSpace(item) != "" {
+			return resource, strings.TrimSpace(item), true
+		}
+	}
+	return "", "", false
 }
 
 var tenantRoleResourceActions = map[string][]string{
@@ -82,6 +127,9 @@ var tenantRoleResourceActions = map[string][]string{
 	"group":          {"enable", "read", "write", "share"},
 	"memory":         {"enable", "read", "write", "share"},
 	"model_provider": {"enable"},
+	"model_group":    {"enable"},
+	"data_source":    {"enable"},
+	"chat_channel":   {"enable"},
 	"mcp":            {"enable", "read", "write", "share"},
 }
 
@@ -113,6 +161,21 @@ type TenantRoleListResult struct {
 type TenantRolePermissionsResult struct {
 	Role        *TenantRoleItem            `json:"role"`
 	Permissions map[string]map[string]bool `json:"permissions"`
+}
+
+type TenantRoleDefaultModelItem struct {
+	RoleID    int32  `json:"role_id"`
+	ModelType string `json:"model_type"`
+	ModelID   string `json:"model_id"`
+}
+
+type TenantRoleDefaultModelsResult struct {
+	ModelList   []TenantRoleDefaultModelItem `json:"model_list"`
+	SetupStatus string                       `json:"setup_status"`
+}
+
+var tenantRoleDefaultModelTypes = []string{
+	"chat", "embedding", "rerank", "asr", "vision", "tts", "ocr", "decision", "scoring",
 }
 
 // TenantDefaultRoleResult describes the role assigned to newly joined members.
@@ -379,13 +442,8 @@ func (s *TenantService) SetTenantRolePermissions(ctx context.Context, userID, te
 		if err != nil {
 			return err
 		}
-		changed := false
-		for _, resource := range tenantRoleResourceNames {
-			if tenantRoleResourceMask(before[resource]) != tenantRoleResourceMask(normalized[resource]) {
-				changed = true
-				break
-			}
-		}
+		changedKeys := changedTenantRolePermissionKeys(before, normalized)
+		changed := len(changedKeys) > 0
 		if !changed {
 			return nil
 		}
@@ -398,15 +456,28 @@ func (s *TenantService) SetTenantRolePermissions(ctx context.Context, userID, te
 			}
 		}
 		roleIDString := strconv.FormatInt(int64(roleID), 10)
-		for _, resource := range tenantRoleResourceNames {
-			beforeMask := tenantRoleResourceMask(before[resource])
-			afterMask := tenantRoleResourceMask(normalized[resource])
+		for _, resource := range changedKeys {
+			beforeMask := tenantRolePermissionMask(before, resource)
+			afterMask := tenantRolePermissionMask(normalized, resource)
 			if beforeMask == afterMask {
 				continue
 			}
+			resourceType := resource
+			resourceID := roleIDString
 			beforeData := map[string]interface{}{"role_id": roleID, "resource_type": resource, "permission": beforeMask}
 			afterData := map[string]interface{}{"role_id": roleID, "resource_type": resource, "permission": afterMask}
-			if err := recordTenantPermissionChange(ctx, tx, permission.TenantIDFromContext(ctx), "role.permissions.updated", "role", roleIDString, "role_permission", roleIDString, "update", beforeMask, afterMask, beforeData, afterData); err != nil {
+			if providerName, ok := parseTenantRoleProviderPermissionKey(resource); ok {
+				resourceType = "model_provider"
+				resourceID = roleIDString
+				beforeData = map[string]interface{}{"resource_type": resourceType, "provider_name": providerName, "enable": beforeMask&entity.RoleActionEnable != 0}
+				afterData = map[string]interface{}{"resource_type": resourceType, "provider_name": providerName, "enable": afterMask&entity.RoleActionEnable != 0}
+			} else if expandedResource, item, ok := parseTenantRoleExpandedPermissionKey(resource); ok {
+				resourceType = expandedResource
+				resourceID = roleIDString
+				beforeData = map[string]interface{}{"resource_type": resourceType, "item": item, "enable": beforeMask&entity.RoleActionEnable != 0}
+				afterData = map[string]interface{}{"resource_type": resourceType, "item": item, "enable": afterMask&entity.RoleActionEnable != 0}
+			}
+			if err := recordTenantPermissionChange(ctx, tx, permission.TenantIDFromContext(ctx), "role.permissions.updated", "role", roleIDString, resourceType, resourceID, "update", beforeMask, afterMask, beforeData, afterData); err != nil {
 				return err
 			}
 		}
@@ -420,6 +491,153 @@ func (s *TenantService) SetTenantRolePermissions(ctx context.Context, userID, te
 		return nil, fmt.Errorf("load Tenant default role: %w", err)
 	}
 	return &TenantRolePermissionsResult{Role: tenantRoleItem(&role, tenant.DefaultRoleID), Permissions: normalized}, nil
+}
+
+func (s *TenantService) ListTenantRoleDefaultModels(ctx context.Context, userID, tenantID string, roleID int32) (*TenantRoleDefaultModelsResult, error) {
+	db := dao.DB.WithContext(ctx)
+	if _, _, err := tenantMemberPermission(ctx, db, tenantID, 0); err != nil {
+		return nil, err
+	}
+	role, err := findTenantRole(db, tenantID, roleID, false)
+	if err != nil {
+		return nil, err
+	}
+	var rows []entity.RoleDefaultModel
+	if err := db.Where("tenant_id = ? AND role_id = ?", tenantID, role.ID).Order("id ASC").Find(&rows).Error; err != nil {
+		return nil, fmt.Errorf("list Tenant role default models: %w", err)
+	}
+	result := &TenantRoleDefaultModelsResult{
+		ModelList:   make([]TenantRoleDefaultModelItem, 0, len(rows)),
+		SetupStatus: "not_set",
+	}
+	configured := make(map[string]struct{}, len(tenantRoleDefaultModelTypes))
+	for _, row := range rows {
+		if _, _, _, err := defaultModelFields(row.ModelType); err != nil {
+			continue
+		}
+		if _, exists := configured[row.ModelType]; exists {
+			continue
+		}
+		configured[row.ModelType] = struct{}{}
+		result.ModelList = append(result.ModelList, TenantRoleDefaultModelItem{
+			RoleID: role.ID, ModelType: row.ModelType, ModelID: row.ModelID,
+		})
+	}
+	if len(configured) > 0 {
+		result.SetupStatus = "partial"
+	}
+	if len(configured) == len(tenantRoleDefaultModelTypes) {
+		result.SetupStatus = "complete"
+	}
+	return result, nil
+}
+
+func (s *TenantService) SetTenantRoleDefaultModel(ctx context.Context, userID, tenantID string, roleID int32, modelID, modelType string) (bool, error) {
+	modelType = strings.TrimSpace(modelType)
+	_, _, modelTypeBit, err := defaultModelFields(modelType)
+	if err != nil {
+		return false, common.NewCodedError(common.CodeBadRequest, "Unsupported default model type")
+	}
+	modelID = strings.TrimSpace(modelID)
+	if _, _, err := tenantMemberPermission(ctx, dao.DB.WithContext(ctx), tenantID, entity.TenantPermissionManageRoles); err != nil {
+		return false, err
+	}
+	if _, err := findTenantRole(dao.DB.WithContext(ctx), tenantID, roleID, false); err != nil {
+		return false, err
+	}
+	if modelID != "" {
+		_, isModelGroupRef := common.ParseGroupModelRef(modelID)
+		info, err := NewModelFactory().ResolveInfo(permission.WithTenantID(ctx, tenantID), modelTypeBit, modelID)
+		if err != nil {
+			switch {
+			case errors.Is(err, permission.ErrPermissionDenied), errors.Is(err, permission.ErrResourceNotFound), errors.Is(err, permission.ErrMembershipNotFound):
+				return false, common.NewCodedError(common.CodeForbidden, err.Error())
+			case errors.Is(err, errModelConfigUnavailable):
+				return false, common.NewCodedError(common.CodeBadRequest, err.Error())
+			default:
+				return false, err
+			}
+		}
+		if info == nil {
+			return false, common.NewCodedError(common.CodeBadRequest, "Model is unavailable")
+		}
+		if info.ID != "" && !isModelGroupRef {
+			modelID = info.ID
+		}
+	}
+
+	db := dao.DB.WithContext(ctx)
+	var changed bool
+	err = db.Transaction(func(tx *gorm.DB) error {
+		if _, _, err := tenantMemberPermission(ctx, tx, tenantID, entity.TenantPermissionManageRoles); err != nil {
+			return err
+		}
+		if err := lockTenantRoleContainer(tx, tenantID); err != nil {
+			return err
+		}
+		role, err := findTenantRole(tx, tenantID, roleID, true)
+		if err != nil {
+			return err
+		}
+		var existing []entity.RoleDefaultModel
+		if err := tx.Where("tenant_id = ? AND role_id = ? AND model_type = ?", tenantID, role.ID, modelType).
+			Order("id ASC").Clauses(clause.Locking{Strength: "UPDATE"}).Find(&existing).Error; err != nil {
+			return fmt.Errorf("find Tenant role default model: %w", err)
+		}
+
+		var before interface{}
+		if len(existing) > 0 {
+			before = map[string]interface{}{"model_type": modelType, "model_id": existing[0].ModelID}
+		}
+		var after interface{}
+		operation := "update"
+		if modelID == "" {
+			if len(existing) == 0 {
+				return nil
+			}
+			if err := tx.Where("tenant_id = ? AND role_id = ? AND model_type = ?", tenantID, role.ID, modelType).
+				Delete(&entity.RoleDefaultModel{}).Error; err != nil {
+				return fmt.Errorf("clear Tenant role default model: %w", err)
+			}
+			operation = "delete"
+		} else {
+			after = map[string]interface{}{"model_type": modelType, "model_id": modelID}
+			if len(existing) == 0 {
+				if err := tx.Create(&entity.RoleDefaultModel{RoleID: role.ID, ModelType: modelType, ModelID: modelID, TenantID: tenantID}).Error; err != nil {
+					return fmt.Errorf("create Tenant role default model: %w", err)
+				}
+				operation = "create"
+			} else {
+				if existing[0].ModelID == modelID && len(existing) == 1 {
+					return nil
+				}
+				if err := tx.Model(&entity.RoleDefaultModel{}).Where("id = ?", existing[0].ID).
+					Update("model_id", modelID).Error; err != nil {
+					return fmt.Errorf("update Tenant role default model: %w", err)
+				}
+				if len(existing) > 1 {
+					duplicateIDs := make([]int32, 0, len(existing)-1)
+					for _, row := range existing[1:] {
+						duplicateIDs = append(duplicateIDs, row.ID)
+					}
+					if err := tx.Where("id IN ?", duplicateIDs).Delete(&entity.RoleDefaultModel{}).Error; err != nil {
+						return fmt.Errorf("remove duplicate Tenant role default models: %w", err)
+					}
+				}
+			}
+		}
+		changed = true
+		roleIDString := strconv.FormatInt(int64(role.ID), 10)
+		return recordTenantPermissionChange(ctx, tx, tenantID, "role.default_model.updated", "role_default_model", roleIDString+":"+modelType, "role", roleIDString, operation, 0, 0, before, after)
+	})
+	if err != nil {
+		return false, err
+	}
+	return changed, nil
+}
+
+func (s *TenantService) ResetTenantRoleDefaultModel(ctx context.Context, userID, tenantID string, roleID int32, modelType string) (bool, error) {
+	return s.SetTenantRoleDefaultModel(ctx, userID, tenantID, roleID, "", modelType)
 }
 
 // GetTenantDefaultRole returns the role assigned to new Tenant members.
@@ -991,13 +1209,44 @@ func loadTenantRolePermissionMatrix(db *gorm.DB, roleID int32) (map[string]map[s
 		namesByType[resourceType] = name
 	}
 	matrix := emptyTenantRolePermissionMatrix()
+	seenResourceTypes := make(map[int64]bool, len(rows))
 	for _, row := range rows {
 		name, ok := namesByType[row.ResourceType]
 		if !ok {
 			return nil, fmt.Errorf("unknown role resource type %d for role %d", row.ResourceType, roleID)
 		}
+		if row.ResourceID != "" {
+			if name != "model_provider" {
+				return nil, fmt.Errorf("unexpected resource id %q for role resource %q", row.ResourceID, name)
+			}
+			key := tenantRoleProviderPermissionKey(row.ResourceID)
+			providerPermissions, exists := matrix[key]
+			if !exists {
+				providerPermissions = map[string]bool{"enable": true}
+				matrix[key] = providerPermissions
+			}
+			providerPermissions["enable"] = providerPermissions["enable"] && row.Action&entity.RoleActionEnable != 0
+			continue
+		}
+		seenResourceTypes[row.ResourceType] = true
 		for _, action := range tenantRoleResourceActions[name] {
 			matrix[name][action] = matrix[name][action] || row.Action&tenantRoleActionMasks[action] != 0
+		}
+		if name == "model_provider" || name == "data_source" || name == "chat_channel" {
+			if configuredItems, ok := row.Config["items"].(map[string]interface{}); ok {
+				for item, rawEnabled := range configuredItems {
+					enabled, ok := rawEnabled.(bool)
+					if !ok {
+						continue
+					}
+					matrix[tenantRoleExpandedPermissionKey(name, item)] = map[string]bool{"enable": enabled}
+				}
+			}
+		}
+	}
+	for _, resource := range []string{"model_provider", "model_group", "data_source", "chat_channel"} {
+		if !seenResourceTypes[tenantRoleResourceTypes[resource]] {
+			matrix[resource]["enable"] = true
 		}
 	}
 	return matrix, nil
@@ -1008,8 +1257,32 @@ func normalizeTenantRolePermissions(roleID int32, requested map[string]map[strin
 		return nil, nil, common.NewCodedError(common.CodeBadRequest, "permissions is required")
 	}
 	matrix := emptyTenantRolePermissionMatrix()
-	for resource, actions := range requested {
-		resource = strings.ToLower(strings.TrimSpace(resource))
+	for rawResource, actions := range requested {
+		resource := strings.TrimSpace(rawResource)
+		if expandedResource, item, ok := parseTenantRoleExpandedPermissionKey(resource); ok {
+			itemEnabled := false
+			for action, enabled := range actions {
+				if strings.ToLower(strings.TrimSpace(action)) != "enable" {
+					return nil, nil, common.NewCodedError(common.CodeBadRequest, fmt.Sprintf("Action %q is not supported for resource %q", action, resource))
+				}
+				itemEnabled = enabled
+			}
+			matrix[tenantRoleExpandedPermissionKey(expandedResource, item)] = map[string]bool{"enable": itemEnabled}
+			continue
+		}
+		if providerName, ok := parseTenantRoleProviderPermissionKey(resource); ok {
+			resource = tenantRoleProviderPermissionKey(providerName)
+			matrix[resource] = map[string]bool{"enable": false}
+			for action, enabled := range actions {
+				action = strings.ToLower(strings.TrimSpace(action))
+				if action != "enable" {
+					return nil, nil, common.NewCodedError(common.CodeBadRequest, fmt.Sprintf("Action %q is not supported for resource %q", action, resource))
+				}
+				matrix[resource][action] = enabled
+			}
+			continue
+		}
+		resource = strings.ToLower(resource)
 		if _, ok := tenantRoleResourceTypes[resource]; !ok {
 			return nil, nil, common.NewCodedError(common.CodeBadRequest, "Unknown role resource: "+resource)
 		}
@@ -1027,7 +1300,22 @@ func normalizeTenantRolePermissions(roleID int32, requested map[string]map[strin
 			matrix[resource][action] = enabled
 		}
 	}
-	rows := make([]entity.RoleResource, 0, len(tenantRoleResourceTypes))
+	for _, actions := range matrix {
+		if actions["write"] || actions["share"] {
+			actions["read"] = true
+			actions["enable"] = true
+		} else if actions["read"] {
+			actions["enable"] = true
+		}
+	}
+	for resource := range matrix {
+		if expandedResource, _, ok := parseTenantRoleExpandedPermissionKey(resource); ok {
+			if matrix[resource]["enable"] {
+				matrix[expandedResource]["enable"] = true
+			}
+		}
+	}
+	rows := make([]entity.RoleResource, 0, len(tenantRoleResourceTypes)+len(matrix)-len(tenantRoleResourceTypes))
 	for _, resource := range tenantRoleResourceNames {
 		actions := matrix[resource]
 		var actionMask int32
@@ -1036,11 +1324,71 @@ func normalizeTenantRolePermissions(roleID int32, requested map[string]map[strin
 				actionMask |= tenantRoleActionMasks[action]
 			}
 		}
-		if actionMask != 0 {
-			rows = append(rows, entity.RoleResource{RoleID: roleID, ResourceType: tenantRoleResourceTypes[resource], Action: actionMask})
+		var config entity.JSONMap
+		if resource == "model_provider" || resource == "data_source" || resource == "chat_channel" {
+			items := make(map[string]interface{})
+			for expandedKey, itemActions := range matrix {
+				if resource == "model_provider" {
+					if providerName, ok := parseTenantRoleProviderPermissionKey(expandedKey); ok {
+						items[providerName] = itemActions["enable"]
+					}
+					continue
+				}
+				expandedResource, item, ok := parseTenantRoleExpandedPermissionKey(expandedKey)
+				if ok && expandedResource == resource {
+					items[item] = itemActions["enable"]
+				}
+			}
+			if len(items) > 0 {
+				config = entity.JSONMap{"items": items}
+			}
+		}
+		if actionMask != 0 || isDefaultEnabledTenantRoleResource(resource) || len(config) > 0 {
+			rows = append(rows, entity.RoleResource{RoleID: roleID, ResourceType: tenantRoleResourceTypes[resource], Action: actionMask, Config: config})
 		}
 	}
 	return matrix, rows, nil
+}
+
+func changedTenantRolePermissionKeys(before, after map[string]map[string]bool) []string {
+	keys := make(map[string]struct{}, len(before)+len(after))
+	for key := range before {
+		keys[key] = struct{}{}
+	}
+	for key := range after {
+		keys[key] = struct{}{}
+	}
+	changed := make([]string, 0)
+	for key := range keys {
+		if tenantRolePermissionMask(before, key) != tenantRolePermissionMask(after, key) {
+			changed = append(changed, key)
+		}
+	}
+	sort.Strings(changed)
+	return changed
+}
+
+func tenantRolePermissionMask(matrix map[string]map[string]bool, resource string) int32 {
+	if _, isProvider := parseTenantRoleProviderPermissionKey(resource); isProvider {
+		if _, exists := matrix[resource]; !exists {
+			return entity.RoleActionEnable
+		}
+	}
+	if _, _, isExpanded := parseTenantRoleExpandedPermissionKey(resource); isExpanded {
+		if _, exists := matrix[resource]; !exists {
+			return entity.RoleActionEnable
+		}
+	}
+	return tenantRoleResourceMask(matrix[resource])
+}
+
+func isDefaultEnabledTenantRoleResource(resource string) bool {
+	switch resource {
+	case "model_provider", "model_group", "data_source", "chat_channel":
+		return true
+	default:
+		return false
+	}
 }
 
 func tenantRoleResourceMask(actions map[string]bool) int32 {

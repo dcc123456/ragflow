@@ -92,6 +92,28 @@ export interface ITenantRolePermissions {
   permissions: ITenantRolePermissionMatrix;
 }
 
+export type TenantRoleDefaultModelType =
+  | 'chat'
+  | 'embedding'
+  | 'rerank'
+  | 'asr'
+  | 'vision'
+  | 'tts'
+  | 'ocr'
+  | 'decision'
+  | 'scoring';
+
+export interface ITenantRoleDefaultModel {
+  role_id: number;
+  model_type: TenantRoleDefaultModelType;
+  model_id: string;
+}
+
+export interface ITenantRoleDefaultModels {
+  model_list: ITenantRoleDefaultModel[];
+  setup_status: 'complete' | 'partial' | 'not_set';
+}
+
 export interface ITenantMemberRole {
   user_id: string;
   role: string;

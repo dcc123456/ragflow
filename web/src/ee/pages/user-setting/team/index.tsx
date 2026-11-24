@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils';
 import { ShieldCheck, UserGroup, UserPlus, Users } from 'lucide-react';
 import { useAddUser } from '@/pages/user-setting/setting-team/hooks';
 import { useCallback, useState } from 'react';
+import { useLocation } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { GroupFormDialog } from './group-form-dialog';
 import { GroupTable } from './group-table';
@@ -43,8 +44,15 @@ const TabCountClassName =
  */
 export default function TeamPage() {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState<string>(TeamTab.Member);
-  const [keyword, setKeyword] = useState('');
+  const location = useLocation();
+  const returnState = location.state as {
+    teamTab?: string;
+    teamKeyword?: string;
+  } | null;
+  const [activeTab, setActiveTab] = useState<string>(
+    returnState?.teamTab ?? TeamTab.Member,
+  );
+  const [keyword, setKeyword] = useState(returnState?.teamKeyword ?? '');
   const [createGroupModalVisible, setCreateGroupModalVisible] = useState(false);
   const [createRoleModalVisible, setCreateRoleModalVisible] = useState(false);
   const { data: tenantInfo } = useFetchTenantInfo();
@@ -118,11 +126,13 @@ export default function TeamPage() {
           </TabsList>
 
           <div className="flex items-center gap-2">
-            <SearchInput
-              value={keyword}
-              onChange={handleSearchChange}
-              rootClassName="w-[200px]"
-            />
+            {activeTab !== TeamTab.Role && (
+              <SearchInput
+                value={keyword}
+                onChange={handleSearchChange}
+                rootClassName="w-[200px]"
+              />
+            )}
             {activeTab === TeamTab.Member && canManageMembers ? (
               <Button onClick={showAddingTenantModal}>
                 <UserPlus />
@@ -132,11 +142,6 @@ export default function TeamPage() {
               <Button className="rounded-lg" onClick={showCreateGroupModal}>
                 <UserPlus />
                 {t('permission.createGroup')}
-              </Button>
-            ) : activeTab === TeamTab.Role && canManageRoles ? (
-              <Button className="rounded-lg" onClick={showCreateRoleModal}>
-                <UserPlus />
-                {t('permission.createRole')}
               </Button>
             ) : null}
           </div>
@@ -155,6 +160,8 @@ export default function TeamPage() {
               tenantId={tenantInfo.tenant_id}
               members={members}
               canManageRoles={canManageRoles}
+              onCreate={showCreateRoleModal}
+              onKeywordChange={setKeyword}
             />
           </TabsContent>
         )}

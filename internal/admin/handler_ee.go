@@ -264,6 +264,37 @@ func (h *Handler) ShowRolePermission(c *gin.Context) {
 	common.RespondSuccess(c, permissions, "")
 }
 
+type SetRolePermissionMatrixRequest struct {
+	Permissions   map[string]map[string]bool `json:"permissions" binding:"required"`
+	ExpandedItems []RolePermissionItem       `json:"expanded_items"`
+}
+
+func (h *Handler) SetRolePermissionMatrix(c *gin.Context) {
+	common.StartOperationLog(c, "set_admin_role_permissions")
+	defer common.FinishOperationLog(c)
+	roleName := c.Param("role_name")
+	common.SetOperationResource(c, "role_name", roleName)
+	if roleName == "" {
+		common.RespondError(c, common.CodeBadRequest, "Role name is required")
+		return
+	}
+	actorUserID, ok := requireAdminActorID(c)
+	if !ok {
+		return
+	}
+	var req SetRolePermissionMatrixRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.RespondError(c, common.CodeBadRequest, "Permissions are required")
+		return
+	}
+	result, err := h.service.SetRolePermissionMatrix(c.Request.Context(), actorUserID, roleName, req.Permissions, req.ExpandedItems)
+	if err != nil {
+		writeRoleError(c, err)
+		return
+	}
+	common.RespondSuccess(c, result, "")
+}
+
 // GrantRolePermissionHTTPRequest grant role permission request
 type GrantRolePermissionHTTPRequest struct {
 	Actions  []string `json:"actions" binding:"required"`

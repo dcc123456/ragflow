@@ -178,6 +178,71 @@ func (h *TenantHandler) SetTenantRolePermissions(c *gin.Context) {
 	common.RespondSuccess(c, result, "")
 }
 
+func (h *TenantHandler) ListTenantRoleDefaultModels(c *gin.Context) {
+	userID, tenantID, roleID, ok := tenantRolePathContext(c)
+	if !ok {
+		return
+	}
+	result, err := h.tenantService.ListTenantRoleDefaultModels(c.Request.Context(), userID, tenantID, roleID)
+	if err != nil {
+		writeTenantRoleError(c, err)
+		return
+	}
+	common.RespondSuccess(c, result, "")
+}
+
+func (h *TenantHandler) SetTenantRoleDefaultModel(c *gin.Context) {
+	common.StartOperationLog(c, "set_tenant_role_default_model")
+	defer common.FinishOperationLog(c)
+	common.SetOperationResource(c, "role_id", c.Param("role_id"))
+
+	userID, tenantID, roleID, ok := tenantRolePathContext(c)
+	if !ok {
+		return
+	}
+	var request struct {
+		ModelID   string `json:"model_id"`
+		ModelType string `json:"model_type" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&request); err != nil {
+		common.RespondError(c, common.CodeBadRequest, "invalid request body")
+		return
+	}
+	common.SetOperationResource(c, "model_id", request.ModelID)
+	common.SetOperationResource(c, "model_type", request.ModelType)
+	changed, err := h.tenantService.SetTenantRoleDefaultModel(c.Request.Context(), userID, tenantID, roleID, request.ModelID, request.ModelType)
+	if err != nil {
+		writeTenantRoleError(c, err)
+		return
+	}
+	common.RespondSuccess(c, changed, "")
+}
+
+func (h *TenantHandler) ResetTenantRoleDefaultModel(c *gin.Context) {
+	common.StartOperationLog(c, "reset_tenant_role_default_model")
+	defer common.FinishOperationLog(c)
+	common.SetOperationResource(c, "role_id", c.Param("role_id"))
+
+	userID, tenantID, roleID, ok := tenantRolePathContext(c)
+	if !ok {
+		return
+	}
+	var request struct {
+		ModelType string `json:"model_type" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&request); err != nil {
+		common.RespondError(c, common.CodeBadRequest, "invalid request body")
+		return
+	}
+	common.SetOperationResource(c, "model_type", request.ModelType)
+	changed, err := h.tenantService.ResetTenantRoleDefaultModel(c.Request.Context(), userID, tenantID, roleID, request.ModelType)
+	if err != nil {
+		writeTenantRoleError(c, err)
+		return
+	}
+	common.RespondSuccess(c, changed, "")
+}
+
 func (h *TenantHandler) GetTenantDefaultRole(c *gin.Context) {
 	userID, tenantID, ok := tenantRoleRequestContext(c)
 	if !ok {

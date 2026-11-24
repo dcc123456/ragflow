@@ -51,6 +51,7 @@ func RegisterEERouter(protected *gin.RouterGroup, r *Router) {
 	protected.PUT("/roles/:role_name", r.handler.UpdateRole)
 	protected.DELETE("/roles/:role_name", r.handler.DropRole)
 	protected.GET("/roles/:role_name/permission", r.handler.ShowRolePermission)
+	protected.PUT("/roles/:role_name/permission", r.handler.SetRolePermissionMatrix)
 	protected.POST("/roles/:role_name/permission", r.handler.GrantRolePermission)
 	protected.DELETE("/roles/:role_name/permission", r.handler.RevokeRolePermission)
 	protected.GET("/roles/resource", r.handler.ListResources)

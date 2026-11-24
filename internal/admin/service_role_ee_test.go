@@ -83,7 +83,7 @@ func TestListRoles(t *testing.T) {
 }
 
 func TestListRolesWithPermission(t *testing.T) {
-	db := testutil.SetupTestDB(t, &entity.Role{}, &entity.RoleResource{})
+	db := testutil.SetupTestDB(t, &entity.Role{}, &entity.RoleResource{}, &entity.Tenant{})
 	t.Cleanup(testutil.ReplaceDBForTest(t, db))
 
 	tenantID := "tenant-1"
@@ -229,7 +229,7 @@ func TestSystemRoleDefaultModels(t *testing.T) {
 	if result["setup_status"] != "partial" || len(items) != 1 {
 		t.Fatalf("ShowRoleDefaultModels() after set = %#v, want one partial configuration", result)
 	}
-	if items[0]["role_id"] != role.ID || items[0]["model_type"] != "llm" ||
+	if items[0]["role_id"] != role.ID || items[0]["model_type"] != "chat" ||
 		items[0]["model_id"] != "model-1" || items[0]["tenant_id"] != "" {
 		t.Fatalf("default model item = %#v, want system model and empty legacy tenant_id", items[0])
 	}
@@ -244,7 +244,7 @@ func TestSystemRoleDefaultModels(t *testing.T) {
 	} else {
 		assertRoleErrorCode(t, err, common.CodeBadRequest)
 	}
-	if _, err := service.SetRoleDefaultModel(t.Context(), "public", "model-1", "chat"); err == nil {
+	if _, err := service.SetRoleDefaultModel(t.Context(), "public", "model-1", "unsupported"); err == nil {
 		t.Fatal("SetRoleDefaultModel() accepted an unsupported default model type")
 	} else {
 		assertRoleErrorCode(t, err, common.CodeBadRequest)
@@ -300,7 +300,7 @@ func TestShowRoleDefaultModelsRoute(t *testing.T) {
 }
 
 func TestListRolesWithPermissionRoute(t *testing.T) {
-	db := testutil.SetupTestDB(t, &entity.Role{}, &entity.RoleResource{})
+	db := testutil.SetupTestDB(t, &entity.Role{}, &entity.RoleResource{}, &entity.Tenant{})
 	t.Cleanup(testutil.ReplaceDBForTest(t, db))
 
 	originalMode := gin.Mode()
@@ -389,19 +389,19 @@ func TestSystemRoleCRUDAndPermissionChanges(t *testing.T) {
 	roleIDString := strconv.FormatInt(int64(roleID), 10)
 	if grantLog.TargetType != "role" || grantLog.TargetID != roleIDString ||
 		grantLog.ResourceType != "role_permission" || grantLog.ResourceID != roleIDString ||
-		grantLog.OldPermission != 0 || grantLog.NewPermission != entity.RoleActionRead|entity.RoleActionShare ||
+		grantLog.OldPermission != 0 || grantLog.NewPermission != entity.RoleActionEnable|entity.RoleActionRead|entity.RoleActionShare ||
 		grantLog.EventType != "role.permission.granted" ||
 		grantLog.ScopeType != "system" || grantLog.ActorUserID == nil || *grantLog.ActorUserID != "system-admin" ||
 		grantLog.BeforeData == nil || !strings.Contains(*grantLog.BeforeData, `"resource":"dataset"`) ||
-		grantLog.AfterData == nil || !strings.Contains(*grantLog.AfterData, `"permission":10`) {
+		grantLog.AfterData == nil || !strings.Contains(*grantLog.AfterData, `"permission":11`) {
 		t.Fatalf("grant audit log = %#v, missing actor, scope, target, or before/after state", grantLog)
 	}
 	if revokeLog.TargetType != "role" || revokeLog.TargetID != roleIDString ||
-		revokeLog.OldPermission != entity.RoleActionRead|entity.RoleActionShare || revokeLog.NewPermission != entity.RoleActionRead ||
+		revokeLog.OldPermission != entity.RoleActionEnable|entity.RoleActionRead|entity.RoleActionShare || revokeLog.NewPermission != entity.RoleActionEnable|entity.RoleActionRead ||
 		revokeLog.EventType != "role.permission.revoked" ||
 		revokeLog.ActorUserID == nil || *revokeLog.ActorUserID != "system-admin" ||
-		revokeLog.BeforeData == nil || !strings.Contains(*revokeLog.BeforeData, `"permission":10`) ||
-		revokeLog.AfterData == nil || !strings.Contains(*revokeLog.AfterData, `"permission":2`) {
+		revokeLog.BeforeData == nil || !strings.Contains(*revokeLog.BeforeData, `"permission":11`) ||
+		revokeLog.AfterData == nil || !strings.Contains(*revokeLog.AfterData, `"permission":3`) {
 		t.Fatalf("revoke audit log = %#v, missing old/new permission state", revokeLog)
 	}
 

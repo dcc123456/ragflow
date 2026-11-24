@@ -398,6 +398,7 @@ function ModelGroupRow({
 
   const handleDelete = useCallback(async () => {
     if (deleteLoading) return;
+    setExpanded(false);
     try {
       await deleteGroup(undefined);
     } catch {

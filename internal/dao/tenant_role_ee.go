@@ -42,6 +42,9 @@ var defaultTenantRoleResourceActions = []struct {
 	{resourceType: entity.RoleResourceTypeGroup, action: entity.RoleActionAll},            // group
 	{resourceType: entity.RoleResourceTypeMemory, action: entity.RoleActionAll},           // memory
 	{resourceType: entity.RoleResourceTypeModelProvider, action: entity.RoleActionEnable}, // model_provider
+	{resourceType: entity.RoleResourceTypeModelGroup, action: entity.RoleActionEnable},    // model_group
+	{resourceType: entity.RoleResourceTypeDataSource, action: entity.RoleActionEnable},    // data_source
+	{resourceType: entity.RoleResourceTypeChatChannel, action: entity.RoleActionEnable},   // chat_channel
 	{resourceType: entity.RoleResourceTypeMCP, action: entity.RoleActionAll},              // mcp
 }
 

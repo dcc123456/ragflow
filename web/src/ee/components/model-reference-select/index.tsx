@@ -28,6 +28,7 @@ enum SelectionMode {
 export interface ModelReferenceSelectProps extends ModelTreeSelectProps {
   directModelSelect: DirectModelSelectComponent;
   modelTypes: string[];
+  allowModelGroups?: boolean;
 }
 
 export const ModelReferenceSelect = forwardRef<
@@ -37,6 +38,7 @@ export const ModelReferenceSelect = forwardRef<
   {
     directModelSelect: DirectModelSelect,
     modelTypes,
+    allowModelGroups = false,
     providers,
     value,
     onChange,
@@ -59,18 +61,20 @@ export const ModelReferenceSelect = forwardRef<
     isModelGroupRef(value) ? SelectionMode.Group : SelectionMode.Direct,
   );
   const [open, setOpen] = useState(false);
-  const { canUseGroups, isSettled: tenantAccessSettled } =
+  const { canUseGroups: tenantCanUseGroups, isSettled: tenantAccessSettled } =
     useModelGroupTenantAccess({
       ownerTenantId,
-      skipTenantInfo,
+      skipTenantInfo: skipTenantInfo || allowModelGroups,
     });
+  const canUseGroups = allowModelGroups || tenantCanUseGroups;
+  const groupAccessSettled = allowModelGroups || tenantAccessSettled;
   const directOnly = !canUseGroups;
   const groupValue = isModelGroupRef(value);
   const awaitingModeValueClear =
     !directOnly &&
     Boolean(value) &&
     (mode === SelectionMode.Group) !== groupValue;
-  const awaitingTenantAccess = !tenantAccessSettled && groupValue;
+  const awaitingTenantAccess = !groupAccessSettled && groupValue;
   const selectorValue =
     awaitingModeValueClear || awaitingTenantAccess ? '' : value;
   const selectorDisabled =

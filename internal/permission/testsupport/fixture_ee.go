@@ -336,6 +336,7 @@ func ensureTenantRole(db *gorm.DB, tenantID string) (int32, error) {
 		entity.RoleResourceTypeDataset, entity.RoleResourceTypeChat, entity.RoleResourceTypeAgent,
 		entity.RoleResourceTypeSearch, entity.RoleResourceTypeFile, entity.RoleResourceTypeGroup,
 		entity.RoleResourceTypeMemory, entity.RoleResourceTypeModelProvider, entity.RoleResourceTypeMCP,
+		entity.RoleResourceTypeChatChannel,
 	}
 	for _, resourceType := range resourceTypes {
 		var count int64
